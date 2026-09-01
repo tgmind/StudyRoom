@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+import { Info } from "lucide-react";
 
 export function SignupForm() {
   const [email, setEmail] = useState("");
@@ -81,6 +82,14 @@ export function SignupForm() {
         </p>
       </div>
 
+      {/* Prominent Real Name Alert Banner */}
+      <div className="p-3 bg-violet-500/10 border border-violet-500/30 rounded-xl flex items-start space-x-2.5 text-violet-200 text-xs shadow-sm">
+        <Info className="w-4 h-4 text-violet-400 shrink-0 mt-0.5" />
+        <span className="font-semibold leading-snug">
+          Use Your Real Name as far as possible.
+        </span>
+      </div>
+
       <form onSubmit={handleSignup} className="space-y-4">
         {error && (
           <div className="p-3 bg-red-950/50 border border-red-800 rounded-lg text-xs font-medium text-red-200">
@@ -91,7 +100,7 @@ export function SignupForm() {
         <Input
           label="Display Name"
           type="text"
-          placeholder="Alex"
+          placeholder="e.g. Alex, Rahul S."
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
           hint="Your public name visible to study room members"

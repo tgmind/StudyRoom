@@ -88,6 +88,13 @@ export default function OnboardingPage() {
           </p>
         </div>
 
+        {/* Prominent Real Name Alert Banner */}
+        <div className="p-3 bg-violet-500/10 border border-violet-500/30 rounded-xl flex items-start space-x-2.5 text-violet-200 text-xs shadow-sm">
+          <span className="font-semibold leading-snug">
+            Use Your Real Name as far as possible.
+          </span>
+        </div>
+
         <form onSubmit={handleSubmit} className="space-y-5">
           {error && (
             <div className="p-3 bg-red-950/50 border border-red-800 rounded-lg text-xs font-medium text-red-200">
