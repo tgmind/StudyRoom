@@ -41,14 +41,11 @@ export default function RoomPage() {
 
   const handleFinishSession = async (completedTaskIds: string[]) => {
     await finishSession(completedTaskIds);
-    await refreshGoals();
-    await refreshProfile();
-    await refreshMembers();
+    await Promise.allSettled([refreshGoals(), refreshProfile(), refreshMembers()]);
   };
 
   const handleCreateGoal = async (tasks: string[]) => {
     await createGoal(tasks);
-    await refreshGoals();
   };
 
   const handleStartNewSessionAfterBreak = async () => {

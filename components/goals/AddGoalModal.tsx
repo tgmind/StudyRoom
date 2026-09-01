@@ -67,7 +67,7 @@ export function AddGoalModal({
         <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
           {taskInputs.map((taskText, idx) => (
             <div key={idx} className="flex items-center space-x-2">
-              <span className="text-xs font-bold text-emerald-400 w-5 text-right shrink-0">
+              <span className="text-xs font-bold text-violet-400 w-5 text-right shrink-0">
                 +{idx + 1}
               </span>
               <Input
@@ -97,7 +97,7 @@ export function AddGoalModal({
         {error && <p className="text-xs font-medium text-red-400">{error}</p>}
 
         <div className="p-3 bg-zinc-900 border border-zinc-800 rounded-lg text-xs text-zinc-400 flex items-start space-x-2">
-          <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+          <ShieldAlert className="w-4 h-4 text-violet-400 shrink-0 mt-0.5" />
           <span>
             <strong>Accountability Rule:</strong> Once added, goals cannot be deleted. If unfinished when the 24-hour window expires, they count against your weekly Leaderboard completion rate.
           </span>

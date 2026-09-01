@@ -30,10 +30,11 @@ export const BottomNav = memo(function BottomNav() {
             <Link
               key={item.href}
               href={item.href}
-              className={`flex flex-col items-center justify-center min-w-[54px] min-h-[44px] px-2 py-1.5 rounded-xl text-[10px] font-bold transition-all duration-150 touch-manipulation transform-gpu ${
+              prefetch={true}
+              className={`flex flex-col items-center justify-center min-w-[54px] min-h-[44px] px-2 py-1.5 rounded-xl text-[10px] font-bold transition-all duration-150 touch-manipulation select-none active:scale-95 ${
                 isActive
                   ? "bg-zinc-900 text-zinc-100 border border-zinc-800 shadow-inner scale-105"
-                  : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/50"
+                  : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/50 active:bg-zinc-900"
               }`}
             >
               <Icon
