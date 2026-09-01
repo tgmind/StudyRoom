@@ -103,11 +103,11 @@ export function AddGoalModal({
           </span>
         </div>
 
-        <div className="pt-2 flex items-center justify-end space-x-3">
-          <Button type="button" variant="secondary" onClick={onClose} disabled={isLoading}>
+        <div className="pt-2 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3">
+          <Button type="button" variant="secondary" onClick={onClose} disabled={isLoading} className="w-full sm:w-auto">
             Cancel
           </Button>
-          <Button type="submit" variant="primary" isLoading={isLoading} className="font-extrabold px-5">
+          <Button type="submit" variant="primary" isLoading={isLoading} className="w-full sm:w-auto font-extrabold px-5">
             Append to Active Window
           </Button>
         </div>

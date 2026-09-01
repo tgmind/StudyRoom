@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import React from "react";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import { StopHookModal } from "@/components/session/StopHookModal";
 import { DailyGoal } from "@/lib/supabase/types";
 
@@ -34,7 +34,7 @@ describe("StopHookModal Component", () => {
     expect(screen.getByText("Solve 20 PYQs")).toBeInTheDocument();
   });
 
-  it("triggers onConfirmFinish with updated task selections", () => {
+  it("triggers onConfirmFinish with updated task selections when saving goals", async () => {
     const onFinishMock = vi.fn();
     render(
       <StopHookModal
@@ -48,11 +48,41 @@ describe("StopHookModal Component", () => {
 
     // Toggle Task 1 ("Finish Chapter 1")
     const task1Element = screen.getByText("Finish Chapter 1");
-    fireEvent.click(task1Element);
+    await act(async () => {
+      fireEvent.click(task1Element);
+    });
 
-    const finishButton = screen.getByText("Finish Session");
-    fireEvent.click(finishButton);
+    const finishButton = screen.getByText(/Save Goals & Finish/i);
+    await act(async () => {
+      fireEvent.click(finishButton);
+    });
 
     expect(onFinishMock).toHaveBeenCalledWith(["t1"]);
+  });
+
+  it("triggers onConfirmFinish with empty tasks when clicking 'End Without Goals'", async () => {
+    const onFinishMock = vi.fn();
+    render(
+      <StopHookModal
+        isOpen={true}
+        onClose={vi.fn()}
+        onConfirmFinish={onFinishMock}
+        activeGoal={dummyGoal}
+        elapsedSeconds={3600}
+      />
+    );
+
+    // Even if Task 1 was clicked, End Without Goals passes empty array
+    const task1Element = screen.getByText("Finish Chapter 1");
+    await act(async () => {
+      fireEvent.click(task1Element);
+    });
+
+    const endWithoutGoalsButton = screen.getByText("End Without Goals");
+    await act(async () => {
+      fireEvent.click(endWithoutGoalsButton);
+    });
+
+    expect(onFinishMock).toHaveBeenCalledWith([]);
   });
 });

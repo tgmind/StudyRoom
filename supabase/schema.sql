@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS public.users (
   current_focus TEXT,
   session_start_time TIMESTAMPTZ,
   last_resumed_at TIMESTAMPTZ,
+  break_started_at TIMESTAMPTZ,
   active_study_seconds_snapshot INTEGER NOT NULL DEFAULT 0,
   has_achiever_badge BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -28,6 +29,7 @@ CREATE TABLE IF NOT EXISTS public.users (
 
 -- Idempotent column migrations for existing databases
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_resumed_at TIMESTAMPTZ;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS break_started_at TIMESTAMPTZ;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS active_study_seconds_snapshot INTEGER NOT NULL DEFAULT 0;
 
 -- Indexes for Users
@@ -265,6 +267,7 @@ BEGIN
        current_focus = v_trimmed_focus,
        session_start_time = v_now,
        last_resumed_at = v_now,
+       break_started_at = NULL,
        active_study_seconds_snapshot = 0
   WHERE id = v_user_id;
 
@@ -325,10 +328,11 @@ BEGIN
     AND block_type = 'study'
     AND session_id IS NULL;
 
-  -- Update user status with frozen active study seconds snapshot
+  -- Update user status with frozen active study seconds snapshot and break start timestamp
   UPDATE public.users
   SET current_status = 'break',
       last_resumed_at = NULL,
+      break_started_at = v_now,
       active_study_seconds_snapshot = v_total_study_seconds
   WHERE id = v_user_id;
 
@@ -336,17 +340,19 @@ BEGIN
     'success', true,
     'status', 'break',
     'paused_at', v_now,
+    'break_started_at', v_now,
     'active_study_seconds_snapshot', v_total_study_seconds
   );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- RPC: Resume Session
+-- RPC: Resume Session (with 1-hour break timeout protection)
 CREATE OR REPLACE FUNCTION public.rpc_resume_session()
 RETURNS JSONB AS $$
 DECLARE
   v_user_id UUID;
   v_status TEXT;
+  v_break_started_at TIMESTAMPTZ;
   v_now TIMESTAMPTZ := NOW();
 BEGIN
   v_user_id := auth.uid();
@@ -354,13 +360,24 @@ BEGIN
     RAISE EXCEPTION 'Not authenticated';
   END IF;
 
-  SELECT current_status INTO v_status
+  SELECT current_status, break_started_at INTO v_status, v_break_started_at
   FROM public.users
   WHERE id = v_user_id
   FOR UPDATE;
 
   IF v_status <> 'break' THEN
     RAISE EXCEPTION 'User is not currently on break';
+  END IF;
+
+  -- 1-HOUR BREAK EXPIRY ENFORCEMENT:
+  -- If break exceeded 1 hour (3600 seconds), end session and save only study time before break
+  IF v_break_started_at IS NOT NULL AND EXTRACT(EPOCH FROM (v_now - v_break_started_at)) >= 3600 THEN
+    PERFORM public.rpc_finish_session(ARRAY[]::TEXT[]);
+    RETURN jsonb_build_object(
+      'success', false,
+      'error', 'break_expired',
+      'message', 'You stayed on break for more than 1 hour. Session has been stopped. Start a new session.'
+    );
   END IF;
 
   -- Close current active break block
@@ -372,16 +389,52 @@ BEGIN
   INSERT INTO public.session_blocks (user_id, block_type, start_time)
   VALUES (v_user_id, 'study', v_now);
 
-  -- Update user status with new resume timestamp (preserves accrued snapshot)
+  -- Update user status with new resume timestamp (clearing break timestamp)
   UPDATE public.users
   SET current_status = 'studying',
-      last_resumed_at = v_now
+      last_resumed_at = v_now,
+      break_started_at = NULL
   WHERE id = v_user_id;
 
   RETURN jsonb_build_object(
     'success', true,
     'status', 'studying',
     'resumed_at', v_now
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- RPC: Terminate Expired Break
+CREATE OR REPLACE FUNCTION public.rpc_terminate_expired_break()
+RETURNS JSONB AS $$
+DECLARE
+  v_user_id UUID;
+  v_status TEXT;
+  v_break_started_at TIMESTAMPTZ;
+  v_now TIMESTAMPTZ := NOW();
+BEGIN
+  v_user_id := auth.uid();
+  IF v_user_id IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  SELECT current_status, break_started_at INTO v_status, v_break_started_at
+  FROM public.users
+  WHERE id = v_user_id
+  FOR UPDATE;
+
+  IF v_status = 'break' AND v_break_started_at IS NOT NULL AND EXTRACT(EPOCH FROM (v_now - v_break_started_at)) >= 3600 THEN
+    PERFORM public.rpc_finish_session(ARRAY[]::TEXT[]);
+    RETURN jsonb_build_object(
+      'success', true,
+      'terminated', true,
+      'message', 'You stayed on break for more than 1 hour. Session has been stopped. Start a new session.'
+    );
+  END IF;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'terminated', false
   );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -497,6 +550,7 @@ BEGIN
       current_focus = NULL,
       session_start_time = NULL,
       last_resumed_at = NULL,
+      break_started_at = NULL,
       active_study_seconds_snapshot = 0
   WHERE id = v_user_id;
 
@@ -671,6 +725,11 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- ------------------------------------------------------------
 -- 9. LEADERBOARD & ACHIEVER BADGE RPCs
 -- ------------------------------------------------------------
+
+-- Drop prior function overloads to prevent PostgREST PGRST203 candidate ambiguity
+DROP FUNCTION IF EXISTS public.rpc_get_leaderboard(TIMESTAMPTZ, TEXT);
+DROP FUNCTION IF EXISTS public.rpc_get_leaderboard(TIMESTAMPTZ);
+DROP FUNCTION IF EXISTS public.rpc_get_leaderboard();
 
 -- Function to get leaderboard entries for a given week with timezone support (Default Asia/Kolkata)
 CREATE OR REPLACE FUNCTION public.rpc_get_leaderboard(

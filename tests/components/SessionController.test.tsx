@@ -46,16 +46,21 @@ describe("SessionController Component", () => {
     expect(screen.getByText("Stop")).toBeInTheDocument();
   });
 
-  it("renders 'Resume' and 'Stop' buttons when on break", () => {
+  it("renders 'Resume' and 'Stop' buttons and break countdown when on break", () => {
+    const breakStart = new Date(Date.now() - 300000).toISOString(); // 5 min ago
+
     render(
       <SessionController
         status="break"
         elapsedSeconds={120}
+        breakStartedAt={breakStart}
         {...dummyProps}
       />
     );
 
     expect(screen.getByText("Resume")).toBeInTheDocument();
     expect(screen.getByText("Stop")).toBeInTheDocument();
+    expect(screen.getByText("Break Countdown")).toBeInTheDocument();
+    expect(screen.getByText(/55:00 left/i)).toBeInTheDocument();
   });
 });

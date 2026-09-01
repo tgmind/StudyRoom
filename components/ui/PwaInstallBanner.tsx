@@ -91,10 +91,10 @@ export function PwaInstallBanner() {
             </div>
 
             <div className="min-w-0 flex-1">
-              <h3 className="text-xs font-bold text-zinc-100 truncate">
+              <h3 className="text-xs font-bold text-zinc-100 leading-snug">
                 Install StudyRoom PWA
               </h3>
-              <p className="text-[11px] text-zinc-400 truncate mt-0.5">
+              <p className="text-[11px] text-zinc-400 mt-0.5 leading-snug">
                 Fast home screen access & offline study support
               </p>
             </div>

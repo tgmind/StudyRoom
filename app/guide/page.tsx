@@ -53,11 +53,11 @@ function GuideContent() {
             <div className="p-2 sm:p-2.5 rounded-xl bg-violet-500/10 border border-violet-500/25 text-violet-300 shrink-0">
               <BookOpen className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
-            <div className="min-w-0">
-              <h1 className="text-sm sm:text-base font-extrabold text-zinc-100 tracking-tight truncate">
+            <div className="min-w-0 flex-1">
+              <h1 className="text-sm sm:text-base font-extrabold text-zinc-100 tracking-tight leading-snug">
                 App Guide & Feature Handbook
               </h1>
-              <p className="text-[10px] sm:text-xs text-zinc-400 truncate">
+              <p className="text-[10px] sm:text-xs text-zinc-400 mt-0.5 leading-snug">
                 Learn feature mechanics, step-by-step usage, and scoring formulas
               </p>
             </div>

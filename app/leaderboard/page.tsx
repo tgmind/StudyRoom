@@ -10,6 +10,10 @@ import { LeaderboardCard } from "@/components/leaderboard/LeaderboardCard";
 import { ScoringBreakdown } from "@/components/leaderboard/ScoringBreakdown";
 import { Trophy, HelpCircle, Star, Sparkles, Clock, Target, Flame } from "lucide-react";
 
+type RpcCaller = {
+  rpc: (name: string, params?: Record<string, unknown>) => Promise<{ data: unknown; error: Error | null }>;
+};
+
 export default function LeaderboardPage() {
   const { user, profile } = useAuth();
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
@@ -24,7 +28,10 @@ export default function LeaderboardPage() {
       setLoading(true);
       setError(null);
 
-      const { data, error: rpcErr } = await supabase.rpc("rpc_get_leaderboard");
+      const timezone = process.env.NEXT_PUBLIC_APP_TIMEZONE || "Asia/Kolkata";
+      const { data, error: rpcErr } = await (supabase as unknown as RpcCaller).rpc("rpc_get_leaderboard", {
+        p_timezone: timezone,
+      });
 
       if (rpcErr) throw rpcErr;
 
@@ -54,15 +61,15 @@ export default function LeaderboardPage() {
         {/* Header Hero Card */}
         <div className="w-full bg-zinc-900/70 border border-zinc-800/90 rounded-2xl p-4 sm:p-5 shadow-xl space-y-3 backdrop-blur-md">
           <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center space-x-3 min-w-0">
+            <div className="flex items-center space-x-2.5 sm:space-x-3 min-w-0 flex-1">
               <div className="p-2 sm:p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-300 shrink-0">
                 <Trophy className="w-4 h-4 sm:w-5 sm:h-5" />
               </div>
-              <div className="min-w-0">
-                <h1 className="text-sm sm:text-base font-extrabold text-zinc-100 tracking-tight truncate">
+              <div className="min-w-0 flex-1">
+                <h1 className="text-sm sm:text-base font-extrabold text-zinc-100 tracking-tight leading-snug">
                   Weekly Leaderboard
                 </h1>
-                <p className="text-[10px] sm:text-xs text-zinc-400 truncate">
+                <p className="text-[10px] sm:text-xs text-zinc-400 mt-0.5 leading-snug">
                   Monday to Sunday rolling competition (Asia/Kolkata IST)
                 </p>
               </div>
@@ -83,41 +90,43 @@ export default function LeaderboardPage() {
           {/* Transparent Metric Formula Chips */}
           <div className="grid grid-cols-3 gap-1.5 sm:gap-2.5 pt-2 border-t border-zinc-800/80 text-[10px] sm:text-xs">
             <div className="p-2 rounded-xl bg-zinc-950/60 border border-teal-500/15 text-center min-w-0">
-              <div className="flex items-center justify-center space-x-1 text-teal-300 font-bold mb-0.5">
+              <div className="flex items-center justify-center space-x-1 text-teal-300 font-bold mb-0.5 whitespace-nowrap">
                 <Clock className="w-3 h-3 shrink-0" />
-                <span className="truncate">50% Hours</span>
+                <span>50% Hours</span>
               </div>
-              <span className="text-[9px] sm:text-[10px] text-zinc-500 block truncate">Study Duration</span>
+              <span className="text-[9px] sm:text-[10px] text-zinc-500 block leading-tight">Study Duration</span>
             </div>
 
             <div className="p-2 rounded-xl bg-zinc-950/60 border border-emerald-500/15 text-center min-w-0">
-              <div className="flex items-center justify-center space-x-1 text-emerald-300 font-bold mb-0.5">
+              <div className="flex items-center justify-center space-x-1 text-emerald-300 font-bold mb-0.5 whitespace-nowrap">
                 <Target className="w-3 h-3 shrink-0" />
-                <span className="truncate">30% Goals</span>
+                <span>30% Goals</span>
               </div>
-              <span className="text-[9px] sm:text-[10px] text-zinc-500 block truncate">24h Task Rate</span>
+              <span className="text-[9px] sm:text-[10px] text-zinc-500 block leading-tight">24h Task Rate</span>
             </div>
 
             <div className="p-2 rounded-xl bg-zinc-950/60 border border-amber-500/15 text-center min-w-0">
-              <div className="flex items-center justify-center space-x-1 text-amber-300 font-bold mb-0.5">
+              <div className="flex items-center justify-center space-x-1 text-amber-300 font-bold mb-0.5 whitespace-nowrap">
                 <Flame className="w-3 h-3 shrink-0" />
-                <span className="truncate">20% Streak</span>
+                <span>20% Streak</span>
               </div>
-              <span className="text-[9px] sm:text-[10px] text-zinc-500 block truncate">≥30m Daily</span>
+              <span className="text-[9px] sm:text-[10px] text-zinc-500 block leading-tight">≥30m Daily</span>
             </div>
           </div>
         </div>
 
         {/* Current User Highlight Card */}
         {userEntry && userRank && (
-          <div className="p-3.5 sm:p-4 bg-zinc-900/80 border border-zinc-700/80 rounded-2xl flex items-center justify-between shadow-md backdrop-blur-md gap-2">
+          <div className="p-3.5 sm:p-4 bg-zinc-900/80 border border-zinc-700/80 rounded-2xl flex items-center justify-between shadow-md backdrop-blur-md gap-3">
             <div className="min-w-0 flex-1">
               <span className="text-[9px] sm:text-[10px] uppercase font-black tracking-wider text-zinc-400 block">
                 Your Current Standing
               </span>
-              <div className="text-base sm:text-lg font-black text-zinc-100 flex items-center space-x-2 mt-0.5 truncate">
-                <span className="text-amber-300">Rank #{userRank}</span>
-                <span className="font-mono text-xs text-zinc-400 font-normal truncate">
+              <div className="flex flex-wrap items-baseline gap-1.5 sm:gap-2 mt-0.5">
+                <span className="text-base sm:text-lg font-black text-amber-300 whitespace-nowrap">
+                  Rank #{userRank}
+                </span>
+                <span className="font-mono text-xs sm:text-sm text-zinc-300 font-semibold whitespace-nowrap">
                   ({userEntry.score.toFixed(1)} / 100 pts)
                 </span>
               </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useLiveRoom } from "@/hooks/useLiveRoom";
 import { useActiveSession } from "@/hooks/useActiveSession";
@@ -9,6 +9,8 @@ import { TopHeader } from "@/components/navigation/TopHeader";
 import { BottomNav } from "@/components/navigation/BottomNav";
 import { SessionController } from "@/components/session/SessionController";
 import { MemberList } from "@/components/room/MemberList";
+import { BreakExpiredModal } from "@/components/session/BreakExpiredModal";
+import { CreateGoalModal } from "@/components/goals/CreateGoalModal";
 
 export default function RoomPage() {
   const { user, profile, refreshProfile } = useAuth();
@@ -20,7 +22,11 @@ export default function RoomPage() {
     status,
     focus,
     elapsedStudySeconds,
+    breakStartedAt,
     actionLoading,
+    isBreakExpiredNoticeOpen,
+    savedStudySecondsOnBreakExpiry,
+    closeBreakExpiredNotice,
     startSession,
     pauseSession,
     resumeSession,
@@ -31,6 +37,7 @@ export default function RoomPage() {
   });
 
   const { activeGoal, countdown, createGoal, refreshGoals } = useDailyGoals(user?.id);
+  const [isGoalSetupModalOpen, setIsGoalSetupModalOpen] = useState(false);
 
   const handleFinishSession = async (completedTaskIds: string[]) => {
     await finishSession(completedTaskIds);
@@ -42,6 +49,22 @@ export default function RoomPage() {
   const handleCreateGoal = async (tasks: string[]) => {
     await createGoal(tasks);
     await refreshGoals();
+  };
+
+  const handleStartNewSessionAfterBreak = async () => {
+    closeBreakExpiredNotice();
+    const isGoalMissingOrExpired = !activeGoal || countdown.isExpired;
+    if (isGoalMissingOrExpired) {
+      setIsGoalSetupModalOpen(true);
+    } else {
+      await startSession(null);
+    }
+  };
+
+  const handleGoalCreatedFromModal = async (tasks: string[]) => {
+    await handleCreateGoal(tasks);
+    setIsGoalSetupModalOpen(false);
+    await startSession(null);
   };
 
   return (
@@ -59,6 +82,7 @@ export default function RoomPage() {
             status={status}
             focus={focus}
             elapsedSeconds={elapsedStudySeconds}
+            breakStartedAt={breakStartedAt}
             onStartSession={startSession}
             onPauseSession={pauseSession}
             onResumeSession={resumeSession}
@@ -80,6 +104,22 @@ export default function RoomPage() {
           />
         </section>
       </main>
+
+      {/* 1-Hour Break Inactivity Expiry Notice Modal */}
+      <BreakExpiredModal
+        isOpen={isBreakExpiredNoticeOpen}
+        onClose={closeBreakExpiredNotice}
+        onStartNewSession={handleStartNewSessionAfterBreak}
+        savedStudySeconds={savedStudySecondsOnBreakExpiry}
+      />
+
+      {/* Goal Setup Modal when starting after break */}
+      <CreateGoalModal
+        isOpen={isGoalSetupModalOpen}
+        onClose={() => setIsGoalSetupModalOpen(false)}
+        onConfirmCreate={handleGoalCreatedFromModal}
+        isLoading={actionLoading}
+      />
 
       <BottomNav />
     </div>

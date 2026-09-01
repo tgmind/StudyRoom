@@ -40,14 +40,14 @@ export const MemberList = memo(function MemberList({
   const [currentTimestamp, setCurrentTimestamp] = useState(new Date());
 
   useEffect(() => {
-    if (studyingMembers.length === 0) return;
+    if (activeMembers.length === 0) return;
 
     const intervalId = setInterval(() => {
       setCurrentTimestamp(new Date());
     }, 1000);
 
     return () => clearInterval(intervalId);
-  }, [studyingMembers.length]);
+  }, [activeMembers.length]);
 
   if (isLoading) {
     return (

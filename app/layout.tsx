@@ -33,12 +33,12 @@ export default function RootLayout({
       <head>
         <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
       </head>
-      <body className="h-full flex flex-col antialiased bg-background text-foreground selection:bg-zinc-800 selection:text-zinc-100">
+      <body className="h-full min-h-screen flex flex-col antialiased bg-[#090a0f] text-foreground selection:bg-zinc-800 selection:text-zinc-100">
         <OfflineBanner />
         <PwaInstallBanner />
-        <main className="flex-1 w-full max-w-xl mx-auto flex flex-col">
+        <div className="flex-1 w-full flex flex-col">
           {children}
-        </main>
+        </div>
       </body>
     </html>
   );

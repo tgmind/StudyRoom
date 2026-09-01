@@ -8,6 +8,7 @@ export interface UserProfile {
   current_focus: string | null;
   session_start_time: string | null;
   last_resumed_at?: string | null;
+  break_started_at?: string | null;
   active_study_seconds_snapshot?: number | null;
   has_achiever_badge: boolean;
   created_at: string;

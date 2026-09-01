@@ -35,12 +35,20 @@ export function StopHookModal({
     );
   };
 
-  const handleFinish = async () => {
+  const handleFinishWithGoals = async () => {
     const newlyCompleted = selectedTaskIds;
     await onConfirmFinish(newlyCompleted);
     setSelectedTaskIds([]);
     onClose();
   };
+
+  const handleFinishWithoutGoals = async () => {
+    setSelectedTaskIds([]);
+    await onConfirmFinish([]);
+    onClose();
+  };
+
+  const hasSelectedTasks = selectedTaskIds.length > 0;
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Finish Your Study Session">
@@ -58,9 +66,9 @@ export function StopHookModal({
         </div>
 
         {/* 24-Hour Goal Checklist */}
-        <div className="space-y-2">
-          <label className="block text-xs font-bold uppercase tracking-wider text-zinc-300">
-            Active 24-Hour Goal Tasks
+        <div className="space-y-2.5">
+          <label className="block text-sm sm:text-base font-extrabold text-zinc-100 tracking-tight">
+            How many Goals did you complete ?
           </label>
 
           {tasks.length === 0 ? (
@@ -114,20 +122,43 @@ export function StopHookModal({
           )}
         </div>
 
-        {/* Modal Action Controls (High-Visibility Solid Buttons) */}
-        <div className="pt-3 border-t border-zinc-800 flex items-center justify-end space-x-3">
-          <Button variant="secondary" size="md" onClick={onClose} disabled={isLoading}>
+        {/* Modal Action Controls */}
+        <div className="pt-3 border-t border-zinc-800 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-2.5">
+          <Button
+            variant="secondary"
+            size="md"
+            onClick={onClose}
+            disabled={isLoading}
+            className="w-full sm:w-auto"
+          >
             Cancel
           </Button>
+
+          {/* White Button: End Without Goals (deselects all tasks and simply ends session) */}
           <Button
-            variant="primary"
+            type="button"
+            variant="secondary"
             size="md"
-            onClick={handleFinish}
-            isLoading={isLoading}
-            className="px-6 font-extrabold shadow-md text-zinc-950 bg-zinc-100 hover:bg-white"
+            onClick={handleFinishWithoutGoals}
+            disabled={isLoading}
+            className="w-full sm:w-auto px-4 font-bold text-xs bg-zinc-100 text-zinc-950 hover:bg-white border-white shadow-sm"
           >
-            Finish Session
+            End Without Goals
           </Button>
+
+          {/* Primary Action Button when tasks are checked */}
+          {hasSelectedTasks && (
+            <Button
+              type="button"
+              variant="primary"
+              size="md"
+              onClick={handleFinishWithGoals}
+              isLoading={isLoading}
+              className="w-full sm:w-auto px-5 font-extrabold text-xs shadow-md bg-emerald-500 hover:bg-emerald-400 text-zinc-950 border-emerald-400"
+            >
+              Save Goals & Finish ({selectedTaskIds.length})
+            </Button>
+          )}
         </div>
       </div>
     </Modal>

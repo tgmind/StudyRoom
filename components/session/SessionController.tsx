@@ -13,6 +13,7 @@ interface SessionControllerProps {
   status: UserStatus;
   focus?: string | null;
   elapsedSeconds: number;
+  breakStartedAt?: string | null;
   onStartSession: (focusTag?: string | null) => Promise<void>;
   onPauseSession: () => Promise<void>;
   onResumeSession: () => Promise<void>;
@@ -26,6 +27,7 @@ interface SessionControllerProps {
 export const SessionController = memo(function SessionController({
   status,
   elapsedSeconds,
+  breakStartedAt,
   onStartSession,
   onPauseSession,
   onResumeSession,
@@ -65,7 +67,11 @@ export const SessionController = memo(function SessionController({
       {/* Session Timer */}
       {!isIdle && (
         <div className="space-y-2">
-          <ActiveTimer elapsedSeconds={elapsedSeconds} status={status} />
+          <ActiveTimer
+            elapsedSeconds={elapsedSeconds}
+            status={status}
+            breakStartedAt={breakStartedAt}
+          />
         </div>
       )}
 

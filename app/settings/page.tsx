@@ -92,15 +92,15 @@ export default function SettingsPage() {
       <main className="flex-1 w-full max-w-2xl sm:max-w-3xl px-3.5 sm:px-6 py-4 mx-auto space-y-4 sm:space-y-5">
         {/* Main Hero Header Card */}
         <div className="w-full bg-zinc-900/70 border border-zinc-800/90 rounded-2xl p-4 sm:p-5 shadow-xl space-y-2 backdrop-blur-md">
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-2.5 sm:space-x-3 min-w-0">
             <div className="p-2 sm:p-2.5 rounded-xl bg-violet-500/10 border border-violet-500/25 text-violet-300 shrink-0">
               <Settings className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
-            <div className="min-w-0">
-              <h1 className="text-sm sm:text-base font-extrabold text-zinc-100 tracking-tight truncate">
+            <div className="min-w-0 flex-1">
+              <h1 className="text-sm sm:text-base font-extrabold text-zinc-100 tracking-tight leading-snug">
                 Account & Settings
               </h1>
-              <p className="text-[10px] sm:text-xs text-zinc-400 truncate">
+              <p className="text-[10px] sm:text-xs text-zinc-400 mt-0.5 leading-snug">
                 Manage your public profile identity and account preferences
               </p>
             </div>
@@ -133,15 +133,15 @@ export default function SettingsPage() {
           onClick={() => router.push("/guide")}
           className="w-full flex items-center justify-between p-3.5 sm:p-4 rounded-2xl bg-zinc-900/70 hover:bg-zinc-900 border border-zinc-800/90 hover:border-zinc-700 transition-all text-left shadow-sm touch-manipulation group"
         >
-          <div className="flex items-center space-x-3 min-w-0">
+          <div className="flex items-center space-x-3 min-w-0 flex-1">
             <div className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 shrink-0">
               <BookOpen className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
-            <div className="min-w-0">
-              <h2 className="text-xs sm:text-sm font-extrabold text-zinc-100 group-hover:text-emerald-300 transition-colors truncate">
+            <div className="min-w-0 flex-1">
+              <h2 className="text-xs sm:text-sm font-extrabold text-zinc-100 group-hover:text-emerald-300 transition-colors leading-snug">
                 App Guide & Feature Handbook
               </h2>
-              <p className="text-[10px] sm:text-xs text-zinc-400 truncate">
+              <p className="text-[10px] sm:text-xs text-zinc-400 mt-0.5 leading-snug">
                 Learn feature mechanics, 50/30/20 scoring rules, and time badges
               </p>
             </div>

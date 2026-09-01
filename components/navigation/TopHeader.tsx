@@ -21,8 +21,8 @@ export const TopHeader = memo(function TopHeader({
     : "??";
 
   return (
-    <header className="sticky top-0 z-30 bg-zinc-950/90 backdrop-blur-xl border-b border-zinc-800/80 px-4 py-3 shadow-md">
-      <div className="max-w-xl mx-auto flex items-center justify-between">
+    <header className="sticky top-0 z-30 bg-zinc-950/90 backdrop-blur-xl border-b border-zinc-800/80 px-0 py-3 shadow-md">
+      <div className="max-w-2xl sm:max-w-3xl px-3.5 sm:px-6 mx-auto flex items-center justify-between">
         {/* Brand & Member Counter */}
         <div className="flex items-center space-x-3">
           <Link

@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { UserProfile, SessionBlock, UserStatus } from "@/lib/supabase/types";
 import { calculateActiveStudySeconds, calculateMemberElapsedStudySeconds } from "@/lib/time/format";
+import { calculateBreakStatus, BreakStatusResult } from "@/lib/time/break";
 
 type RpcCaller = {
   rpc: (name: string, params?: Record<string, unknown>) => Promise<{ data: unknown; error: Error | null }>;
@@ -14,6 +15,11 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
   const [elapsedStudySeconds, setElapsedStudySeconds] = useState(0);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 1-Hour Break Expiry State
+  const [isBreakExpiredNoticeOpen, setIsBreakExpiredNoticeOpen] = useState(false);
+  const [savedStudySecondsOnBreakExpiry, setSavedStudySecondsOnBreakExpiry] = useState(0);
+  const isAutoTerminatingRef = useRef(false);
 
   const supabase = createClient();
   const currentStatus: UserStatus = profile?.current_status ?? "offline";
@@ -56,6 +62,84 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
   useEffect(() => {
     fetchSessionBlocks();
   }, [fetchSessionBlocks]);
+
+  const finishSession = useCallback(
+    async (completedTaskIds: string[] = []) => {
+      if (actionLoading) return;
+      setActionLoading(true);
+      setError(null);
+
+      try {
+        const { data, error: rpcErr } = await (supabase as unknown as RpcCaller).rpc("rpc_finish_session", {
+          p_completed_task_ids: completedTaskIds,
+        });
+
+        if (rpcErr) throw rpcErr;
+
+        const res = data as unknown as {
+          success: boolean;
+          session_id?: string;
+          duration_minutes?: number;
+          error?: string;
+        };
+
+        if (!res.success) throw new Error(res.error || "Failed to finish session");
+
+        setBlocks([]);
+        setElapsedStudySeconds(0);
+        if (onStatusChange) onStatusChange();
+
+        return res;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Finish session failed";
+        setError(msg);
+        throw err;
+      } finally {
+        setActionLoading(false);
+      }
+    },
+    [actionLoading, supabase, onStatusChange]
+  );
+
+  // 1-Hour Break Inactivity Rule Monitor:
+  // Automatically terminates session when break duration exceeds 1 hour (3600s)
+  useEffect(() => {
+    if (currentStatus !== "break" || !profile) {
+      isAutoTerminatingRef.current = false;
+      return;
+    }
+
+    // Determine break start timestamp
+    const openBreakBlock = blocks.find((b) => b.block_type === "break" && !b.end_time);
+    const breakStart = profile.break_started_at || openBreakBlock?.start_time;
+
+    const checkBreakTimeout = async () => {
+      if (isAutoTerminatingRef.current) return;
+
+      const breakStatus: BreakStatusResult = calculateBreakStatus(breakStart, new Date());
+
+      if (breakStatus.isExpired) {
+        isAutoTerminatingRef.current = true;
+        const accruedSeconds = profile.active_study_seconds_snapshot ?? elapsedStudySeconds;
+        setSavedStudySecondsOnBreakExpiry(accruedSeconds);
+
+        try {
+          // Terminate session with no additional task completions
+          await finishSession([]);
+          setIsBreakExpiredNoticeOpen(true);
+        } catch (terminateErr) {
+          console.error("Auto-termination on break expiry failed:", terminateErr);
+        }
+      }
+    };
+
+    // Check immediately on mount/update
+    checkBreakTimeout();
+
+    // Check every 2 seconds while on break
+    const intervalId = setInterval(checkBreakTimeout, 2000);
+    return () => clearInterval(intervalId);
+  }, [currentStatus, profile, blocks, elapsedStudySeconds, finishSession]);
 
   // Periodic UI refresh loop: Only ticks when actively 'studying'; frozen on 'break' or 'offline'
   useEffect(() => {
@@ -144,61 +228,59 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
       const { data, error: rpcErr } = await (supabase as unknown as RpcCaller).rpc("rpc_resume_session");
       if (rpcErr) throw rpcErr;
 
-      const res = data as unknown as { success: boolean; error?: string };
-      if (!res.success) throw new Error(res.error || "Failed to resume session");
+      const res = data as unknown as {
+        success: boolean;
+        error?: string;
+        message?: string;
+      };
+
+      if (!res.success) {
+        if (res.error === "break_expired") {
+          const accruedSeconds = profile?.active_study_seconds_snapshot ?? elapsedStudySeconds;
+          setSavedStudySecondsOnBreakExpiry(accruedSeconds);
+          setIsBreakExpiredNoticeOpen(true);
+          await fetchSessionBlocks();
+          if (onStatusChange) onStatusChange();
+          return;
+        }
+        throw new Error(res.error || res.message || "Failed to resume session");
+      }
 
       await fetchSessionBlocks();
       if (onStatusChange) onStatusChange();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Resume session failed";
-      setError(msg);
-      throw err;
+      if (msg.toLowerCase().includes("break") && msg.toLowerCase().includes("1 hour")) {
+        const accruedSeconds = profile?.active_study_seconds_snapshot ?? elapsedStudySeconds;
+        setSavedStudySecondsOnBreakExpiry(accruedSeconds);
+        setIsBreakExpiredNoticeOpen(true);
+        if (onStatusChange) onStatusChange();
+      } else {
+        setError(msg);
+        throw err;
+      }
     } finally {
       setActionLoading(false);
     }
   };
 
-  const finishSession = async (completedTaskIds: string[] = []) => {
-    if (actionLoading) return;
-    setActionLoading(true);
-    setError(null);
-
-    try {
-      const { data, error: rpcErr } = await (supabase as unknown as RpcCaller).rpc("rpc_finish_session", {
-        p_completed_task_ids: completedTaskIds,
-      });
-
-      if (rpcErr) throw rpcErr;
-
-      const res = data as unknown as {
-        success: boolean;
-        session_id?: string;
-        duration_minutes?: number;
-        error?: string;
-      };
-
-      if (!res.success) throw new Error(res.error || "Failed to finish session");
-
-      setBlocks([]);
-      setElapsedStudySeconds(0);
-      if (onStatusChange) onStatusChange();
-
-      return res;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Finish session failed";
-      setError(msg);
-      throw err;
-    } finally {
-      setActionLoading(false);
-    }
+  const closeBreakExpiredNotice = () => {
+    setIsBreakExpiredNoticeOpen(false);
   };
+
+  const openBreakBlock = blocks.find((b) => b.block_type === "break" && !b.end_time);
+  const breakStartedAt = profile?.break_started_at || openBreakBlock?.start_time || null;
 
   return {
     status: currentStatus,
     focus: profile?.current_focus ?? null,
     elapsedStudySeconds,
+    breakStartedAt,
     actionLoading,
     error,
+    isBreakExpiredNoticeOpen,
+    savedStudySecondsOnBreakExpiry,
+    closeBreakExpiredNotice,
     startSession,
     pauseSession,
     resumeSession,

@@ -8,8 +8,9 @@ import { BottomNav } from "@/components/navigation/BottomNav";
 import { GoalWindowCard } from "@/components/goals/GoalWindowCard";
 import { CreateGoalModal } from "@/components/goals/CreateGoalModal";
 import { AddGoalModal } from "@/components/goals/AddGoalModal";
-import { Target, Plus } from "lucide-react";
+import { Target, Plus, HelpCircle } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { GoalsGuideModal } from "@/components/goals/GoalsGuideModal";
 
 export default function GoalsPage() {
   const { user, profile } = useAuth();
@@ -24,6 +25,7 @@ export default function GoalsPage() {
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isGuideModalOpen, setIsGuideModalOpen] = useState(false);
 
   const handleCreateGoals = async (tasks: string[]) => {
     await createGoal(tasks);
@@ -38,30 +40,41 @@ export default function GoalsPage() {
       <TopHeader profile={profile} />
 
       {/* Fluid Screen Container */}
-      <main className="flex-1 w-full max-w-2xl sm:max-w-3xl px-3.5 sm:px-6 py-4 mx-auto space-y-4 sm:space-y-5">
-        {/* Header Hero Card */}
-        <div className="w-full bg-zinc-900/70 border border-zinc-800/90 rounded-2xl p-4 sm:p-5 shadow-xl space-y-2 backdrop-blur-md">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center space-x-3 min-w-0">
-              <div className="p-2 sm:p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-300 shrink-0">
-                <Target className="w-4 h-4 sm:w-5 sm:h-5" />
-              </div>
-              <div className="min-w-0">
-                <h1 className="text-sm sm:text-base font-extrabold text-zinc-100 tracking-tight truncate">
-                  Rolling 24-Hour Goals
-                </h1>
-                <p className="text-[10px] sm:text-xs text-zinc-400 truncate">
-                  Continuous 24h commitment window (Append-only accountability)
-                </p>
-              </div>
+      <main className="flex-1 w-full max-w-2xl sm:max-w-3xl px-3.5 sm:px-6 py-3.5 mx-auto space-y-3.5">
+        {/* Sleek Compact Header Bar */}
+        <div className="flex items-center justify-between gap-2 px-1">
+          <div className="flex items-center space-x-2.5 min-w-0">
+            <div className="p-2 rounded-xl bg-violet-500/10 border border-violet-500/25 text-violet-300 shrink-0 shadow-inner">
+              <Target className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
+            <div className="min-w-0">
+              <h1 className="text-sm sm:text-base font-black text-zinc-100 tracking-tight leading-snug">
+                Rolling 24-Hour Goals
+              </h1>
+              <p className="text-[10px] sm:text-xs text-zinc-400 leading-snug">
+                Continuous 24h commitment (Append-only)
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsGuideModalOpen(true)}
+              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-violet-300 text-xs font-bold transition-all shrink-0 touch-manipulation shadow-sm"
+              title="View Goals Guide"
+              aria-label="View Goals Guide"
+            >
+              <HelpCircle className="w-3.5 h-3.5 text-violet-400" />
+              <span className="hidden sm:inline">Guide</span>
+            </button>
 
             {(!activeGoal || countdown.isExpired) ? (
               <Button
                 size="sm"
                 variant="primary"
                 onClick={() => setIsCreateModalOpen(true)}
-                className="space-x-1 font-extrabold text-xs shrink-0"
+                className="space-x-1 font-bold text-xs shrink-0 bg-violet-600 hover:bg-violet-500 text-white shadow-md shadow-violet-500/20 px-3.5 py-1.5 rounded-xl transition-all"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>New Goals</span>
@@ -71,9 +84,9 @@ export default function GoalsPage() {
                 size="sm"
                 variant="secondary"
                 onClick={() => setIsAddModalOpen(true)}
-                className="space-x-1 bg-zinc-900 border-zinc-700 text-zinc-200 hover:bg-zinc-800 text-xs font-bold shrink-0"
+                className="space-x-1 bg-zinc-900 border-zinc-700 text-violet-200 hover:bg-zinc-800 hover:text-white text-xs font-bold shrink-0 px-3.5 py-1.5 rounded-xl transition-all"
               >
-                <Plus className="w-3.5 h-3.5 text-emerald-400" />
+                <Plus className="w-3.5 h-3.5 text-violet-400" />
                 <span>Add Goal</span>
               </Button>
             )}
@@ -105,6 +118,11 @@ export default function GoalsPage() {
         onClose={() => setIsAddModalOpen(false)}
         onConfirmAdd={handleAddGoals}
         isLoading={actionLoading}
+      />
+
+      <GoalsGuideModal
+        isOpen={isGuideModalOpen}
+        onClose={() => setIsGuideModalOpen(false)}
       />
 
       <BottomNav />

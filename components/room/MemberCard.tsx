@@ -40,7 +40,7 @@ export const MemberCard = memo(function MemberCard({
 
   return (
     <div
-      className={`relative flex flex-col items-center justify-between p-3.5 sm:p-4 rounded-2xl border transition-all duration-200 select-none transform-gpu ${
+      className={`relative isolate flex flex-col items-center justify-between p-3.5 sm:p-4 rounded-2xl border transition-all duration-200 select-none ${
         isAchiever
           ? "bg-gradient-to-b from-amber-950/40 via-zinc-900/95 to-zinc-950 border-amber-400/60 ring-1 ring-amber-400/30 shadow-[0_4px_25px_rgba(251,191,36,0.18)]"
           : isStudying
@@ -50,10 +50,10 @@ export const MemberCard = memo(function MemberCard({
           : "bg-zinc-950/60 border-zinc-900/80 opacity-50 grayscale hover:opacity-90 hover:grayscale-0"
       }`}
     >
-      {/* Floating Status / Elite Badges (Top-Left) */}
+      {/* Floating Status Badge (Top-Left) */}
       {isAchiever ? (
         <span
-          className="absolute top-2.5 left-2.5 z-10 flex items-center space-x-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-400 via-amber-300 to-amber-500 text-zinc-950 text-[9px] font-black uppercase tracking-wider shadow-md filter drop-shadow"
+          className="absolute top-2.5 left-2.5 flex items-center space-x-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-400 via-amber-300 to-amber-500 text-zinc-950 text-[9px] font-black uppercase tracking-wider shadow-md"
           title="Weekly Achiever"
         >
           <Crown className="w-2.5 h-2.5 fill-zinc-950" />
@@ -61,7 +61,7 @@ export const MemberCard = memo(function MemberCard({
         </span>
       ) : isBreak ? (
         <span
-          className="absolute top-2.5 left-2.5 z-10 flex items-center space-x-1 px-2 py-0.5 rounded-full bg-amber-950/90 border border-amber-500/60 text-amber-300 text-[9px] font-extrabold uppercase tracking-wider shadow-sm animate-pulse"
+          className="absolute top-2.5 left-2.5 flex items-center space-x-1 px-2 py-0.5 rounded-full bg-amber-950/90 border border-amber-500/60 text-amber-300 text-[9px] font-extrabold uppercase tracking-wider shadow-sm animate-pulse"
           title="Member is currently on break"
         >
           <Coffee className="w-2.5 h-2.5" />
@@ -69,7 +69,7 @@ export const MemberCard = memo(function MemberCard({
         </span>
       ) : isStudying ? (
         <span
-          className="absolute top-2.5 left-2.5 z-10 flex items-center space-x-1 px-2 py-0.5 rounded-full bg-emerald-950/80 border border-emerald-500/40 text-emerald-400 text-[9px] font-extrabold uppercase tracking-wider shadow-sm"
+          className="absolute top-2.5 left-2.5 flex items-center space-x-1 px-2 py-0.5 rounded-full bg-emerald-950/80 border border-emerald-500/40 text-emerald-400 text-[9px] font-extrabold uppercase tracking-wider shadow-sm"
           title="Member is studying"
         >
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
@@ -79,21 +79,21 @@ export const MemberCard = memo(function MemberCard({
 
       {/* Floating "YOU" badge (Top-Right) */}
       {isCurrentUser && (
-        <span className="absolute top-2.5 right-2.5 z-10 text-[9px] uppercase font-black tracking-wider px-1.5 py-0.5 rounded-full bg-zinc-800 text-zinc-200 border border-zinc-700 shadow-sm">
+        <span className="absolute top-2.5 right-2.5 text-[9px] uppercase font-black tracking-wider px-1.5 py-0.5 rounded-full bg-zinc-800 text-zinc-200 border border-zinc-700 shadow-sm">
           You
         </span>
       )}
 
-      {/* Top: Avatar DP Container with Glow Ring & Floating Badges */}
+      {/* Top: Avatar DP Container */}
       <div className={`relative flex flex-col items-center ${isAchiever || isBreak || isStudying ? "mt-3.5" : "mt-1"}`}>
         {/* Crown for Weekly Achiever */}
         {isAchiever && (
-          <div className="absolute -top-3 z-10 animate-bounce">
+          <div className="absolute -top-3 animate-bounce">
             <Crown className="w-5 h-5 text-amber-400 fill-amber-400 filter drop-shadow-[0_0_8px_rgba(245,158,11,0.9)]" />
           </div>
         )}
 
-        {/* Avatar DP Bounding Box */}
+        {/* Avatar DP */}
         <div
           className={`relative w-14 h-14 rounded-full bg-zinc-800 border-2 overflow-hidden shrink-0 aspect-square flex items-center justify-center font-extrabold text-zinc-100 text-sm shadow-md ${
             isAchiever

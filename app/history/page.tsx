@@ -86,15 +86,15 @@ export default function HistoryPage() {
         <div className="w-full bg-zinc-900/70 border border-zinc-800/90 rounded-2xl p-3.5 sm:p-5 shadow-xl space-y-3.5 backdrop-blur-md">
           {/* Header Row: Title & Clear Action */}
           <div className="flex flex-row items-center justify-between gap-2">
-            <div className="flex items-center space-x-2.5 sm:space-x-3 min-w-0">
+            <div className="flex items-center space-x-2.5 sm:space-x-3 min-w-0 flex-1">
               <div className="p-2 sm:p-2.5 rounded-xl bg-violet-500/10 border border-violet-500/25 text-violet-300 shrink-0">
                 <History className="w-4 h-4 sm:w-5 sm:h-5" />
               </div>
-              <div className="min-w-0">
-                <h1 className="text-sm sm:text-base font-extrabold text-zinc-100 tracking-tight truncate">
+              <div className="min-w-0 flex-1">
+                <h1 className="text-sm sm:text-base font-extrabold text-zinc-100 tracking-tight leading-snug">
                   Study Log & History
                 </h1>
-                <p className="text-[10px] sm:text-xs text-zinc-400 truncate">
+                <p className="text-[10px] sm:text-xs text-zinc-400 mt-0.5 leading-snug">
                   Authoritative timestamp session archives
                 </p>
               </div>
