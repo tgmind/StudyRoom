@@ -36,11 +36,28 @@ export default function SettingsPage() {
   const supabase = createClient();
 
   useEffect(() => {
+    if (!authLoading && !user) {
+      router.push("/login");
+    }
+  }, [user, authLoading, router]);
+
+  useEffect(() => {
     if (profile) {
       setDisplayName(profile.display_name || "");
       setAvatarUrl(profile.avatar_url || null);
     }
   }, [profile]);
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      setIsSignOutModalOpen(false);
+      router.push("/login");
+      router.refresh();
+    } catch {
+      window.location.href = "/login";
+    }
+  };
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -263,7 +280,7 @@ export default function SettingsPage() {
             <Button
               type="button"
               variant="danger"
-              onClick={signOut}
+              onClick={handleSignOut}
               isLoading={authLoading}
               className="font-extrabold"
             >

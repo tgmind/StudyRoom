@@ -86,11 +86,12 @@ export function useAuth() {
     try {
       setLoading(true);
       await supabase.auth.signOut();
-      setUser(null);
-      setProfile(null);
     } catch (err) {
+      console.error("Sign out error:", err);
       setError(err instanceof Error ? err.message : "Failed to sign out");
     } finally {
+      setUser(null);
+      setProfile(null);
       setLoading(false);
     }
   };
