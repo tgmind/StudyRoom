@@ -83,9 +83,9 @@ export function SignupForm() {
       </div>
 
       {/* Prominent Real Name Alert Banner */}
-      <div className="p-3 bg-violet-500/10 border border-violet-500/30 rounded-xl flex items-start space-x-2.5 text-violet-200 text-xs shadow-sm">
-        <Info className="w-4 h-4 text-violet-400 shrink-0 mt-0.5" />
-        <span className="font-semibold leading-snug">
+      <div className="p-3 bg-red-500/10 border border-red-500/35 rounded-xl flex items-start space-x-2.5 text-red-300 text-xs shadow-sm">
+        <Info className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+        <span className="font-bold leading-snug text-red-200">
           Use Your Real Name as far as possible.
         </span>
       </div>
