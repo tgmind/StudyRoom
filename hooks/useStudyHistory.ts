@@ -1,8 +1,12 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { StudySession } from "@/lib/supabase/types";
+
+type RpcCaller = {
+  rpc: (name: string, params?: Record<string, unknown>) => Promise<{ data: unknown; error: Error | null }>;
+};
 
 export function useStudyHistory(userId?: string) {
   const [sessions, setSessions] = useState<StudySession[]>([]);
@@ -21,7 +25,7 @@ export function useStudyHistory(userId?: string) {
 
     try {
       setError(null);
-      // Query study sessions directly with 90-day retention window
+      // Auto-pruning query: Filter records up to 90 days (3 months)
       const ninetyDaysAgo = new Date();
       ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
 
@@ -34,8 +38,7 @@ export function useStudyHistory(userId?: string) {
 
       if (fetchErr) {
         // Fallback to RPC if direct table select has issue
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data: rpcData, error: rpcErr } = await (supabase as any).rpc("rpc_get_study_history");
+        const { data: rpcData, error: rpcErr } = await (supabase as unknown as RpcCaller).rpc("rpc_get_study_history");
         if (rpcErr) throw fetchErr;
         setSessions((rpcData || []) as StudySession[]);
         return;
@@ -68,8 +71,7 @@ export function useStudyHistory(userId?: string) {
 
       if (deleteErr) {
         // Fallback to RPC
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data, error: rpcErr } = await (supabase as any).rpc("rpc_clear_study_history");
+        const { data, error: rpcErr } = await (supabase as unknown as RpcCaller).rpc("rpc_clear_study_history");
         if (rpcErr) throw deleteErr;
         setSessions([]);
         return data;
@@ -91,7 +93,7 @@ export function useStudyHistory(userId?: string) {
     loading,
     actionLoading,
     error,
-    clearHistory,
     refreshHistory: fetchHistory,
+    clearHistory,
   };
 }

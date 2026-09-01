@@ -8,7 +8,7 @@ import { TopHeader } from "@/components/navigation/TopHeader";
 import { BottomNav } from "@/components/navigation/BottomNav";
 import { LeaderboardCard } from "@/components/leaderboard/LeaderboardCard";
 import { ScoringBreakdown } from "@/components/leaderboard/ScoringBreakdown";
-import { Trophy, HelpCircle, Star } from "lucide-react";
+import { Trophy, HelpCircle, Star, Sparkles, Clock, Target, Flame } from "lucide-react";
 
 export default function LeaderboardPage() {
   const { user, profile } = useAuth();
@@ -46,73 +46,119 @@ export default function LeaderboardPage() {
   const userRank = userRankIndex !== -1 ? userRankIndex + 1 : null;
 
   return (
-    <div className="flex-1 flex flex-col min-h-screen pb-20">
+    <div className="flex-1 flex flex-col min-h-screen pb-24 bg-[#090a0f] text-zinc-100">
       <TopHeader profile={profile} />
 
-      <div className="flex-1 p-4 space-y-5 max-w-xl mx-auto w-full">
-        {/* Header & Explainer Button */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-lg font-bold tracking-tight text-zinc-100 flex items-center space-x-2">
-              <Trophy className="w-5 h-5 text-amber-400" />
-              <span>Weekly Leaderboard</span>
-            </h1>
-            <p className="text-xs text-zinc-400 mt-0.5">
-              50% Study Hours • 30% Goal Completion • 20% Consistency
-            </p>
+      {/* Fluid Screen Container */}
+      <main className="flex-1 w-full max-w-2xl sm:max-w-3xl px-3.5 sm:px-6 py-4 mx-auto space-y-4 sm:space-y-5">
+        {/* Header Hero Card */}
+        <div className="w-full bg-zinc-900/70 border border-zinc-800/90 rounded-2xl p-4 sm:p-5 shadow-xl space-y-3 backdrop-blur-md">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center space-x-3 min-w-0">
+              <div className="p-2 sm:p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-300 shrink-0">
+                <Trophy className="w-4 h-4 sm:w-5 sm:h-5" />
+              </div>
+              <div className="min-w-0">
+                <h1 className="text-sm sm:text-base font-extrabold text-zinc-100 tracking-tight truncate">
+                  Weekly Leaderboard
+                </h1>
+                <p className="text-[10px] sm:text-xs text-zinc-400 truncate">
+                  Monday to Sunday rolling competition (Asia/Kolkata IST)
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsModalOpen(true)}
+              className="flex items-center space-x-1 px-2.5 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 hover:text-zinc-100 text-xs font-bold transition-all shrink-0 touch-manipulation"
+              title="View scoring methodology"
+              aria-label="View scoring methodology"
+            >
+              <HelpCircle className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden sm:inline">Rules</span>
+            </button>
           </div>
 
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="p-2 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
-            title="View scoring methodology"
-            aria-label="View scoring methodology"
-          >
-            <HelpCircle className="w-5 h-5" />
-          </button>
+          {/* Transparent Metric Formula Chips */}
+          <div className="grid grid-cols-3 gap-1.5 sm:gap-2.5 pt-2 border-t border-zinc-800/80 text-[10px] sm:text-xs">
+            <div className="p-2 rounded-xl bg-zinc-950/60 border border-teal-500/15 text-center min-w-0">
+              <div className="flex items-center justify-center space-x-1 text-teal-300 font-bold mb-0.5">
+                <Clock className="w-3 h-3 shrink-0" />
+                <span className="truncate">50% Hours</span>
+              </div>
+              <span className="text-[9px] sm:text-[10px] text-zinc-500 block truncate">Study Duration</span>
+            </div>
+
+            <div className="p-2 rounded-xl bg-zinc-950/60 border border-emerald-500/15 text-center min-w-0">
+              <div className="flex items-center justify-center space-x-1 text-emerald-300 font-bold mb-0.5">
+                <Target className="w-3 h-3 shrink-0" />
+                <span className="truncate">30% Goals</span>
+              </div>
+              <span className="text-[9px] sm:text-[10px] text-zinc-500 block truncate">24h Task Rate</span>
+            </div>
+
+            <div className="p-2 rounded-xl bg-zinc-950/60 border border-amber-500/15 text-center min-w-0">
+              <div className="flex items-center justify-center space-x-1 text-amber-300 font-bold mb-0.5">
+                <Flame className="w-3 h-3 shrink-0" />
+                <span className="truncate">20% Streak</span>
+              </div>
+              <span className="text-[9px] sm:text-[10px] text-zinc-500 block truncate">≥30m Daily</span>
+            </div>
+          </div>
         </div>
 
-        {/* Current User Rank Highlight Card */}
+        {/* Current User Highlight Card */}
         {userEntry && userRank && (
-          <div className="p-4 bg-zinc-900 border border-zinc-700 rounded-xl flex items-center justify-between shadow-md">
-            <div>
-              <span className="text-[10px] uppercase font-bold tracking-wider text-zinc-400 block">
-                Your Current Rank
+          <div className="p-3.5 sm:p-4 bg-zinc-900/80 border border-zinc-700/80 rounded-2xl flex items-center justify-between shadow-md backdrop-blur-md gap-2">
+            <div className="min-w-0 flex-1">
+              <span className="text-[9px] sm:text-[10px] uppercase font-black tracking-wider text-zinc-400 block">
+                Your Current Standing
               </span>
-              <div className="text-lg font-extrabold text-zinc-100 flex items-center space-x-2 mt-0.5">
-                <span>Rank #{userRank}</span>
-                <span className="text-xs font-mono font-normal text-zinc-400">
-                  (Score {userEntry.score.toFixed(1)})
+              <div className="text-base sm:text-lg font-black text-zinc-100 flex items-center space-x-2 mt-0.5 truncate">
+                <span className="text-amber-300">Rank #{userRank}</span>
+                <span className="font-mono text-xs text-zinc-400 font-normal truncate">
+                  ({userEntry.score.toFixed(1)} / 100 pts)
                 </span>
               </div>
             </div>
-            {userRank === 1 && (
-              <div className="flex items-center space-x-1 text-xs font-bold text-amber-400 bg-amber-950/60 px-3 py-1.5 rounded-full border border-amber-500/40">
+
+            {userRank === 1 ? (
+              <div className="flex items-center space-x-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-black shrink-0 animate-pulse">
                 <Star className="w-4 h-4 fill-amber-400" />
                 <span>#1 Achiever</span>
+              </div>
+            ) : (
+              <div className="flex items-center space-x-1 px-2.5 py-1 rounded-full bg-zinc-800 border border-zinc-700 text-zinc-300 text-xs font-bold font-mono shrink-0">
+                <Sparkles className="w-3.5 h-3.5 text-violet-400" />
+                <span>{userEntry.streak_days}d streak</span>
               </div>
             )}
           </div>
         )}
 
         {/* Leaderboard Entries List */}
-        <div className="space-y-3">
+        <div className="space-y-2.5">
           {loading ? (
-            <div className="space-y-3">
-              {[1, 2, 3].map((idx) => (
+            <div className="space-y-2.5">
+              {[1, 2, 3, 4].map((idx) => (
                 <div
                   key={idx}
-                  className="w-full h-24 bg-zinc-900/60 border border-zinc-800 rounded-xl animate-pulse"
+                  className="w-full h-20 bg-zinc-900/50 border border-zinc-800/80 rounded-2xl animate-pulse"
                 />
               ))}
             </div>
           ) : error ? (
-            <div className="p-4 bg-red-950/40 border border-red-800 rounded-xl text-center text-xs text-red-300">
+            <div className="p-4 bg-rose-950/40 border border-rose-800/80 rounded-2xl text-center text-xs text-rose-300">
               {error}
             </div>
           ) : entries.length === 0 ? (
-            <div className="p-8 text-center border border-dashed border-zinc-800 rounded-xl text-xs text-zinc-500">
-              No study data recorded for this week yet. Complete your first study session to get ranked!
+            <div className="p-10 text-center border border-dashed border-zinc-800 bg-zinc-900/20 rounded-2xl space-y-2">
+              <Trophy className="w-8 h-8 text-zinc-600 mx-auto" />
+              <h3 className="text-xs font-bold text-zinc-300">No Weekly Rankings Yet</h3>
+              <p className="text-[11px] text-zinc-500 max-w-xs mx-auto">
+                Complete your first study session this week to establish your score on the leaderboard!
+              </p>
             </div>
           ) : (
             entries.map((entry, index) => (
@@ -125,7 +171,7 @@ export default function LeaderboardPage() {
             ))
           )}
         </div>
-      </div>
+      </main>
 
       <ScoringBreakdown
         isOpen={isModalOpen}

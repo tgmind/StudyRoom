@@ -45,14 +45,14 @@ export default function RoomPage() {
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-screen pb-20">
+    <div className="flex-1 flex flex-col min-h-screen pb-24 bg-[#090a0f] text-zinc-100">
       <TopHeader
         memberCount={members.length}
         isRealtimeConnected={isRealtimeConnected}
         profile={profile}
       />
 
-      <div className="flex-1 p-4 space-y-5 max-w-xl mx-auto w-full">
+      <main className="flex-1 w-full max-w-2xl sm:max-w-3xl px-3.5 sm:px-6 py-4 mx-auto space-y-4 sm:space-y-6">
         {/* Session Controller Panel */}
         <section aria-label="Session Controller">
           <SessionController
@@ -79,7 +79,7 @@ export default function RoomPage() {
             isLoading={roomLoading}
           />
         </section>
-      </div>
+      </main>
 
       <BottomNav />
     </div>

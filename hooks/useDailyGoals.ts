@@ -6,12 +6,16 @@ import { DailyGoal, GoalTask } from "@/lib/supabase/types";
 import { calculateGoalCountdown, GoalCountdownResult } from "@/lib/time/countdown";
 import { validateGoalTasks } from "@/lib/validation/schemas";
 
+type RpcCaller = {
+  rpc: (name: string, params?: Record<string, unknown>) => Promise<{ data: unknown; error: Error | null }>;
+};
+
 export function useDailyGoals(userId?: string) {
   const [activeGoal, setActiveGoal] = useState<DailyGoal | null>(null);
   const [countdown, setCountdown] = useState<GoalCountdownResult>({
-    isExpired: true,
     remainingSeconds: 0,
-    formattedText: "NO ACTIVE GOAL",
+    formattedText: "EXPIRED",
+    isExpired: true,
   });
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -28,34 +32,36 @@ export function useDailyGoals(userId?: string) {
 
     try {
       setError(null);
-      const nowISO = new Date().toISOString();
+      const now = new Date().toISOString();
 
       const { data, error: fetchErr } = await supabase
         .from("daily_goals")
         .select("*")
         .eq("user_id", userId)
-        .gt("expires_at", nowISO)
+        .gt("expires_at", now)
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
 
-      if (fetchErr) throw fetchErr;
+      if (fetchErr) {
+        throw fetchErr;
+      }
 
-      const goal = data as DailyGoal | null;
-      setActiveGoal(goal);
-
-      if (goal) {
+      if (data) {
+        const goal = data as DailyGoal;
+        setActiveGoal(goal);
         setCountdown(calculateGoalCountdown(goal.expires_at, new Date()));
       } else {
+        setActiveGoal(null);
         setCountdown({
-          isExpired: true,
           remainingSeconds: 0,
-          formattedText: "NO ACTIVE GOAL",
+          formattedText: "EXPIRED",
+          isExpired: true,
         });
       }
     } catch (err) {
-      console.error("Failed to fetch daily goals:", err);
-      setError(err instanceof Error ? err.message : "Failed to load active goals");
+      console.error("Failed to fetch active daily goal:", err);
+      setError(err instanceof Error ? err.message : "Failed to load goals");
     } finally {
       setLoading(false);
     }
@@ -65,16 +71,22 @@ export function useDailyGoals(userId?: string) {
     fetchActiveGoal();
   }, [fetchActiveGoal]);
 
-  // Periodic countdown refresh (derives remaining time from expires_at)
+  // Periodic 1s countdown tick for active goal
   useEffect(() => {
     if (!activeGoal) return;
 
     const intervalId = setInterval(() => {
-      setCountdown(calculateGoalCountdown(activeGoal.expires_at, new Date()));
+      const updated = calculateGoalCountdown(activeGoal.expires_at, new Date());
+      setCountdown(updated);
+
+      if (updated.isExpired) {
+        clearInterval(intervalId);
+        fetchActiveGoal();
+      }
     }, 1000);
 
     return () => clearInterval(intervalId);
-  }, [activeGoal]);
+  }, [activeGoal, fetchActiveGoal]);
 
   const createGoal = async (rawTaskTexts: string[]) => {
     if (!userId || actionLoading) return;
@@ -95,8 +107,7 @@ export function useDailyGoals(userId?: string) {
         completed: false,
       }));
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error: rpcErr } = await (supabase as any).rpc("rpc_create_daily_goal", {
+      const { data, error: rpcErr } = await (supabase as unknown as RpcCaller).rpc("rpc_create_daily_goal", {
         p_tasks: taskObjects,
       });
 
@@ -134,8 +145,7 @@ export function useDailyGoals(userId?: string) {
         completed: false,
       }));
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error: rpcErr } = await (supabase as any).rpc("rpc_add_goal_tasks", {
+      const { data, error: rpcErr } = await (supabase as unknown as RpcCaller).rpc("rpc_add_goal_tasks", {
         p_new_tasks: taskObjects,
       });
 
@@ -154,18 +164,9 @@ export function useDailyGoals(userId?: string) {
     }
   };
 
-  // Helper completion percentage calculation
-  const totalTasks = activeGoal?.tasks?.length ?? 0;
-  const completedTasks = activeGoal?.tasks?.filter((t) => t.completed)?.length ?? 0;
-  const completionPercentage =
-    totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-
   return {
     activeGoal,
     countdown,
-    totalTasks,
-    completedTasks,
-    completionPercentage,
     loading,
     actionLoading,
     error,

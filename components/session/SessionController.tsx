@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, memo } from "react";
 import { Button } from "@/components/ui/Button";
 import { ActiveTimer } from "@/components/session/ActiveTimer";
 import { StopHookModal } from "@/components/session/StopHookModal";
@@ -23,7 +23,7 @@ interface SessionControllerProps {
   isLoading?: boolean;
 }
 
-export function SessionController({
+export const SessionController = memo(function SessionController({
   status,
   elapsedSeconds,
   onStartSession,
@@ -61,7 +61,7 @@ export function SessionController({
   };
 
   return (
-    <div className="w-full bg-zinc-950 border border-zinc-800 rounded-2xl p-4 sm:p-5 shadow-xl space-y-4">
+    <div className="w-full bg-zinc-900/70 border border-zinc-800/90 rounded-2xl p-4 sm:p-5 shadow-xl space-y-4 backdrop-blur-md">
       {/* Session Timer */}
       {!isIdle && (
         <div className="space-y-2">
@@ -77,9 +77,9 @@ export function SessionController({
             variant="primary"
             onClick={handleStartStudyingClick}
             isLoading={isLoading}
-            className="w-full font-extrabold text-base space-x-2 shadow-lg"
+            className="w-full font-extrabold text-xs sm:text-sm py-3.5 space-x-2 shadow-lg"
           >
-            <Play className="w-5 h-5 fill-current text-zinc-950" />
+            <Play className="w-4 h-4 sm:w-5 sm:h-5 fill-current text-zinc-950" />
             <span>Start Studying</span>
           </Button>
         )}
@@ -91,7 +91,7 @@ export function SessionController({
               variant="secondary"
               onClick={onPauseSession}
               isLoading={isLoading}
-              className="flex-1 space-x-2 border-amber-500/50 text-amber-300 hover:bg-amber-950/40"
+              className="flex-1 space-x-2 border-amber-500/30 text-amber-300 hover:bg-amber-500/10 font-bold"
             >
               <Pause className="w-4 h-4 fill-current" />
               <span>Pause</span>
@@ -101,7 +101,7 @@ export function SessionController({
               variant="danger"
               onClick={() => setIsStopModalOpen(true)}
               isLoading={isLoading}
-              className="flex-1 space-x-2"
+              className="flex-1 space-x-2 font-bold"
             >
               <Square className="w-4 h-4 fill-current" />
               <span>Stop</span>
@@ -116,7 +116,7 @@ export function SessionController({
               variant="primary"
               onClick={onResumeSession}
               isLoading={isLoading}
-              className="flex-1 space-x-2"
+              className="flex-1 space-x-2 font-extrabold"
             >
               <RotateCcw className="w-4 h-4" />
               <span>Resume</span>
@@ -126,7 +126,7 @@ export function SessionController({
               variant="danger"
               onClick={() => setIsStopModalOpen(true)}
               isLoading={isLoading}
-              className="flex-1 space-x-2"
+              className="flex-1 space-x-2 font-bold"
             >
               <Square className="w-4 h-4 fill-current" />
               <span>Stop</span>
@@ -154,4 +154,4 @@ export function SessionController({
       />
     </div>
   );
-}
+});

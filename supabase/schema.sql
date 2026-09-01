@@ -672,8 +672,11 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- 9. LEADERBOARD & ACHIEVER BADGE RPCs
 -- ------------------------------------------------------------
 
--- Function to get leaderboard entries for a given week
-CREATE OR REPLACE FUNCTION public.rpc_get_leaderboard(p_week_start TIMESTAMPTZ DEFAULT NULL)
+-- Function to get leaderboard entries for a given week with timezone support (Default Asia/Kolkata)
+CREATE OR REPLACE FUNCTION public.rpc_get_leaderboard(
+  p_week_start TIMESTAMPTZ DEFAULT NULL,
+  p_timezone TEXT DEFAULT 'Asia/Kolkata'
+)
 RETURNS TABLE (
   user_id UUID,
   display_name TEXT,
@@ -686,15 +689,16 @@ RETURNS TABLE (
   score NUMERIC
 ) AS $$
 DECLARE
+  v_tz TEXT := COALESCE(NULLIF(p_timezone, ''), 'Asia/Kolkata');
   v_week_start TIMESTAMPTZ;
   v_week_end TIMESTAMPTZ;
   v_max_study_minutes INTEGER := 1;
 BEGIN
   IF p_week_start IS NULL THEN
-    -- Default to current week's Monday 00:00:00 UTC
-    v_week_start := DATE_TRUNC('week', NOW());
+    -- Default to current week's Monday 00:00:00 in specified timezone
+    v_week_start := (DATE_TRUNC('week', NOW() AT TIME ZONE v_tz) AT TIME ZONE v_tz);
   ELSE
-    v_week_start := DATE_TRUNC('week', p_week_start);
+    v_week_start := (DATE_TRUNC('week', p_week_start AT TIME ZONE v_tz) AT TIME ZONE v_tz);
   END IF;
   v_week_end := v_week_start + INTERVAL '7 days';
 
@@ -719,8 +723,8 @@ BEGIN
     GROUP BY g.user_id
   ),
   user_streaks AS (
-    -- Days with >= 30 mins active study in rolling window
-    SELECT s.user_id, COUNT(DISTINCT DATE_TRUNC('day', s.start_time))::INTEGER AS streak
+    -- Days with >= 30 mins active study in local calendar days
+    SELECT s.user_id, COUNT(DISTINCT DATE_TRUNC('day', s.start_time AT TIME ZONE v_tz))::INTEGER AS streak
     FROM public.study_sessions s
     WHERE s.start_time >= (NOW() - INTERVAL '7 days')
     GROUP BY s.user_id
@@ -764,16 +768,17 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Function to calculate and award Weekly Achiever Badge (Run every Monday)
-CREATE OR REPLACE FUNCTION public.rpc_calculate_weekly_achiever()
+CREATE OR REPLACE FUNCTION public.rpc_calculate_weekly_achiever(p_timezone TEXT DEFAULT 'Asia/Kolkata')
 RETURNS UUID AS $$
 DECLARE
+  v_tz TEXT := COALESCE(NULLIF(p_timezone, ''), 'Asia/Kolkata');
   v_prev_week_start TIMESTAMPTZ;
   v_winner_id UUID;
 BEGIN
-  v_prev_week_start := DATE_TRUNC('week', NOW() - INTERVAL '7 days');
+  v_prev_week_start := (DATE_TRUNC('week', (NOW() - INTERVAL '7 days') AT TIME ZONE v_tz) AT TIME ZONE v_tz);
 
   SELECT user_id INTO v_winner_id
-  FROM public.rpc_get_leaderboard(v_prev_week_start)
+  FROM public.rpc_get_leaderboard(v_prev_week_start, v_tz)
   ORDER BY score DESC, total_study_minutes DESC
   LIMIT 1;
 

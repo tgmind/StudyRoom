@@ -5,6 +5,10 @@ import { createClient } from "@/lib/supabase/client";
 import { UserProfile, SessionBlock, UserStatus } from "@/lib/supabase/types";
 import { calculateActiveStudySeconds, calculateMemberElapsedStudySeconds } from "@/lib/time/format";
 
+type RpcCaller = {
+  rpc: (name: string, params?: Record<string, unknown>) => Promise<{ data: unknown; error: Error | null }>;
+};
+
 export function useActiveSession(profile: UserProfile | null, onStatusChange?: () => void) {
   const [blocks, setBlocks] = useState<SessionBlock[]>([]);
   const [elapsedStudySeconds, setElapsedStudySeconds] = useState(0);
@@ -88,8 +92,7 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
     setError(null);
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error: rpcErr } = await (supabase as any).rpc("rpc_start_session", {
+      const { data, error: rpcErr } = await (supabase as unknown as RpcCaller).rpc("rpc_start_session", {
         p_focus: focusTag ?? null,
       });
 
@@ -115,8 +118,7 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
     setError(null);
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error: rpcErr } = await (supabase as any).rpc("rpc_pause_session");
+      const { data, error: rpcErr } = await (supabase as unknown as RpcCaller).rpc("rpc_pause_session");
       if (rpcErr) throw rpcErr;
 
       const res = data as unknown as { success: boolean; error?: string };
@@ -139,8 +141,7 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
     setError(null);
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error: rpcErr } = await (supabase as any).rpc("rpc_resume_session");
+      const { data, error: rpcErr } = await (supabase as unknown as RpcCaller).rpc("rpc_resume_session");
       if (rpcErr) throw rpcErr;
 
       const res = data as unknown as { success: boolean; error?: string };
@@ -163,8 +164,7 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
     setError(null);
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error: rpcErr } = await (supabase as any).rpc("rpc_finish_session", {
+      const { data, error: rpcErr } = await (supabase as unknown as RpcCaller).rpc("rpc_finish_session", {
         p_completed_task_ids: completedTaskIds,
       });
 

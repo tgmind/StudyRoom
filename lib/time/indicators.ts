@@ -1,15 +1,15 @@
 import { UserStatus } from "@/lib/supabase/types";
 
 /**
- * Determines if a user is actively studying during Deep Night hours (12:00 AM to 4:00 AM).
+ * Determines if a user is actively studying during Deep Night hours (12:00 AM to 4:00 AM in user/configured timezone).
  * @param status Current status of user
  * @param date Reference date (defaults to current time)
- * @param timezone Product timezone (optional)
+ * @param timezone Product timezone (defaults to Asia/Kolkata / Indian Standard Time)
  */
 export function isDeepNight(
   status: UserStatus,
   date: Date = new Date(),
-  timezone: string = process.env.NEXT_PUBLIC_APP_TIMEZONE || "UTC"
+  timezone: string = process.env.NEXT_PUBLIC_APP_TIMEZONE || "Asia/Kolkata"
 ): boolean {
   if (status !== "studying") return false;
 
@@ -18,15 +18,15 @@ export function isDeepNight(
 }
 
 /**
- * Determines if a user is actively studying during Early Bird hours (4:00 AM to 7:00 AM).
+ * Determines if a user is actively studying during Early Bird hours (4:00 AM to 7:00 AM in user/configured timezone).
  * @param status Current status of user
  * @param date Reference date (defaults to current time)
- * @param timezone Product timezone (optional)
+ * @param timezone Product timezone (defaults to Asia/Kolkata / Indian Standard Time)
  */
 export function isEarlyBird(
   status: UserStatus,
   date: Date = new Date(),
-  timezone: string = process.env.NEXT_PUBLIC_APP_TIMEZONE || "UTC"
+  timezone: string = process.env.NEXT_PUBLIC_APP_TIMEZONE || "Asia/Kolkata"
 ): boolean {
   if (status !== "studying") return false;
 
@@ -46,8 +46,8 @@ export function getHourInTimezone(date: Date, timezone: string): number {
     });
     const parts = formatter.formatToParts(date);
     const hourPart = parts.find((p) => p.type === "hour");
-    return hourPart ? parseInt(hourPart.value, 10) % 24 : date.getUTCHours();
+    return hourPart ? parseInt(hourPart.value, 10) % 24 : date.getHours();
   } catch {
-    return date.getUTCHours();
+    return date.getHours();
   }
 }
