@@ -22,6 +22,7 @@ CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user_id ON public.push_subscri
 -- 2. Add notification reminder tracking columns to public.users
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS three_hour_prompt_sent_at TIMESTAMPTZ;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_offline_reminder_sent_at TIMESTAMPTZ;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS break_warning_prompt_sent_at TIMESTAMPTZ;
 
 -- 3. Row Level Security for push_subscriptions
 ALTER TABLE public.push_subscriptions ENABLE ROW LEVEL SECURITY;

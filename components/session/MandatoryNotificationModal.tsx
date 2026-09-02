@@ -94,6 +94,12 @@ export function MandatoryNotificationModal({
               <strong>24-Hour Absence Alerts:</strong> Protects your study streak if offline.
             </span>
           </div>
+          <div className="flex items-start space-x-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+            <span>
+              <strong>1-Hour Break Warning:</strong> Warns you 10 minutes before your 1-hour break finishes so you can resume studying in time.
+            </span>
+          </div>
         </div>
 
         {/* Actionable Unblock Guide for Phone App Settings if Denied */}

@@ -58,6 +58,7 @@ async function handleCheck(request: NextRequest) {
   const results = {
     threeHourChecksSent: 0,
     absentRemindersSent: 0,
+    breakWarningsSent: 0,
     errors: [] as string[],
   };
 
@@ -166,6 +167,60 @@ async function handleCheck(request: NextRequest) {
               .update({ last_offline_reminder_sent_at: now.toISOString() })
               .eq("id", user.id);
           }
+        }
+      }
+    }
+
+    // ------------------------------------------------------------
+    // 3. Query users on break >= 50 minutes (< 60 minutes)
+    // ------------------------------------------------------------
+    const fiftyMinutesAgo = new Date(now.getTime() - 50 * 60 * 1000).toISOString();
+    const sixtyMinutesAgo = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
+
+    const { data: breakUsers, error: breakErr } = await supabase
+      .from("users")
+      .select("id, display_name, break_started_at")
+      .eq("current_status", "break")
+      .lte("break_started_at", fiftyMinutesAgo)
+      .gt("break_started_at", sixtyMinutesAgo)
+      .is("break_warning_prompt_sent_at", null);
+
+    if (breakErr) {
+      console.error("[Push] Error fetching break users:", breakErr);
+    } else if (breakUsers && breakUsers.length > 0) {
+      for (const user of breakUsers) {
+        const { data: subs } = await supabase
+          .from("push_subscriptions")
+          .select("*")
+          .eq("user_id", user.id);
+
+        if (subs && subs.length > 0) {
+          const payload = JSON.stringify({
+            title: "StudyRoom — Break Ending Soon ⏳",
+            body: "1 hr Break time about to complete! 10 minutes remaining before your break expires.",
+            icon: "/icons/icon-192x192.png",
+            badge: "/icons/icon-192x192.png",
+            actions: [
+              { action: "resume", title: "Resume Study" },
+            ],
+            data: {
+              type: "break_warning",
+              userId: user.id,
+            },
+            tag: `break-${user.id}`,
+          });
+
+          const removeSub = async (id: string) => {
+            await supabase.from("push_subscriptions").delete().eq("id", id);
+          };
+          await sendToSubscriptions(subs as PushSubscriptionRow[], payload, removeSub);
+          results.breakWarningsSent++;
+
+          // Mark break warning as sent for this break period
+          await supabase
+            .from("users")
+            .update({ break_warning_prompt_sent_at: now.toISOString() })
+            .eq("id", user.id);
         }
       }
     }

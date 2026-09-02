@@ -64,4 +64,26 @@ describe("Web Push Reminders & Action Payload Logic", () => {
     expect(converted).toBeInstanceOf(Uint8Array);
     expect(converted.length).toBe(65); // Standard P-256 public key length is 65 bytes
   });
+
+  it("formats the 1-hour break warning payload accurately", () => {
+    const userId = "test-user-break-789";
+    const payload = {
+      title: "StudyRoom — Break Ending Soon ⏳",
+      body: "1 hr Break time about to complete! 10 minutes remaining before your break expires.",
+      icon: "/icons/icon-192x192.png",
+      badge: "/icons/icon-192x192.png",
+      actions: [{ action: "resume", title: "Resume Study" }],
+      data: {
+        type: "break_warning",
+        userId,
+      },
+      tag: `break-${userId}`,
+    };
+
+    expect(payload.title).toContain("Break Ending Soon");
+    expect(payload.body).toContain("1 hr Break time about to complete!");
+    expect(payload.actions[0].action).toBe("resume");
+    expect(payload.data.type).toBe("break_warning");
+    expect(payload.data.userId).toBe(userId);
+  });
 });

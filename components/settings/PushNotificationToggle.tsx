@@ -108,6 +108,12 @@ export function PushNotificationToggle() {
             <strong>24-Hour Absence Reminder:</strong> Gentle reminder sent if you have been offline for 24 hours to help keep your streak alive.
           </span>
         </div>
+        <div className="flex items-start space-x-2">
+          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+          <span>
+            <strong>1-Hour Break Alert:</strong> Sent 10 minutes prior to your 1-hour break finishing so you can resume in time without session expiry.
+          </span>
+        </div>
       </div>
 
       {error && (
