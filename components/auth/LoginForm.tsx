@@ -19,6 +19,8 @@ export function LoginForm() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    e.stopPropagation();
+
     if (!email || !password) {
       setError("Please enter both email and password");
       return;
@@ -34,30 +36,43 @@ export function LoginForm() {
         password,
       });
 
-      if (authErr) throw authErr;
+      if (authErr) {
+        setError(authErr.message || "Invalid email or password");
+        setLoading(false);
+        return;
+      }
 
-      const loggedInUser = authData?.user;
+      if (!authData?.session) {
+        setError("Login succeeded but no active session was returned. Please verify your email.");
+        setLoading(false);
+        return;
+      }
+
+      const loggedInUser = authData.user;
       const isAdmin =
         isAdminEmail(trimmedEmail) ||
         (loggedInUser?.email ? isAdminEmail(loggedInUser.email) : false) ||
         isAdminUserId(loggedInUser?.id);
 
-      if (isAdmin) {
-        if (loggedInUser?.id) {
-          try {
-            localStorage.setItem("studyroom_admin_uid", loggedInUser.id);
-          } catch {
-            // ignore storage error
-          }
+      const targetUrl = isAdmin ? "/admin" : "/room";
+
+      if (isAdmin && loggedInUser?.id) {
+        try {
+          localStorage.setItem("studyroom_admin_uid", loggedInUser.id);
+        } catch {
+          // ignore storage error
         }
-        window.location.href = "/admin";
-        return;
       }
 
-      window.location.href = "/room";
+      // Smooth client navigation with hard redirect guarantee
+      router.refresh();
+      router.push(targetUrl);
+
+      setTimeout(() => {
+        window.location.href = targetUrl;
+      }, 150);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to log in");
-    } finally {
       setLoading(false);
     }
   };
