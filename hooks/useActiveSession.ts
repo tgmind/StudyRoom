@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { UserProfile, SessionBlock, UserStatus } from "@/lib/supabase/types";
 import { calculateActiveStudySeconds, calculateMemberElapsedStudySeconds } from "@/lib/time/format";
-import { calculateBreakStatus, BreakStatusResult } from "@/lib/time/break";
+import { calculateBreakStatus, BreakStatusResult, getEffectiveMemberStatus, isMemberBreakExpired } from "@/lib/time/break";
 
 type RpcCaller = {
   rpc: (name: string, params?: Record<string, unknown>) => Promise<{ data: unknown; error: Error | null }>;
@@ -28,10 +28,11 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
 
   const supabase = createClient();
   const currentStatus: UserStatus = profile?.current_status ?? "offline";
+  const effectiveStatus: UserStatus = profile ? getEffectiveMemberStatus(profile, new Date()) : "offline";
 
   // Fetch session blocks for current unfinalized session
   const fetchSessionBlocks = useCallback(async () => {
-    if (!profile || profile.current_status === "offline") {
+    if (!profile || effectiveStatus === "offline" || profile.current_status === "offline") {
       setBlocks([]);
       setElapsedStudySeconds(0);
       return;
@@ -62,7 +63,7 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
     } catch (err) {
       console.error("Failed to fetch session blocks:", err);
     }
-  }, [supabase, profile]);
+  }, [supabase, profile, effectiveStatus]);
 
   useEffect(() => {
     fetchSessionBlocks();
@@ -94,7 +95,15 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
           error?: string;
         };
 
-        if (!res.success) throw new Error(res.error || "Failed to finish session");
+        if (!res.success) {
+          if (res.error?.toLowerCase().includes("no active session")) {
+            setBlocks([]);
+            setElapsedStudySeconds(0);
+            if (onStatusChange) onStatusChange();
+            return { ...res, success: true };
+          }
+          throw new Error(res.error || "Failed to finish session");
+        }
 
         setBlocks([]);
         setElapsedStudySeconds(0);
@@ -103,6 +112,15 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
         return res;
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Finish session failed";
+        if (
+          msg.toLowerCase().includes("no active session") ||
+          msg.toLowerCase().includes("not currently on break")
+        ) {
+          setBlocks([]);
+          setElapsedStudySeconds(0);
+          if (onStatusChange) onStatusChange();
+          return { success: true };
+        }
         setError(msg);
         throw err;
       } finally {
@@ -137,10 +155,12 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
         try {
           // Terminate session with no additional task completions
           await finishSession([]);
+        } catch (terminateErr) {
+          console.warn("Auto-termination on break expiry notice:", terminateErr);
+        } finally {
+          setError(null);
           setIsBreakExpiredNoticeOpen(true);
           if (onStatusChangeRef.current) onStatusChangeRef.current();
-        } catch (terminateErr) {
-          console.error("Auto-termination on break expiry failed:", terminateErr);
         }
       }
     };
@@ -307,10 +327,16 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
       if (onStatusChange) onStatusChange();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Resume session failed";
-      if (msg.toLowerCase().includes("break") && msg.toLowerCase().includes("1 hour")) {
+      if (
+        (msg.toLowerCase().includes("break") && msg.toLowerCase().includes("1 hour")) ||
+        (profile && isMemberBreakExpired(profile)) ||
+        msg.toLowerCase().includes("not currently on break") ||
+        msg.toLowerCase().includes("no active session")
+      ) {
         const accruedSeconds = profile?.active_study_seconds_snapshot ?? elapsedStudySeconds;
         setSavedStudySecondsOnBreakExpiry(accruedSeconds);
         setIsBreakExpiredNoticeOpen(true);
+        setError(null);
         if (onStatusChange) onStatusChange();
       } else {
         setError(msg);
@@ -334,7 +360,8 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
   const breakStartedAt = profile?.break_started_at || openBreakBlock?.start_time || null;
 
   return {
-    status: currentStatus,
+    status: effectiveStatus,
+    rawStatus: currentStatus,
     focus: profile?.current_focus ?? null,
     elapsedStudySeconds,
     breakStartedAt,

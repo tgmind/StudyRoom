@@ -115,6 +115,9 @@ export function useLiveRoom(currentUserId?: string) {
         if (expiredBreakUsers.length > 0) {
           try {
             const nowMs = Date.now();
+            if (recentlyStoppedBreakUserIdsRef.current.size > 200) {
+              recentlyStoppedBreakUserIdsRef.current.clear();
+            }
             expiredBreakUsers.forEach((expired) => {
               const lastAttempt = recentlyStoppedBreakUserIdsRef.current.get(expired.id) || 0;
               if (nowMs - lastAttempt > 15000) {

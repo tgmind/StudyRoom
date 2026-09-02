@@ -245,7 +245,10 @@ async function handleCheck(request: NextRequest) {
     if (expiredBreakUsers && expiredBreakUsers.length > 0) {
       for (const user of expiredBreakUsers) {
         try {
-          await supabase.rpc("rpc_stop_user_session", { p_user_id: user.id });
+          const { error: rpcErr } = await (supabase as any).rpc("rpc_stop_user_session", { p_user_id: user.id });
+          if (rpcErr) {
+            console.warn("[Push] Error auto-stopping expired break for user:", user.id, rpcErr);
+          }
         } catch (err) {
           console.warn("[Push] Error auto-stopping expired break for user:", user.id, err);
         }

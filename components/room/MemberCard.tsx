@@ -52,7 +52,7 @@ export const MemberCard = memo(function MemberCard({
     (isStudying || isBreak ? elapsedSeconds : isBreakExpired ? (member.active_study_seconds_snapshot ?? 0) : 0);
 
   // 4. Total Sessions Count (completed sessions + active in-progress session)
-  const isCurrentSessionActive = isStudying || isBreak;
+  const isCurrentSessionActive = isStudying || isBreak || isBreakExpired;
   const sessionsCount = (member.total_sessions_count ?? 0) + (isCurrentSessionActive ? 1 : 0);
 
   const initials = member.display_name
