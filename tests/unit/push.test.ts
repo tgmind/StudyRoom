@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { signPushAction, verifyPushAction } from "@/lib/pushAuth";
 
 describe("Web Push Reminders & Action Payload Logic", () => {
   it("formats the 3-hour check-in payload with interactive YES & NO action buttons", () => {
@@ -85,5 +86,17 @@ describe("Web Push Reminders & Action Payload Logic", () => {
     expect(payload.actions[0].action).toBe("resume");
     expect(payload.data.type).toBe("break_warning");
     expect(payload.data.userId).toBe(userId);
+  });
+
+  it("generates and verifies cryptographically secure HMAC push action tokens", () => {
+    const userId = "test-user-secure-uuid";
+    const token = signPushAction(userId);
+
+    expect(typeof token).toBe("string");
+    expect(token.length).toBe(64); // SHA-256 hex string is 64 characters
+
+    expect(verifyPushAction(userId, token)).toBe(true);
+    expect(verifyPushAction("other-user-uuid", token)).toBe(false);
+    expect(verifyPushAction(userId, "invalid-token-tampered")).toBe(false);
   });
 });

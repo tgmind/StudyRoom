@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import webpush from "web-push";
 import { createClient } from "@supabase/supabase-js";
+import { signPushAction } from "@/lib/pushAuth";
 
 // Initialize VAPID details if configured
 const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
@@ -95,6 +96,7 @@ async function handleCheck(request: NextRequest) {
             data: {
               type: "three_hour_check",
               userId: user.id,
+              actionToken: signPushAction(user.id),
             },
             tag: `checkin-${user.id}`,
           });

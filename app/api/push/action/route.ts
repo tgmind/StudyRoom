@@ -1,53 +1,67 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { verifyPushAction } from "@/lib/pushAuth";
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { action, userId } = body;
+    const body = await request.json().catch(() => ({}));
+    const { action, userId, actionToken } = body;
 
-    if (action !== "stop_session") {
-      return NextResponse.json({ error: "Unknown action" }, { status: 400 });
+    if (action !== "stop_session" || !userId) {
+      return NextResponse.json(
+        { error: "Invalid action or missing user identification" },
+        { status: 400 }
+      );
     }
 
+    // Check 1: User session via cookie
     const supabase = await createClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();
 
-    const targetUserId = user?.id || userId;
+    // Check 2: Verify either active session matching userId OR valid cryptographic actionToken
+    const isSessionOwner = Boolean(user && user.id === userId);
+    const isTokenAuthorized = verifyPushAction(userId, actionToken);
 
-    if (!targetUserId) {
+    if (!isSessionOwner && !isTokenAuthorized) {
       return NextResponse.json(
-        { error: "User identification required to stop session" },
-        { status: 400 }
+        { error: "Unauthorized: Invalid session or action token" },
+        { status: 401 }
       );
     }
 
-    // Call rpc_stop_user_session to authoritatively stop the session in Supabase
-    const { data, error } = await (supabase as unknown as {
-      rpc: (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;
-    }).rpc("rpc_stop_user_session", {
-      p_user_id: targetUserId,
-    });
+    // Execute authoritative stop using service role or server client
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceKey =
+      process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-    if (error) {
-      // Fallback to rpc_finish_session if user is authenticated
-      const { data: finishData, error: finishError } = await (supabase as unknown as {
-        rpc: (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;
-      }).rpc("rpc_finish_session", {
-        p_completed_task_ids: [],
+    if (supabaseUrl && serviceKey) {
+      const adminClient = createAdminClient(supabaseUrl, serviceKey);
+      const { data, error } = await adminClient.rpc("rpc_stop_user_session", {
+        p_user_id: userId,
       });
 
-      if (finishError) {
-        console.error("[Push Action] Failed to stop session:", error, finishError);
-        return NextResponse.json({ error: "Failed to stop session" }, { status: 500 });
+      if (!error) {
+        return NextResponse.json({ success: true, result: data });
       }
-
-      return NextResponse.json({ success: true, result: finishData });
+      console.warn("[Push Action] adminClient rpc_stop_user_session error:", error);
     }
 
-    return NextResponse.json({ success: true, result: data });
+    // Fallback: server client with user session
+    const { data: fallbackData, error: fallbackError } = await (supabase as unknown as {
+      rpc: (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;
+    }).rpc("rpc_stop_user_session", {
+      p_user_id: userId,
+    });
+
+    if (fallbackError) {
+      console.error("[Push Action] Failed to stop session:", fallbackError);
+      return NextResponse.json({ error: "Failed to stop session" }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, result: fallbackData });
   } catch (err) {
     console.error("[Push Action] Error processing action:", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

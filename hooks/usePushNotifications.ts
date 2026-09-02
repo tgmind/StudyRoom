@@ -129,12 +129,26 @@ export function usePushNotifications() {
       const activeReg = (await navigator.serviceWorker.getRegistration()) || registration;
       let subscription = await activeReg.pushManager.getSubscription();
 
+      const convertedKey = urlBase64ToUint8Array(publicKey);
       if (!subscription) {
-        const convertedKey = urlBase64ToUint8Array(publicKey);
-        subscription = await activeReg.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: convertedKey as unknown as BufferSource,
-        });
+        try {
+          subscription = await activeReg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: convertedKey as unknown as BufferSource,
+          });
+        } catch (subErr) {
+          // If browser has an old/mismatched subscription key, clean it up and retry
+          const oldSub = await activeReg.pushManager.getSubscription();
+          if (oldSub) {
+            await oldSub.unsubscribe().catch(() => {});
+            subscription = await activeReg.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: convertedKey as unknown as BufferSource,
+            });
+          } else {
+            throw subErr;
+          }
+        }
       }
 
       // 4. Send subscription to server
