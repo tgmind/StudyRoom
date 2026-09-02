@@ -36,8 +36,10 @@ export function usePushNotifications() {
     setIsSupported(true);
     setPermission(Notification.permission);
 
-    navigator.serviceWorker.ready
-      .then((registration) => registration.pushManager.getSubscription())
+    // Check existing registration and subscription without hanging
+    navigator.serviceWorker
+      .getRegistration()
+      .then((reg) => (reg ? reg.pushManager.getSubscription() : null))
       .then((subscription) => {
         setIsSubscribed(Boolean(subscription));
       })
@@ -60,7 +62,7 @@ export function usePushNotifications() {
     setError(null);
 
     try {
-      // 1. Request permission
+      // 1. Request notification permission
       const perm = await Notification.requestPermission();
       setPermission(perm);
 
@@ -83,13 +85,24 @@ export function usePushNotifications() {
         throw new Error("VAPID public key could not be loaded.");
       }
 
-      // 3. Subscribe with Service Worker PushManager
-      const registration = await navigator.serviceWorker.ready;
-      let subscription = await registration.pushManager.getSubscription();
+      // 3. Ensure service worker is registered and ready
+      let registration = await navigator.serviceWorker.getRegistration();
+      if (!registration) {
+        registration = await navigator.serviceWorker.register("/sw.js");
+      }
+
+      // Await ready state with a 3s safety timeout to prevent infinite hang
+      await Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise((resolve) => setTimeout(resolve, 3000)),
+      ]);
+
+      const activeReg = (await navigator.serviceWorker.getRegistration()) || registration;
+      let subscription = await activeReg.pushManager.getSubscription();
 
       if (!subscription) {
         const convertedKey = urlBase64ToUint8Array(publicKey);
-        subscription = await registration.pushManager.subscribe({
+        subscription = await activeReg.pushManager.subscribe({
           userVisibleOnly: true,
           applicationServerKey: convertedKey as unknown as BufferSource,
         });
@@ -124,18 +137,20 @@ export function usePushNotifications() {
     setError(null);
 
     try {
-      const registration = await navigator.serviceWorker.ready;
-      const subscription = await registration.pushManager.getSubscription();
+      const registration = await navigator.serviceWorker.getRegistration();
+      if (registration) {
+        const subscription = await registration.pushManager.getSubscription();
 
-      if (subscription) {
-        const endpoint = subscription.endpoint;
-        await subscription.unsubscribe();
+        if (subscription) {
+          const endpoint = subscription.endpoint;
+          await subscription.unsubscribe();
 
-        await fetch("/api/push/subscribe", {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ endpoint }),
-        });
+          await fetch("/api/push/subscribe", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ endpoint }),
+          });
+        }
       }
 
       setIsSubscribed(false);
