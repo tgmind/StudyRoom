@@ -88,7 +88,7 @@ export const MemberList = memo(function MemberList({
       }
 
       // 3. Alphabetical tie-breaker
-      return a.display_name.localeCompare(b.display_name);
+      return (a.display_name || "").localeCompare(b.display_name || "");
     });
   }, [activeMembers, currentTimestamp, getMemberStudySeconds]);
 

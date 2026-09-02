@@ -33,7 +33,7 @@ export function sortMembers(members: UserProfile[], _currentUserId?: string): Us
     }
 
     // 3. Deterministic tie-breaker: alphabetical by display_name
-    return a.display_name.localeCompare(b.display_name);
+    return (a.display_name || "").localeCompare(b.display_name || "");
   });
 }
 
@@ -141,7 +141,7 @@ export function useLiveRoom(currentUserId?: string) {
 
     // 2. Set up Realtime channel (postgres_changes + instant peer broadcast)
     const channel = supabase
-      .channel(`room:live:${currentUserId || "guest"}`)
+      .channel("room:live:global")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "users" },

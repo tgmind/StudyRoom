@@ -164,7 +164,7 @@ export interface Database {
         Returns: Json;
       };
       rpc_get_leaderboard: {
-        Args: { p_week_start?: string | null };
+        Args: { p_week_start?: string | null; p_timezone?: string };
         Returns: LeaderboardEntry[];
       };
       rpc_calculate_weekly_achiever: {

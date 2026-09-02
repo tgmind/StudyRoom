@@ -44,11 +44,20 @@ export async function updateSession(request: NextRequest) {
 
   if (user) {
     const userEmail = (user.email || "").toLowerCase();
+
+    // Query profile for display_name and is_admin flag
+    const { data: profile } = await supabase
+      .from("users")
+      .select("display_name, is_admin")
+      .eq("id", user.id)
+      .single();
+
+    const profileData = profile as { display_name?: string; is_admin?: boolean } | null;
     const isAdmin =
       userEmail === adminEmail ||
       userEmail === "sa@admin.tg" ||
       user.id === adminUid ||
-      user.id === "f8d95817-f042-4e61-89e4-bb97679f8a48";
+      profileData?.is_admin === true;
 
     if (isAdmin) {
       // Admin user: redirect to /admin from ANY other route (including /login, /room, /)
@@ -68,13 +77,6 @@ export async function updateSession(request: NextRequest) {
     }
 
     // Regular user flow: check profile onboarding status
-    const { data: profile } = await supabase
-      .from("users")
-      .select("display_name")
-      .eq("id", user.id)
-      .single();
-
-    const profileData = profile as { display_name?: string } | null;
     const isProfileIncomplete = !profileData || !profileData.display_name || profileData.display_name.trim() === "";
 
     if (isProfileIncomplete && !isOnboardingRoute) {

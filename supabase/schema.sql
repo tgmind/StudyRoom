@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS public.users (
   break_started_at TIMESTAMPTZ,
   active_study_seconds_snapshot INTEGER NOT NULL DEFAULT 0,
   has_achiever_badge BOOLEAN NOT NULL DEFAULT FALSE,
+  is_admin BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -31,10 +32,15 @@ CREATE TABLE IF NOT EXISTS public.users (
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_resumed_at TIMESTAMPTZ;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS break_started_at TIMESTAMPTZ;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS active_study_seconds_snapshot INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- Ensure full replica identity for realtime update payloads
+ALTER TABLE public.users REPLICA IDENTITY FULL;
 
 -- Indexes for Users
 CREATE INDEX IF NOT EXISTS idx_users_current_status ON public.users(current_status);
 CREATE INDEX IF NOT EXISTS idx_users_created_at ON public.users(created_at);
+CREATE INDEX IF NOT EXISTS idx_users_is_admin ON public.users(is_admin) WHERE is_admin = TRUE;
 
 -- Protect system fields from direct user update via trigger
 CREATE OR REPLACE FUNCTION public.prevent_user_badge_tampering()
@@ -56,6 +62,25 @@ CREATE TRIGGER trg_prevent_badge_tampering
   BEFORE UPDATE ON public.users
   FOR EACH ROW
   EXECUTE FUNCTION public.prevent_user_badge_tampering();
+
+-- Prevent unauthorized users from modifying is_admin
+CREATE OR REPLACE FUNCTION public.prevent_admin_flag_tampering()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF (OLD.is_admin IS DISTINCT FROM NEW.is_admin) AND (current_setting('role', true) <> 'service_role') THEN
+    IF current_setting('studyroom.internal_admin_update', true) IS DISTINCT FROM 'true' THEN
+      RAISE EXCEPTION 'is_admin cannot be updated directly';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_prevent_admin_tampering ON public.users;
+CREATE TRIGGER trg_prevent_admin_tampering
+  BEFORE UPDATE ON public.users
+  FOR EACH ROW
+  EXECUTE FUNCTION public.prevent_admin_flag_tampering();
 
 -- Automatically sync new auth.users into public.users
 CREATE OR REPLACE FUNCTION public.handle_new_user()
@@ -781,13 +806,20 @@ BEGIN
     WHERE g.created_at >= v_week_start AND g.created_at < v_week_end
     GROUP BY g.user_id
   ),
-  user_streaks AS (
-    -- Days with >= 30 mins active study in local calendar days
-    SELECT s.user_id, COUNT(DISTINCT DATE_TRUNC('day', s.start_time AT TIME ZONE v_tz))::INTEGER AS streak
+  qualifying_days AS (
+    SELECT
+      s.user_id,
+      DATE_TRUNC('day', s.start_time AT TIME ZONE v_tz) AS study_day
     FROM public.study_sessions s
     WHERE s.start_time >= (NOW() - INTERVAL '7 days')
-    GROUP BY s.user_id
+    GROUP BY s.user_id, DATE_TRUNC('day', s.start_time AT TIME ZONE v_tz)
     HAVING SUM(s.duration_minutes) >= 30
+  ),
+  user_streaks AS (
+    -- Days with >= 30 mins active study in local calendar days
+    SELECT qd.user_id, COUNT(DISTINCT qd.study_day)::INTEGER AS streak
+    FROM qualifying_days qd
+    GROUP BY qd.user_id
   )
   SELECT
     u.id AS user_id,
@@ -801,7 +833,8 @@ BEGIN
   FROM public.users u
   LEFT JOIN weekly_study ws ON u.id = ws.user_id
   LEFT JOIN weekly_goals wg ON u.id = wg.user_id
-  LEFT JOIN user_streaks st ON u.id = st.user_id;
+  LEFT JOIN user_streaks st ON u.id = st.user_id
+  WHERE COALESCE(u.is_admin, FALSE) = FALSE;
 
   SELECT GREATEST(1, MAX(temp_user_stats.total_study_minutes)) INTO v_max_study_minutes FROM temp_user_stats;
 
@@ -838,6 +871,7 @@ BEGIN
 
   SELECT user_id INTO v_winner_id
   FROM public.rpc_get_leaderboard(v_prev_week_start, v_tz)
+  WHERE total_study_minutes > 0
   ORDER BY score DESC, total_study_minutes DESC
   LIMIT 1;
 
@@ -924,3 +958,317 @@ CREATE POLICY "User Avatar Delete Access"
     bucket_id = 'avatars' AND
     (storage.foldername(name))[1] = auth.uid()::text
   );
+
+-- ------------------------------------------------------------
+-- 12. PERFORMANCE INDEXES & ADMIN MANAGEMENT RPCS
+-- ------------------------------------------------------------
+
+-- High-performance partial & composite indexes
+CREATE INDEX IF NOT EXISTS idx_session_blocks_open_active ON public.session_blocks(user_id, block_type) WHERE end_time IS NULL;
+CREATE INDEX IF NOT EXISTS idx_daily_goals_user_active_unexpired ON public.daily_goals(user_id, expires_at DESC);
+CREATE INDEX IF NOT EXISTS idx_study_sessions_weekly_range ON public.study_sessions(start_time DESC, user_id);
+
+-- Internal security verification helper
+CREATE OR REPLACE FUNCTION public.check_is_admin()
+RETURNS BOOLEAN AS $$
+DECLARE
+  v_email TEXT;
+  v_is_admin BOOLEAN;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RETURN FALSE;
+  END IF;
+
+  SELECT is_admin INTO v_is_admin FROM public.users WHERE id = auth.uid();
+  IF v_is_admin IS TRUE THEN
+    RETURN TRUE;
+  END IF;
+
+  SELECT email INTO v_email FROM auth.users WHERE id = auth.uid();
+  IF v_email IS NOT NULL AND LOWER(v_email) = 'sa@admin.tg' THEN
+    -- Auto-flag is_admin in public.users
+    PERFORM set_config('studyroom.internal_admin_update', 'true', true);
+    UPDATE public.users SET is_admin = TRUE WHERE id = auth.uid();
+    RETURN TRUE;
+  END IF;
+
+  RETURN FALSE;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Admin RPC: Get All Users
+CREATE OR REPLACE FUNCTION public.rpc_admin_get_all_users(p_admin_email TEXT DEFAULT NULL)
+RETURNS TABLE (
+  user_id UUID,
+  display_name TEXT,
+  avatar_url TEXT,
+  current_status TEXT,
+  current_focus TEXT,
+  session_start_time TIMESTAMPTZ,
+  break_started_at TIMESTAMPTZ,
+  active_study_seconds_snapshot INTEGER,
+  has_achiever_badge BOOLEAN,
+  created_at TIMESTAMPTZ,
+  active_goal_count INTEGER,
+  total_sessions_count INTEGER
+) AS $$
+BEGIN
+  IF NOT public.check_is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized: Caller is not an administrator';
+  END IF;
+
+  RETURN QUERY
+  WITH active_goals AS (
+    SELECT dg.user_id, COUNT(*)::INTEGER AS goal_cnt
+    FROM public.daily_goals dg
+    WHERE dg.expires_at > NOW()
+    GROUP BY dg.user_id
+  ),
+  session_counts AS (
+    SELECT ss.user_id, COUNT(*)::INTEGER AS sess_cnt
+    FROM public.study_sessions ss
+    GROUP BY ss.user_id
+  )
+  SELECT
+    u.id AS user_id,
+    u.display_name,
+    u.avatar_url,
+    u.current_status,
+    u.current_focus,
+    u.session_start_time,
+    u.break_started_at,
+    u.active_study_seconds_snapshot,
+    u.has_achiever_badge,
+    u.created_at,
+    COALESCE(ag.goal_cnt, 0) AS active_goal_count,
+    COALESCE(sc.sess_cnt, 0) AS total_sessions_count
+  FROM public.users u
+  LEFT JOIN active_goals ag ON u.id = ag.user_id
+  LEFT JOIN session_counts sc ON u.id = sc.user_id
+  WHERE u.id <> auth.uid() AND COALESCE(u.is_admin, FALSE) = FALSE
+  ORDER BY
+    CASE u.current_status
+      WHEN 'studying' THEN 1
+      WHEN 'break' THEN 2
+      ELSE 3
+    END,
+    u.display_name ASC;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Admin RPC: Rename User
+CREATE OR REPLACE FUNCTION public.rpc_admin_rename_user(
+  p_admin_email TEXT DEFAULT NULL,
+  p_target_user_id UUID DEFAULT NULL,
+  p_new_name TEXT DEFAULT NULL
+)
+RETURNS JSONB AS $$
+DECLARE
+  v_trimmed_name TEXT;
+BEGIN
+  IF NOT public.check_is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized: Caller is not an administrator';
+  END IF;
+
+  IF p_target_user_id IS NULL THEN
+    RAISE EXCEPTION 'Target user ID is required';
+  END IF;
+
+  IF p_target_user_id = auth.uid() THEN
+    RAISE EXCEPTION 'Cannot modify admin account via this function';
+  END IF;
+
+  v_trimmed_name := TRIM(COALESCE(p_new_name, ''));
+  IF LENGTH(v_trimmed_name) = 0 THEN
+    RAISE EXCEPTION 'Display name cannot be empty';
+  END IF;
+  IF LENGTH(v_trimmed_name) > 32 THEN
+    v_trimmed_name := SUBSTRING(v_trimmed_name FROM 1 FOR 32);
+  END IF;
+
+  UPDATE public.users
+  SET display_name = v_trimmed_name
+  WHERE id = p_target_user_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'User not found';
+  END IF;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'user_id', p_target_user_id,
+    'new_name', v_trimmed_name
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Admin RPC: Delete User
+CREATE OR REPLACE FUNCTION public.rpc_admin_delete_user(
+  p_admin_email TEXT DEFAULT NULL,
+  p_target_user_id UUID DEFAULT NULL
+)
+RETURNS JSONB AS $$
+DECLARE
+  v_target_name TEXT;
+BEGIN
+  IF NOT public.check_is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized: Caller is not an administrator';
+  END IF;
+
+  IF p_target_user_id IS NULL THEN
+    RAISE EXCEPTION 'Target user ID is required';
+  END IF;
+
+  IF p_target_user_id = auth.uid() THEN
+    RAISE EXCEPTION 'Cannot delete the administrator account';
+  END IF;
+
+  SELECT display_name INTO v_target_name
+  FROM public.users
+  WHERE id = p_target_user_id;
+
+  IF v_target_name IS NULL THEN
+    RAISE EXCEPTION 'User not found';
+  END IF;
+
+  DELETE FROM auth.users WHERE id = p_target_user_id;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'deleted_user_id', p_target_user_id,
+    'deleted_user_name', v_target_name
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Admin RPC: Force End Session
+CREATE OR REPLACE FUNCTION public.rpc_admin_force_end_session(
+  p_admin_email TEXT DEFAULT NULL,
+  p_target_user_id UUID DEFAULT NULL
+)
+RETURNS JSONB AS $$
+DECLARE
+  v_status TEXT;
+  v_session_start TIMESTAMPTZ;
+  v_focus TEXT;
+  v_now TIMESTAMPTZ := NOW();
+  v_total_study_seconds NUMERIC := 0;
+  v_duration_minutes INTEGER := 0;
+  v_session_id UUID;
+BEGIN
+  IF NOT public.check_is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized: Caller is not an administrator';
+  END IF;
+
+  IF p_target_user_id IS NULL THEN
+    RAISE EXCEPTION 'Target user ID is required';
+  END IF;
+
+  SELECT current_status, session_start_time, current_focus
+  INTO v_status, v_session_start, v_focus
+  FROM public.users
+  WHERE id = p_target_user_id
+  FOR UPDATE;
+
+  IF v_status IS NULL THEN
+    RAISE EXCEPTION 'User not found';
+  END IF;
+
+  IF v_status = 'offline' THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'error', 'User has no active session'
+    );
+  END IF;
+
+  UPDATE public.session_blocks
+  SET end_time = v_now
+  WHERE user_id = p_target_user_id AND end_time IS NULL;
+
+  IF v_session_start IS NULL THEN
+    v_session_start := v_now;
+  END IF;
+
+  SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(end_time, v_now) - start_time))), 0)
+  INTO v_total_study_seconds
+  FROM public.session_blocks
+  WHERE user_id = p_target_user_id
+    AND block_type = 'study'
+    AND session_id IS NULL;
+
+  v_duration_minutes := GREATEST(0, FLOOR(v_total_study_seconds / 60)::INTEGER);
+
+  INSERT INTO public.study_sessions (user_id, start_time, end_time, duration_minutes, focus_tag, completed_tasks)
+  VALUES (p_target_user_id, v_session_start, v_now, v_duration_minutes, v_focus, '[]'::JSONB)
+  RETURNING id INTO v_session_id;
+
+  UPDATE public.session_blocks
+  SET session_id = v_session_id
+  WHERE user_id = p_target_user_id AND session_id IS NULL;
+
+  UPDATE public.users
+  SET current_status = 'offline',
+      current_focus = NULL,
+      session_start_time = NULL,
+      last_resumed_at = NULL,
+      break_started_at = NULL,
+      active_study_seconds_snapshot = 0
+  WHERE id = p_target_user_id;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'session_id', v_session_id,
+    'duration_minutes', v_duration_minutes,
+    'message', 'Session suspended and saved by administrator'
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Admin RPC: Platform Stats
+CREATE OR REPLACE FUNCTION public.rpc_admin_get_platform_stats(p_admin_email TEXT DEFAULT NULL)
+RETURNS JSONB AS $$
+DECLARE
+  v_total_users INTEGER := 0;
+  v_studying INTEGER := 0;
+  v_on_break INTEGER := 0;
+  v_offline INTEGER := 0;
+  v_week_start TIMESTAMPTZ;
+  v_weekly_sessions INTEGER := 0;
+  v_weekly_hours NUMERIC := 0;
+BEGIN
+  IF NOT public.check_is_admin() THEN
+    RAISE EXCEPTION 'Unauthorized: Caller is not an administrator';
+  END IF;
+
+  SELECT
+    COUNT(*)::INTEGER,
+    COUNT(*) FILTER (WHERE current_status = 'studying')::INTEGER,
+    COUNT(*) FILTER (WHERE current_status = 'break')::INTEGER,
+    COUNT(*) FILTER (WHERE current_status = 'offline')::INTEGER
+  INTO v_total_users, v_studying, v_on_break, v_offline
+  FROM public.users
+  WHERE id <> auth.uid() AND COALESCE(is_admin, FALSE) = FALSE;
+
+  v_week_start := (DATE_TRUNC('week', NOW() AT TIME ZONE 'Asia/Kolkata') AT TIME ZONE 'Asia/Kolkata');
+
+  SELECT
+    COALESCE(COUNT(*)::INTEGER, 0),
+    COALESCE(ROUND(SUM(duration_minutes)::NUMERIC / 60.0, 1), 0)
+  INTO v_weekly_sessions, v_weekly_hours
+  FROM public.study_sessions
+  WHERE start_time >= v_week_start
+    AND user_id IN (
+      SELECT id FROM public.users WHERE id <> auth.uid() AND COALESCE(is_admin, FALSE) = FALSE
+    );
+
+  RETURN jsonb_build_object(
+    'total_users', v_total_users,
+    'studying', v_studying,
+    'on_break', v_on_break,
+    'offline', v_offline,
+    'weekly_sessions', v_weekly_sessions,
+    'weekly_hours', v_weekly_hours
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+

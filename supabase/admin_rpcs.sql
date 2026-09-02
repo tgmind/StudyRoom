@@ -429,12 +429,21 @@ BEGIN
     WHERE g.created_at >= v_week_start AND g.created_at < v_week_end
     GROUP BY g.user_id
   ),
-  user_streaks AS (
-    SELECT s.user_id, COUNT(DISTINCT DATE_TRUNC('day', s.start_time AT TIME ZONE v_tz))::INTEGER AS streak
+  qualifying_days AS (
+    SELECT
+      s.user_id,
+      DATE_TRUNC('day', s.start_time AT TIME ZONE v_tz) AS study_day
     FROM public.study_sessions s
     WHERE s.start_time >= (NOW() - INTERVAL '7 days')
-    GROUP BY s.user_id
+    GROUP BY s.user_id, DATE_TRUNC('day', s.start_time AT TIME ZONE v_tz)
     HAVING SUM(s.duration_minutes) >= 30
+  ),
+  user_streaks AS (
+    SELECT
+      qd.user_id,
+      COUNT(DISTINCT qd.study_day)::INTEGER AS streak
+    FROM qualifying_days qd
+    GROUP BY qd.user_id
   )
   SELECT
     u.id AS user_id,
