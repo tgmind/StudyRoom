@@ -118,11 +118,14 @@ export function PushNotificationToggle() {
       )}
 
       {isDenied && (
-        <div className="p-3 bg-rose-950/40 border border-rose-800/80 rounded-xl text-xs font-medium text-rose-200 flex items-center space-x-2">
-          <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
-          <span>
-            Notifications are blocked in your browser settings. Notifications are required to study—please allow notifications in your browser or phone site permissions.
-          </span>
+        <div className="p-3 bg-amber-950/40 border border-amber-700/80 rounded-xl text-xs font-medium text-amber-200 space-y-1.5">
+          <div className="flex items-center space-x-2 text-amber-300 font-bold">
+            <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />
+            <span>Notifications are blocked in your browser</span>
+          </div>
+          <p className="text-[11px] text-zinc-300">
+            To unblock: Tap the <strong>Lock (🔒) icon</strong> in the address bar at the top, switch <strong>Notifications</strong> to <strong>Allow</strong>, then tap the button below.
+          </p>
         </div>
       )}
 
@@ -146,12 +149,11 @@ export function PushNotificationToggle() {
             variant="primary"
             size="md"
             isLoading={loading}
-            disabled={isDenied}
             onClick={subscribe}
             className="w-full font-extrabold text-xs sm:text-sm space-x-1.5 shadow-md"
           >
             <Sparkles className="w-4 h-4" />
-            <span>Enable Mandatory Reminders</span>
+            <span>{isDenied ? "I've Allowed — Verify & Enable" : "Enable Mandatory Reminders"}</span>
           </Button>
         )}
       </div>

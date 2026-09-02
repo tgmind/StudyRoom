@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
-import { Bell, CheckCircle2, AlertCircle, Smartphone, Sparkles } from "lucide-react";
+import { Bell, CheckCircle2, AlertCircle, Smartphone, Sparkles, RefreshCw, Lock } from "lucide-react";
 
 interface MandatoryNotificationModalProps {
   isOpen: boolean;
@@ -17,21 +17,40 @@ export function MandatoryNotificationModal({
   onClose,
   onPermissionGranted,
 }: MandatoryNotificationModalProps) {
-  const { isSupported, permission, subscribe, loading, error } = usePushNotifications();
+  const {
+    isSupported,
+    permission,
+    subscribe,
+    loading,
+    error,
+    refreshPermission,
+  } = usePushNotifications();
   const [requestError, setRequestError] = useState<string | null>(null);
 
   const isDenied = permission === "denied";
 
+  // When user returns after unblocking in site settings, clear error
+  useEffect(() => {
+    if (permission === "granted") {
+      setRequestError(null);
+    }
+  }, [permission]);
+
   const handleEnable = async () => {
     setRequestError(null);
+    refreshPermission();
+
     const success = await subscribe();
     if (success) {
       onPermissionGranted();
       onClose();
-    } else if (permission === "denied") {
-      setRequestError(
-        "Notifications are blocked in your browser settings. Please allow notifications in your browser/phone site settings to continue."
-      );
+    } else {
+      const current = refreshPermission();
+      if (current === "denied") {
+        setRequestError(
+          "Notifications are still marked as Blocked by your browser. Follow the 3 steps above to set Notifications to Allow, then tap again."
+        );
+      }
     }
   };
 
@@ -54,20 +73,44 @@ export function MandatoryNotificationModal({
         </div>
 
         {/* Requirements list */}
-        <div className="space-y-2.5 bg-zinc-950/60 border border-zinc-800/80 rounded-2xl p-3.5 text-xs text-zinc-300">
+        <div className="space-y-2 bg-zinc-950/60 border border-zinc-800/80 rounded-2xl p-3 text-xs text-zinc-300">
           <div className="flex items-start space-x-2">
             <CheckCircle2 className="w-4 h-4 text-violet-400 shrink-0 mt-0.5" />
             <span>
-              <strong>3-Hour Live Check-in:</strong> If studying for 3 hours, a push asks <em>&quot;Are you still Studying?&quot;</em> with YES/NO buttons.
+              <strong>3-Hour Live Check-in:</strong> Asks <em>&quot;Are you still Studying?&quot;</em> with YES/NO buttons.
             </span>
           </div>
           <div className="flex items-start space-x-2">
             <CheckCircle2 className="w-4 h-4 text-fuchsia-400 shrink-0 mt-0.5" />
             <span>
-              <strong>24-Hour Absence Alerts:</strong> Keeps your streak protected if you are absent for 24 hours.
+              <strong>24-Hour Absence Alerts:</strong> Protects your study streak if offline.
             </span>
           </div>
         </div>
+
+        {/* Actionable Unblock Guide if Denied */}
+        {isDenied ? (
+          <div className="p-3.5 bg-amber-950/40 border border-amber-700/80 rounded-2xl text-xs text-amber-200 space-y-2.5">
+            <div className="flex items-center space-x-2 font-extrabold text-amber-300">
+              <Lock className="w-4 h-4 shrink-0 text-amber-400" />
+              <span>How to Unblock on Android / Browser:</span>
+            </div>
+            <p className="text-[11px] text-zinc-300 leading-snug">
+              Browsers don&apos;t allow websites to show the popup prompt once denied. You can easily unblock it:
+            </p>
+            <ol className="list-decimal list-inside text-[11px] text-zinc-200 space-y-1.5 pl-1 font-medium">
+              <li>
+                Tap the <strong>Lock (🔒) or Tune icon</strong> in the Chrome address bar at the top.
+              </li>
+              <li>
+                Tap <strong>Permissions</strong> $\rightarrow$ toggle <strong>Notifications</strong> to <strong>Allow</strong>.
+              </li>
+              <li>
+                Come back here and tap <strong>&quot;I Have Allowed — Continue&quot;</strong> below!
+              </li>
+            </ol>
+          </div>
+        ) : null}
 
         {!isSupported && (
           <div className="p-3 bg-amber-950/30 border border-amber-800/50 rounded-xl text-xs text-amber-300/90 flex items-start space-x-2">
@@ -82,15 +125,6 @@ export function MandatoryNotificationModal({
           <div className="p-3 bg-rose-950/40 border border-rose-800/80 rounded-xl text-xs font-medium text-rose-200 flex items-center space-x-2">
             <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
             <span>{requestError || error}</span>
-          </div>
-        )}
-
-        {isDenied && (
-          <div className="p-3 bg-rose-950/40 border border-rose-800/80 rounded-xl text-xs font-medium text-rose-200 flex items-center space-x-2">
-            <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
-            <span>
-              Notification permission was denied. Please go to your browser or device site permissions and set notifications to <strong>Allow</strong>.
-            </span>
           </div>
         )}
 
@@ -110,11 +144,20 @@ export function MandatoryNotificationModal({
             variant="primary"
             onClick={handleEnable}
             isLoading={loading}
-            disabled={isDenied || !isSupported}
+            disabled={!isSupported}
             className="flex-1 font-extrabold text-xs sm:text-sm space-x-1.5 shadow-md"
           >
-            <Sparkles className="w-4 h-4" />
-            <span>Enable & Continue</span>
+            {isDenied ? (
+              <>
+                <RefreshCw className="w-4 h-4" />
+                <span>I&apos;ve Allowed — Continue</span>
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-4 h-4" />
+                <span>Enable & Continue</span>
+              </>
+            )}
           </Button>
         </div>
       </div>

@@ -51,6 +51,30 @@ export function usePushNotifications() {
       });
   }, []);
 
+  // Refresh current permission status (e.g. after user changes settings in browser)
+  const refreshPermission = useCallback(() => {
+    if (typeof window !== "undefined" && "Notification" in window) {
+      const current = Notification.permission;
+      setPermission(current);
+      return current;
+    }
+    return "default";
+  }, []);
+
+  // Automatically detect when user returns to app from browser settings
+  useEffect(() => {
+    const handleCheck = () => {
+      refreshPermission();
+    };
+
+    window.addEventListener("focus", handleCheck);
+    document.addEventListener("visibilitychange", handleCheck);
+    return () => {
+      window.removeEventListener("focus", handleCheck);
+      document.removeEventListener("visibilitychange", handleCheck);
+    };
+  }, [refreshPermission]);
+
   // Subscribe to push notifications
   const subscribe = useCallback(async () => {
     if (!isSupported) {
@@ -63,7 +87,12 @@ export function usePushNotifications() {
 
     try {
       // 1. Request notification permission
-      const perm = await Notification.requestPermission();
+      let perm: NotificationPermission = "default";
+      try {
+        perm = await Notification.requestPermission();
+      } catch {
+        perm = Notification.permission;
+      }
       setPermission(perm);
 
       if (perm !== "granted") {
@@ -173,5 +202,6 @@ export function usePushNotifications() {
     error,
     subscribe,
     unsubscribe,
+    refreshPermission,
   };
 }
