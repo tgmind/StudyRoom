@@ -9,6 +9,7 @@ import { BottomNav } from "@/components/navigation/BottomNav";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { AvatarUpload } from "@/components/ui/AvatarUpload";
+import { PushNotificationToggle } from "@/components/settings/PushNotificationToggle";
 import { validateDisplayName } from "@/lib/validation/schemas";
 import {
   Settings,
@@ -241,6 +242,9 @@ export default function SettingsPage() {
             </div>
           </form>
         </div>
+
+        {/* Study Reminders & Push Notifications Card */}
+        <PushNotificationToggle />
 
         {/* Sign Out Card */}
         <div className="pt-2">
