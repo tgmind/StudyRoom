@@ -64,14 +64,14 @@ async function handleCheck(request: NextRequest) {
 
   try {
     // ------------------------------------------------------------
-    // 1. Query users studying for >= 3 hours without prompt
+    // 1. Query users studying for >= 3 hours (checks every 3h while studying)
     // ------------------------------------------------------------
     const { data: studyingUsers, error: studyErr } = await supabase
       .from("users")
       .select("id, display_name, session_start_time, last_resumed_at")
       .eq("current_status", "studying")
       .lte("session_start_time", threeHoursAgo)
-      .is("three_hour_prompt_sent_at", null);
+      .or(`three_hour_prompt_sent_at.is.null,three_hour_prompt_sent_at.lte.${threeHoursAgo}`);
 
     if (studyErr) {
       console.error("[Push] Error fetching studying users:", studyErr);
@@ -84,14 +84,18 @@ async function handleCheck(request: NextRequest) {
           .eq("user_id", user.id);
 
         if (subs && subs.length > 0) {
+          const startTime = user.session_start_time ? new Date(user.session_start_time).getTime() : now.getTime();
+          const elapsedHours = Math.max(3, Math.floor((now.getTime() - startTime) / (1000 * 60 * 60)));
+          const hoursText = `${elapsedHours} hours`;
+
           const payload = JSON.stringify({
-            title: "StudyRoom — Live Check-in",
-            body: "Are you still Studying? You've been active for 3 hours.",
+            title: "StudyRoom — Live Check-in ⏱️",
+            body: `Are you still Studying? You've been active for ${hoursText}.`,
             icon: "/icons/icon-192x192.png",
             badge: "/icons/icon-192x192.png",
             actions: [
-              { action: "yes", title: "YES" },
-              { action: "no", title: "NO" },
+              { action: "yes", title: "✅ YES" },
+              { action: "no", title: "🛑 NO (Stop Session)" },
             ],
             data: {
               type: "three_hour_check",
@@ -99,19 +103,20 @@ async function handleCheck(request: NextRequest) {
               actionToken: signPushAction(user.id),
             },
             tag: `checkin-${user.id}`,
+            requireInteraction: true,
           });
 
           const removeSub = async (id: string) => {
             await supabase.from("push_subscriptions").delete().eq("id", id);
           };
-          await sendToSubscriptions(subs as PushSubscriptionRow[], payload, removeSub);
-          results.threeHourChecksSent++;
-
-          // Mark prompt as sent for this session
-          await supabase
-            .from("users")
-            .update({ three_hour_prompt_sent_at: now.toISOString() })
-            .eq("id", user.id);
+          const sentCount = await sendToSubscriptions(subs as PushSubscriptionRow[], payload, removeSub);
+          if (sentCount > 0) {
+            results.threeHourChecksSent++;
+            await supabase
+              .from("users")
+              .update({ three_hour_prompt_sent_at: now.toISOString() })
+              .eq("id", user.id);
+          }
         }
       }
     }
@@ -146,8 +151,8 @@ async function handleCheck(request: NextRequest) {
 
           if (subs && subs.length > 0) {
             const payload = JSON.stringify({
-              title: "StudyRoom — Daily Reminder",
-              body: "You are absent for 24 hrs. Continue Live Study!",
+              title: "StudyRoom — Streak Protection 🔥",
+              body: "You've been away for 24 hours. Jump into the Study Room to keep your study streak alive!",
               icon: "/icons/icon-192x192.png",
               badge: "/icons/icon-192x192.png",
               data: {
@@ -160,14 +165,14 @@ async function handleCheck(request: NextRequest) {
             const removeSub = async (id: string) => {
               await supabase.from("push_subscriptions").delete().eq("id", id);
             };
-            await sendToSubscriptions(subs as PushSubscriptionRow[], payload, removeSub);
-            results.absentRemindersSent++;
-
-            // Update last_offline_reminder_sent_at
-            await supabase
-              .from("users")
-              .update({ last_offline_reminder_sent_at: now.toISOString() })
-              .eq("id", user.id);
+            const sentCount = await sendToSubscriptions(subs as PushSubscriptionRow[], payload, removeSub);
+            if (sentCount > 0) {
+              results.absentRemindersSent++;
+              await supabase
+                .from("users")
+                .update({ last_offline_reminder_sent_at: now.toISOString() })
+                .eq("id", user.id);
+            }
           }
         }
       }
@@ -203,26 +208,27 @@ async function handleCheck(request: NextRequest) {
             icon: "/icons/icon-192x192.png",
             badge: "/icons/icon-192x192.png",
             actions: [
-              { action: "resume", title: "Resume Study" },
+              { action: "resume", title: "▶️ Resume Study" },
             ],
             data: {
               type: "break_warning",
               userId: user.id,
             },
             tag: `break-${user.id}`,
+            requireInteraction: true,
           });
 
           const removeSub = async (id: string) => {
             await supabase.from("push_subscriptions").delete().eq("id", id);
           };
-          await sendToSubscriptions(subs as PushSubscriptionRow[], payload, removeSub);
-          results.breakWarningsSent++;
-
-          // Mark break warning as sent for this break period
-          await supabase
-            .from("users")
-            .update({ break_warning_prompt_sent_at: now.toISOString() })
-            .eq("id", user.id);
+          const sentCount = await sendToSubscriptions(subs as PushSubscriptionRow[], payload, removeSub);
+          if (sentCount > 0) {
+            results.breakWarningsSent++;
+            await supabase
+              .from("users")
+              .update({ break_warning_prompt_sent_at: now.toISOString() })
+              .eq("id", user.id);
+          }
         }
       }
     }
@@ -260,7 +266,8 @@ async function sendToSubscriptions(
   subs: PushSubscriptionRow[],
   payload: string,
   onRemoveSub: (subId: string) => Promise<unknown>
-) {
+): Promise<number> {
+  let successCount = 0;
   for (const sub of subs) {
     const pushConfig = {
       endpoint: sub.endpoint,
@@ -272,6 +279,7 @@ async function sendToSubscriptions(
 
     try {
       await webpush.sendNotification(pushConfig, payload);
+      successCount++;
     } catch (err: unknown) {
       const statusCode = (err as { statusCode?: number })?.statusCode;
       // If subscription expired or was revoked (404 Not Found or 410 Gone), remove it
@@ -282,4 +290,5 @@ async function sendToSubscriptions(
       }
     }
   }
+  return successCount;
 }

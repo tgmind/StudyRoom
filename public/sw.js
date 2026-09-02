@@ -151,7 +151,25 @@ self.addEventListener("notificationclick", (event) => {
     return;
   }
 
-  // Action: "resume" or default body click: Focus or open the StudyRoom Live Room
+  // Action: "resume" -> Focus /room and trigger auto-resume
+  if (action === "resume") {
+    event.waitUntil(
+      clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
+        for (const client of clientList) {
+          if (client.url && client.url.includes("/room") && "focus" in client) {
+            client.navigate("/room?action=resume");
+            return client.focus();
+          }
+        }
+        if (clients.openWindow) {
+          return clients.openWindow("/room?action=resume");
+        }
+      })
+    );
+    return;
+  }
+
+  // Default body click: Focus or open the StudyRoom Live Room
   event.waitUntil(
     clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
       for (const client of clientList) {

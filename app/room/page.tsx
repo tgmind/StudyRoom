@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useLiveRoom } from "@/hooks/useLiveRoom";
 import { useActiveSession } from "@/hooks/useActiveSession";
@@ -43,6 +43,17 @@ export default function RoomPage() {
     refreshProfile();
     refreshMembers();
   });
+
+  // Handle 1-tap notification resume action (?action=resume)
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("action") === "resume" && effectiveProfile?.current_status === "break") {
+        resumeSession();
+        window.history.replaceState({}, "", "/room");
+      }
+    }
+  }, [effectiveProfile?.current_status, resumeSession]);
 
   const { activeGoal, countdown, createGoal, refreshGoals } = useDailyGoals(user?.id);
   const [isGoalSetupModalOpen, setIsGoalSetupModalOpen] = useState(false);
