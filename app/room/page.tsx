@@ -14,9 +14,17 @@ import { CreateGoalModal } from "@/components/goals/CreateGoalModal";
 
 export default function RoomPage() {
   const { user, profile, refreshProfile } = useAuth();
-  const { members, loading: roomLoading, isRealtimeConnected, refreshMembers } = useLiveRoom(
-    user?.id
-  );
+  const {
+    members,
+    loading: roomLoading,
+    isRealtimeConnected,
+    refreshMembers,
+    broadcastStatusChange,
+  } = useLiveRoom(user?.id);
+
+  // Derive live profile: prioritize realtime member data over initial static profile
+  const currentMember = members.find((m) => m.id === user?.id);
+  const effectiveProfile = currentMember || profile;
 
   const {
     status,
@@ -31,7 +39,7 @@ export default function RoomPage() {
     pauseSession,
     resumeSession,
     finishSession,
-  } = useActiveSession(profile, () => {
+  } = useActiveSession(effectiveProfile, () => {
     refreshProfile();
     refreshMembers();
   });
@@ -39,7 +47,51 @@ export default function RoomPage() {
   const { activeGoal, countdown, createGoal, refreshGoals } = useDailyGoals(user?.id);
   const [isGoalSetupModalOpen, setIsGoalSetupModalOpen] = useState(false);
 
+  const handleStartSession = async (focusTag?: string | null) => {
+    if (user) {
+      broadcastStatusChange({
+        id: user.id,
+        current_status: "studying",
+        session_start_time: new Date().toISOString(),
+        break_started_at: null,
+        current_focus: focusTag ?? null,
+      });
+    }
+    await startSession(focusTag ?? null);
+  };
+
+  const handlePauseSession = async () => {
+    if (user) {
+      broadcastStatusChange({
+        id: user.id,
+        current_status: "break",
+        break_started_at: new Date().toISOString(),
+      });
+    }
+    await pauseSession();
+  };
+
+  const handleResumeSession = async () => {
+    if (user) {
+      broadcastStatusChange({
+        id: user.id,
+        current_status: "studying",
+        break_started_at: null,
+      });
+    }
+    await resumeSession();
+  };
+
   const handleFinishSession = async (completedTaskIds: string[]) => {
+    if (user) {
+      broadcastStatusChange({
+        id: user.id,
+        current_status: "offline",
+        session_start_time: null,
+        break_started_at: null,
+        current_focus: null,
+      });
+    }
     await finishSession(completedTaskIds);
     await Promise.allSettled([refreshGoals(), refreshProfile(), refreshMembers()]);
   };
@@ -54,14 +106,14 @@ export default function RoomPage() {
     if (isGoalMissingOrExpired) {
       setIsGoalSetupModalOpen(true);
     } else {
-      await startSession(null);
+      await handleStartSession(null);
     }
   };
 
   const handleGoalCreatedFromModal = async (tasks: string[]) => {
     await handleCreateGoal(tasks);
     setIsGoalSetupModalOpen(false);
-    await startSession(null);
+    await handleStartSession(null);
   };
 
   return (
@@ -69,7 +121,7 @@ export default function RoomPage() {
       <TopHeader
         memberCount={members.length}
         isRealtimeConnected={isRealtimeConnected}
-        profile={profile}
+        profile={effectiveProfile}
       />
 
       <main className="flex-1 w-full max-w-2xl sm:max-w-3xl px-3.5 sm:px-6 py-4 mx-auto space-y-4 sm:space-y-6">
@@ -80,9 +132,9 @@ export default function RoomPage() {
             focus={focus}
             elapsedSeconds={elapsedStudySeconds}
             breakStartedAt={breakStartedAt}
-            onStartSession={startSession}
-            onPauseSession={pauseSession}
-            onResumeSession={resumeSession}
+            onStartSession={handleStartSession}
+            onPauseSession={handlePauseSession}
+            onResumeSession={handleResumeSession}
             onFinishSession={handleFinishSession}
             onCreateGoal={handleCreateGoal}
             activeGoal={activeGoal}

@@ -147,7 +147,7 @@ ALTER TABLE public.session_blocks ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Users can view all member profiles" ON public.users;
 CREATE POLICY "Users can view all member profiles"
   ON public.users FOR SELECT
-  TO authenticated
+  TO authenticated, anon
   USING (true);
 
 DROP POLICY IF EXISTS "Users can insert their own profile" ON public.users;

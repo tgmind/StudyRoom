@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { UserProfile, UserStatus } from "@/lib/supabase/types";
-import { getAdminUserId } from "@/hooks/useAdmin";
+import { getAdminUserId, isAdminUserId } from "@/hooks/useAdmin";
 
 export function sortMembers(members: UserProfile[], currentUserId?: string): UserProfile[] {
   const statusPriority: Record<UserStatus, number> = {
@@ -37,6 +37,7 @@ function filterAdmin(members: UserProfile[]): UserProfile[] {
   return members.filter((m) => {
     if (m.is_admin === true) return false;
     if (adminId && m.id === adminId) return false;
+    if (isAdminUserId(m.id)) return false;
     return true;
   });
 }
@@ -49,6 +50,7 @@ export function useLiveRoom(currentUserId?: string) {
 
   const supabase = createClient();
   const currentUserIdRef = useRef(currentUserId);
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   useEffect(() => {
     currentUserIdRef.current = currentUserId;
@@ -80,63 +82,134 @@ export function useLiveRoom(currentUserId?: string) {
     }
   }, [supabase]);
 
-  useEffect(() => {
-    let channel: ReturnType<typeof supabase.channel> | null = null;
+  // Handle in-place profile update from Realtime (either postgres_changes or broadcast)
+  const applyProfileUpdate = useCallback((updatedProfile: Partial<UserProfile> & { id: string }) => {
+    const adminId = getAdminUserId();
+    if (
+      updatedProfile.is_admin === true ||
+      (adminId && updatedProfile.id === adminId) ||
+      isAdminUserId(updatedProfile.id)
+    ) {
+      setMembers((prev) => sortMembers(prev.filter((m) => m.id !== updatedProfile.id), currentUserIdRef.current));
+      return;
+    }
 
+    setMembers((prevMembers) => {
+      const exists = prevMembers.some((m) => m.id === updatedProfile.id);
+      let next: UserProfile[];
+      if (exists) {
+        next = prevMembers.map((m) => (m.id === updatedProfile.id ? { ...m, ...updatedProfile } : m));
+      } else {
+        // If it's a new member joining, fetch full list to ensure all columns present
+        fetchMembers();
+        return prevMembers;
+      }
+      return sortMembers(filterAdmin(next), currentUserIdRef.current);
+    });
+  }, [fetchMembers]);
+
+  // Broadcast function to immediately notify all peers over WebSockets without DB lag
+  const broadcastStatusChange = useCallback(async (payload: Partial<UserProfile> & { id: string }) => {
+    // 1. Apply locally immediately for instant feedback
+    applyProfileUpdate(payload);
+
+    // 2. Broadcast to all peers
+    if (channelRef.current) {
+      try {
+        await channelRef.current.send({
+          type: "broadcast",
+          event: "member_status_update",
+          payload,
+        });
+      } catch (err) {
+        console.warn("Realtime broadcast send failed:", err);
+      }
+    }
+  }, [applyProfileUpdate]);
+
+  useEffect(() => {
+    // 1. Initial fetch
     fetchMembers();
 
     const adminId = getAdminUserId();
 
-    // Set up Realtime postgres_changes subscription on public.users
-    channel = supabase
-      .channel("public:users")
+    // 2. Set up Realtime channel (postgres_changes + instant peer broadcast)
+    const channel = supabase
+      .channel(`room:live:${currentUserId || "guest"}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "users" },
         (payload) => {
-          setMembers((prevMembers) => {
-            let updated = [...prevMembers];
-
-            if (payload.eventType === "INSERT") {
-              const newProfile = payload.new as UserProfile;
-              if (newProfile.is_admin === true || (adminId && newProfile.id === adminId)) {
-                return prevMembers;
-              }
-              if (!updated.some((m) => m.id === newProfile.id)) {
-                updated.push(newProfile);
-              }
-            } else if (payload.eventType === "UPDATE") {
-              const updatedProfile = payload.new as UserProfile;
-              if (updatedProfile.is_admin === true || (adminId && updatedProfile.id === adminId)) {
-                updated = updated.filter((m) => m.id !== updatedProfile.id);
-              } else {
-                updated = updated.map((m) =>
-                  m.id === updatedProfile.id ? updatedProfile : m
-                );
-              }
-            } else if (payload.eventType === "DELETE") {
-              const deletedId = (payload.old as { id: string }).id;
-              updated = updated.filter((m) => m.id !== deletedId);
+          if (payload.eventType === "INSERT") {
+            const newProfile = payload.new as UserProfile;
+            if (
+              newProfile.is_admin === true ||
+              (adminId && newProfile.id === adminId) ||
+              isAdminUserId(newProfile.id)
+            ) {
+              return;
             }
-
-            return sortMembers(filterAdmin(updated), currentUserIdRef.current);
-          });
+            setMembers((prev) => {
+              if (prev.some((m) => m.id === newProfile.id)) return prev;
+              return sortMembers(filterAdmin([...prev, newProfile]), currentUserIdRef.current);
+            });
+          } else if (payload.eventType === "UPDATE") {
+            applyProfileUpdate(payload.new as UserProfile);
+          } else if (payload.eventType === "DELETE") {
+            const deletedId = (payload.old as { id: string })?.id;
+            if (deletedId) {
+              setMembers((prev) => sortMembers(prev.filter((m) => m.id !== deletedId), currentUserIdRef.current));
+            }
+          }
+        }
+      )
+      .on(
+        "broadcast",
+        { event: "member_status_update" },
+        (msg) => {
+          if (msg.payload && (msg.payload as { id?: string }).id) {
+            applyProfileUpdate(msg.payload as Partial<UserProfile> & { id: string });
+          }
         }
       )
       .subscribe((status) => {
         if (status === "SUBSCRIBED") {
           setIsRealtimeConnected(true);
-        } else if (status === "CLOSED" || status === "CHANNEL_ERROR") {
+        } else if (status === "CLOSED" || status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
           setIsRealtimeConnected(false);
         }
       });
 
-    return () => {
-      if (channel) {
-        supabase.removeChannel(channel);
+    channelRef.current = channel;
+
+    // 3. Heartbeat polling (every 4 seconds) to guarantee synchronization across all users
+    const pollInterval = setInterval(() => {
+      fetchMembers();
+    }, 4000);
+
+    // 4. Immediate resync when tab is focused or returns from background
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        fetchMembers();
       }
     };
-  }, [supabase, fetchMembers]);
+    const handleWindowFocus = () => {
+      fetchMembers();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleWindowFocus);
+
+    return () => {
+      clearInterval(pollInterval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleWindowFocus);
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+    };
+  }, [supabase, fetchMembers, currentUserId, applyProfileUpdate]);
 
   return {
     members,
@@ -144,5 +217,6 @@ export function useLiveRoom(currentUserId?: string) {
     isRealtimeConnected,
     error,
     refreshMembers: fetchMembers,
+    broadcastStatusChange,
   };
 }
