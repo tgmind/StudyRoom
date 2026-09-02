@@ -48,18 +48,42 @@ export const SessionController = memo(function SessionController({
 
   // Direct Start Studying Flow
   const handleStartStudyingClick = async () => {
-    if (isGoalMissingOrExpired) {
-      setIsGoalSetupModalOpen(true);
-    } else {
-      await onStartSession(null);
+    try {
+      if (isGoalMissingOrExpired) {
+        setIsGoalSetupModalOpen(true);
+      } else {
+        await onStartSession(null);
+      }
+    } catch {
+      // handled by parent error state
     }
   };
 
   const handleGoalCreated = async (tasks: string[]) => {
-    await onCreateGoal(tasks);
-    setIsGoalSetupModalOpen(false);
-    // Directly launch session after goals locked
-    await onStartSession(null);
+    try {
+      await onCreateGoal(tasks);
+      setIsGoalSetupModalOpen(false);
+      // Directly launch session after goals locked
+      await onStartSession(null);
+    } catch {
+      // handled by parent error state
+    }
+  };
+
+  const handlePause = async () => {
+    try {
+      await onPauseSession();
+    } catch {
+      // handled by parent
+    }
+  };
+
+  const handleResume = async () => {
+    try {
+      await onResumeSession();
+    } catch {
+      // handled by parent
+    }
   };
 
   return (
@@ -95,7 +119,7 @@ export const SessionController = memo(function SessionController({
             <Button
               size="md"
               variant="secondary"
-              onClick={onPauseSession}
+              onClick={handlePause}
               isLoading={isLoading}
               className="flex-1 space-x-2 border-amber-500/30 text-amber-300 hover:bg-amber-500/10 font-bold"
             >
@@ -120,7 +144,7 @@ export const SessionController = memo(function SessionController({
             <Button
               size="md"
               variant="primary"
-              onClick={onResumeSession}
+              onClick={handleResume}
               isLoading={isLoading}
               className="flex-1 space-x-2 font-extrabold"
             >

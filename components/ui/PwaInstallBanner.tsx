@@ -87,7 +87,7 @@ export function PwaInstallBanner() {
         <div className="flex items-center justify-between space-x-3">
           <div className="flex items-center space-x-3 min-w-0 flex-1">
             <div className="w-10 h-10 rounded-xl bg-zinc-900 border border-zinc-700 flex items-center justify-center text-zinc-100 shrink-0 shadow-md">
-              <Smartphone className="w-5 h-5 text-emerald-400" />
+              <Smartphone className="w-5 h-5 text-violet-400" />
             </div>
 
             <div className="min-w-0 flex-1">
@@ -132,7 +132,7 @@ export function PwaInstallBanner() {
       >
         <div className="space-y-4 py-2">
           <div className="p-3 bg-zinc-900 border border-zinc-800 rounded-xl flex items-start space-x-3 text-xs">
-            <Share className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+            <Share className="w-5 h-5 text-violet-400 shrink-0 mt-0.5" />
             <div>
               <p className="font-bold text-zinc-100">Step 1: Tap the Share Button</p>
               <p className="text-zinc-400 mt-0.5">
@@ -142,7 +142,7 @@ export function PwaInstallBanner() {
           </div>
 
           <div className="p-3 bg-zinc-900 border border-zinc-800 rounded-xl flex items-start space-x-3 text-xs">
-            <PlusSquare className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+            <PlusSquare className="w-5 h-5 text-violet-400 shrink-0 mt-0.5" />
             <div>
               <p className="font-bold text-zinc-100">Step 2: Tap &quot;Add to Home Screen&quot;</p>
               <p className="text-zinc-400 mt-0.5">

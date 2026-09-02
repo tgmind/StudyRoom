@@ -83,9 +83,9 @@ export const MemberList = memo(function MemberList({
         <div className="flex items-center justify-between px-1">
           <div className="flex items-center space-x-3">
             <div className="flex items-center space-x-1.5">
-              <Flame className="w-4 h-4 text-emerald-400 fill-emerald-400" />
+              <Flame className="w-4 h-4 text-fuchsia-400 fill-fuchsia-400" />
               <h3 className="text-xs font-extrabold uppercase tracking-wider text-zinc-200">
-                Studying <span className="text-emerald-400 font-mono">({studyingMembers.length})</span>
+                Studying <span className="text-fuchsia-400 font-mono">({studyingMembers.length})</span>
               </h3>
             </div>
 
@@ -98,7 +98,7 @@ export const MemberList = memo(function MemberList({
           </div>
 
           <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-[10px] font-bold text-zinc-300 shadow-sm">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+            <span className="w-1.5 h-1.5 rounded-full bg-fuchsia-400 animate-ping" />
             <span>Live Sync</span>
           </div>
         </div>

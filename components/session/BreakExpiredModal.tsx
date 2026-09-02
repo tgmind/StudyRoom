@@ -52,10 +52,10 @@ export function BreakExpiredModal({
         {/* Saved Study Time Confirmation */}
         <div className="p-3.5 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <CheckCircle2 className="w-4 h-4 text-violet-400 shrink-0" />
             <span className="text-xs text-zinc-300 font-medium">Study Time Saved</span>
           </div>
-          <span className="font-mono text-xs font-black text-emerald-400 px-2.5 py-1 rounded-full bg-emerald-950/40 border border-emerald-500/30">
+          <span className="font-mono text-xs font-black text-violet-400 px-2.5 py-1 rounded-full bg-violet-950/40 border border-violet-500/30">
             {formatDurationSeconds(savedStudySeconds)}
           </span>
         </div>

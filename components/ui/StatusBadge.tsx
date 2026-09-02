@@ -14,9 +14,9 @@ export function StatusBadge({ status, className = "", showText = true }: StatusB
   > = {
     studying: {
       label: "Studying",
-      dotBg: "bg-emerald-500 animate-pulse",
-      textClr: "text-emerald-400",
-      badgeBg: "bg-emerald-950/40 border-emerald-800/40",
+      dotBg: "bg-fuchsia-500 animate-pulse",
+      textClr: "text-fuchsia-300",
+      badgeBg: "bg-fuchsia-950/40 border-fuchsia-800/40",
     },
     break: {
       label: "Break",

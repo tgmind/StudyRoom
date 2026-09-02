@@ -1,9 +1,8 @@
 // StudyRoom PWA Service Worker
-const CACHE_NAME = "studyroom-v1";
+const CACHE_NAME = "studyroom-v2";
 const OFFLINE_URL = "/offline.html";
 
 const PRECACHE_ASSETS = [
-  "/",
   "/offline.html",
   "/manifest.json",
   "/icons/icon-192x192.png",
@@ -11,7 +10,7 @@ const PRECACHE_ASSETS = [
   "/icons/icon-maskable.png",
 ];
 
-// Install Event: Cache App Shell & Offline Page
+// Install Event: Cache Static App Shell & Offline Page
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
@@ -43,8 +42,14 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(event.request.url);
 
-  // Bypass Supabase API & Auth requests to ensure real-time accuracy
-  if (url.hostname.includes("supabase.co") || url.pathname.startsWith("/api/")) {
+  // Bypass Supabase API, Auth, Admin routes & Next.js HMR to ensure real-time accuracy
+  if (
+    url.hostname.includes("supabase.co") ||
+    url.pathname.startsWith("/api/") ||
+    url.pathname.startsWith("/admin") ||
+    url.pathname.includes("hmr") ||
+    url.pathname.includes("_next/webpack-hmr")
+  ) {
     return;
   }
 

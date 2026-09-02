@@ -9,6 +9,8 @@ export async function updateSession(request: NextRequest) {
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co";
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder-anon-key";
+  const adminEmail = (process.env.NEXT_PUBLIC_ADMIN_EMAIL || "sa@admin.tg").toLowerCase();
+  const adminUid = (process.env.NEXT_PUBLIC_ADMIN_USER_ID || "8076296e-134a-4036-b8ed-1a9c6ff26ec1").toLowerCase();
 
   const supabase = createServerClient<Database>(supabaseUrl, supabaseAnonKey, {
     cookies: {
@@ -33,14 +35,39 @@ export async function updateSession(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
 
-  // Protected application routes
-  const protectedRoutes = ["/room", "/leaderboard", "/goals", "/history", "/settings"];
+  // Protected application routes (regular users)
+  const protectedRoutes = ["/room", "/leaderboard", "/goals", "/history", "/settings", "/guide"];
   const isProtectedRoute = protectedRoutes.some((route) => pathname.startsWith(route));
+  const isAdminRoute = pathname.startsWith("/admin");
   const isAuthRoute = pathname.startsWith("/login") || pathname.startsWith("/signup");
   const isOnboardingRoute = pathname.startsWith("/onboarding");
 
   if (user) {
-    // If authenticated, check profile onboarding status
+    const userEmail = (user.email || "").toLowerCase();
+    const isAdmin =
+      userEmail === adminEmail ||
+      userEmail === "sa@admin.tg" ||
+      user.id === adminUid ||
+      user.id === "f8d95817-f042-4e61-89e4-bb97679f8a48";
+
+    if (isAdmin) {
+      // Admin user: redirect to /admin from ANY other route (including /login, /room, /)
+      if (!isAdminRoute) {
+        const url = request.nextUrl.clone();
+        url.pathname = "/admin";
+        return NextResponse.redirect(url);
+      }
+      return supabaseResponse;
+    }
+
+    // Non-admin user: block access to /admin
+    if (isAdminRoute) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/room";
+      return NextResponse.redirect(url);
+    }
+
+    // Regular user flow: check profile onboarding status
     const { data: profile } = await supabase
       .from("users")
       .select("display_name")
@@ -62,8 +89,8 @@ export async function updateSession(request: NextRequest) {
       return NextResponse.redirect(url);
     }
   } else {
-    // Unauthenticated access attempt to protected or onboarding routes
-    if (isProtectedRoute || isOnboardingRoute) {
+    // Unauthenticated access attempt to protected, admin, or onboarding routes
+    if (isProtectedRoute || isOnboardingRoute || isAdminRoute) {
       const url = request.nextUrl.clone();
       url.pathname = "/login";
       return NextResponse.redirect(url);

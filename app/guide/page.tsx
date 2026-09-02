@@ -23,14 +23,14 @@ function GuideContent() {
       <main className="flex-1 w-full max-w-2xl sm:max-w-3xl px-3.5 sm:px-6 py-4 mx-auto space-y-4 sm:space-y-5">
         {/* Welcome Header Banner for New Users */}
         {isWelcome && (
-          <div className="p-4 sm:p-5 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl space-y-2.5 text-emerald-100 shadow-xl backdrop-blur-md">
+          <div className="p-4 sm:p-5 bg-violet-500/10 border border-violet-500/30 rounded-2xl space-y-2.5 text-violet-100 shadow-xl backdrop-blur-md">
             <div className="flex items-center space-x-2">
-              <Sparkles className="w-5 h-5 text-emerald-400" />
-              <h1 className="text-sm sm:text-base font-extrabold text-emerald-200">
+              <Sparkles className="w-5 h-5 text-violet-400" />
+              <h1 className="text-sm sm:text-base font-extrabold text-violet-200">
                 Welcome to StudyRoom!
               </h1>
             </div>
-            <p className="text-xs text-emerald-200/90 leading-relaxed">
+            <p className="text-xs text-violet-200/90 leading-relaxed">
               Explore how StudyRoom ensures accountability through timestamp-based timers, rolling 24-hour goals, and consistent leaderboard scoring.
             </p>
             <div className="pt-1">
@@ -38,7 +38,7 @@ function GuideContent() {
                 variant="primary"
                 size="md"
                 onClick={() => router.push("/room")}
-                className="font-extrabold text-xs space-x-2 bg-emerald-400 text-zinc-950 hover:bg-emerald-300"
+                className="font-extrabold text-xs space-x-2 bg-violet-600 text-white hover:bg-violet-500 shadow-md shadow-violet-600/20"
               >
                 <span>Enter Live Study Room</span>
                 <ArrowRight className="w-4 h-4" />

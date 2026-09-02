@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { UserProfile } from "@/lib/supabase/types";
 import { User } from "@supabase/supabase-js";
+import { isAdminEmail } from "@/hooks/useAdmin";
 
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
@@ -32,6 +33,7 @@ export function useAuth() {
 
   useEffect(() => {
     let isMounted = true;
+    let lastFetchedUid = "";
 
     async function initAuth() {
       try {
@@ -43,6 +45,14 @@ export function useAuth() {
           const currentUser = session?.user ?? null;
           setUser(currentUser);
           if (currentUser) {
+            if (isAdminEmail(currentUser.email)) {
+              try {
+                localStorage.setItem("studyroom_admin_uid", currentUser.id);
+              } catch {
+                // ignore storage error
+              }
+            }
+            lastFetchedUid = currentUser.id;
             await fetchProfile(currentUser.id);
           }
           setLoading(false);
@@ -63,8 +73,20 @@ export function useAuth() {
       const currentUser = session?.user ?? null;
       setUser(currentUser);
       if (currentUser) {
-        await fetchProfile(currentUser.id);
+        if (isAdminEmail(currentUser.email)) {
+          try {
+            localStorage.setItem("studyroom_admin_uid", currentUser.id);
+          } catch {
+            // ignore storage error
+          }
+        }
+        // Avoid duplicate fetch if initAuth already fetched for this user on initial load
+        if (currentUser.id !== lastFetchedUid || event === "USER_UPDATED" || event === "SIGNED_IN") {
+          lastFetchedUid = currentUser.id;
+          await fetchProfile(currentUser.id);
+        }
       } else {
+        lastFetchedUid = "";
         setProfile(null);
       }
       setLoading(false);
@@ -90,6 +112,11 @@ export function useAuth() {
       console.error("Sign out error:", err);
       setError(err instanceof Error ? err.message : "Failed to sign out");
     } finally {
+      try {
+        localStorage.removeItem("studyroom_admin_uid");
+      } catch {
+        // ignore
+      }
       setUser(null);
       setProfile(null);
       setLoading(false);

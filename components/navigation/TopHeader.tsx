@@ -36,7 +36,7 @@ export const TopHeader = memo(function TopHeader({
             <div className="flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full bg-zinc-900 border border-zinc-800 text-[11px] font-bold text-zinc-300">
               <span
                 className={`w-2 h-2 rounded-full ${
-                  isRealtimeConnected ? "bg-emerald-500 animate-pulse" : "bg-zinc-600"
+                  isRealtimeConnected ? "bg-fuchsia-500 animate-pulse" : "bg-zinc-600"
                 }`}
               />
               <span>

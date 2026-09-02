@@ -25,7 +25,7 @@ export function ScoringBreakdown({ isOpen, onClose }: ScoringBreakdownProps) {
           <div className="p-3 bg-zinc-900 border border-zinc-800 rounded-lg space-y-1">
             <h4 className="font-bold text-zinc-100 flex items-center justify-between">
               <span>1. Active Study Hours</span>
-              <span className="text-emerald-400 font-mono">50% Weight</span>
+              <span className="text-violet-400 font-mono">50% Weight</span>
             </h4>
             <p className="text-zinc-400 text-[11px]">
               Calculated strictly from active study timestamps excluding breaks. Normalized relative to the highest member&apos;s study hours in the weekly window.
@@ -45,7 +45,7 @@ export function ScoringBreakdown({ isOpen, onClose }: ScoringBreakdownProps) {
           <div className="p-3 bg-zinc-900 border border-zinc-800 rounded-lg space-y-1">
             <h4 className="font-bold text-zinc-100 flex items-center justify-between">
               <span>3. Consistency Streak</span>
-              <span className="text-blue-400 font-mono">20% Weight</span>
+              <span className="text-fuchsia-400 font-mono">20% Weight</span>
             </h4>
             <p className="text-zinc-400 text-[11px]">
               Consecutive days recording at least 30 active study minutes. Capped at 7 qualifying days (100% streak score).

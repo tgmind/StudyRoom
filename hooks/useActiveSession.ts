@@ -63,9 +63,15 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
     fetchSessionBlocks();
   }, [fetchSessionBlocks]);
 
+  const actionLoadingRef = useRef(actionLoading);
+  actionLoadingRef.current = actionLoading;
+
+  const elapsedStudySecondsRef = useRef(elapsedStudySeconds);
+  elapsedStudySecondsRef.current = elapsedStudySeconds;
+
   const finishSession = useCallback(
     async (completedTaskIds: string[] = []) => {
-      if (actionLoading) return;
+      if (actionLoadingRef.current) return;
       setActionLoading(true);
       setError(null);
 
@@ -98,7 +104,7 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
         setActionLoading(false);
       }
     },
-    [actionLoading, supabase, onStatusChange]
+    [supabase, onStatusChange]
   );
 
   // 1-Hour Break Inactivity Rule Monitor:
@@ -120,7 +126,7 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
 
       if (breakStatus.isExpired) {
         isAutoTerminatingRef.current = true;
-        const accruedSeconds = profile.active_study_seconds_snapshot ?? elapsedStudySeconds;
+        const accruedSeconds = profile.active_study_seconds_snapshot ?? elapsedStudySecondsRef.current;
         setSavedStudySecondsOnBreakExpiry(accruedSeconds);
 
         try {
@@ -139,7 +145,7 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
     // Check every 2 seconds while on break
     const intervalId = setInterval(checkBreakTimeout, 2000);
     return () => clearInterval(intervalId);
-  }, [currentStatus, profile, blocks, elapsedStudySeconds, finishSession]);
+  }, [currentStatus, profile, blocks, finishSession]);
 
   // Periodic UI refresh loop: Only ticks when actively 'studying'; frozen on 'break' or 'offline'
   useEffect(() => {

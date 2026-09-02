@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+import { isAdminEmail, isAdminUserId } from "@/hooks/useAdmin";
 
 export function LoginForm() {
   const [email, setEmail] = useState("");
@@ -27,15 +28,33 @@ export function LoginForm() {
     setError(null);
 
     try {
-      const { error: authErr } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
+      const trimmedEmail = email.trim();
+      const { data: authData, error: authErr } = await supabase.auth.signInWithPassword({
+        email: trimmedEmail,
         password,
       });
 
       if (authErr) throw authErr;
 
-      router.push("/room");
-      router.refresh();
+      const loggedInUser = authData?.user;
+      const isAdmin =
+        isAdminEmail(trimmedEmail) ||
+        (loggedInUser?.email ? isAdminEmail(loggedInUser.email) : false) ||
+        isAdminUserId(loggedInUser?.id);
+
+      if (isAdmin) {
+        if (loggedInUser?.id) {
+          try {
+            localStorage.setItem("studyroom_admin_uid", loggedInUser.id);
+          } catch {
+            // ignore storage error
+          }
+        }
+        window.location.href = "/admin";
+        return;
+      }
+
+      window.location.href = "/room";
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to log in");
     } finally {

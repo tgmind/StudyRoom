@@ -49,12 +49,12 @@ export default function SettingsPage() {
   }, [profile]);
 
   const handleSignOut = async () => {
+    setIsSignOutModalOpen(false);
     try {
       await signOut();
-      setIsSignOutModalOpen(false);
-      router.push("/login");
-      router.refresh();
     } catch {
+      // ignore error, proceed to login
+    } finally {
       window.location.href = "/login";
     }
   };
@@ -151,11 +151,11 @@ export default function SettingsPage() {
           className="w-full flex items-center justify-between p-3.5 sm:p-4 rounded-2xl bg-zinc-900/70 hover:bg-zinc-900 border border-zinc-800/90 hover:border-zinc-700 transition-all text-left shadow-sm touch-manipulation group"
         >
           <div className="flex items-center space-x-3 min-w-0 flex-1">
-            <div className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 shrink-0">
+            <div className="p-2 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-300 shrink-0">
               <BookOpen className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
             <div className="min-w-0 flex-1">
-              <h2 className="text-xs sm:text-sm font-extrabold text-zinc-100 group-hover:text-emerald-300 transition-colors leading-snug">
+              <h2 className="text-xs sm:text-sm font-extrabold text-zinc-100 group-hover:text-violet-300 transition-colors leading-snug">
                 App Guide & Feature Handbook
               </h2>
               <p className="text-[10px] sm:text-xs text-zinc-400 mt-0.5 leading-snug">
@@ -188,8 +188,8 @@ export default function SettingsPage() {
               </div>
             )}
             {success && (
-              <div className="p-3 bg-emerald-950/40 border border-emerald-800/80 rounded-xl text-xs font-medium text-emerald-200 flex items-center space-x-2">
-                <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+              <div className="p-3 bg-violet-950/40 border border-violet-800/80 rounded-xl text-xs font-medium text-violet-200 flex items-center space-x-2">
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-violet-400" />
                 <span>{success}</span>
               </div>
             )}

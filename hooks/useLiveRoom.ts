@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { UserProfile, UserStatus } from "@/lib/supabase/types";
+import { getAdminUserId } from "@/hooks/useAdmin";
 
 export function sortMembers(members: UserProfile[], currentUserId?: string): UserProfile[] {
   const statusPriority: Record<UserStatus, number> = {
@@ -30,6 +31,16 @@ export function sortMembers(members: UserProfile[], currentUserId?: string): Use
   });
 }
 
+/** Filter out admin user from members list */
+function filterAdmin(members: UserProfile[]): UserProfile[] {
+  const adminId = getAdminUserId();
+  return members.filter((m) => {
+    if (m.is_admin === true) return false;
+    if (adminId && m.id === adminId) return false;
+    return true;
+  });
+}
+
 export function useLiveRoom(currentUserId?: string) {
   const [members, setMembers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,20 +48,29 @@ export function useLiveRoom(currentUserId?: string) {
   const [error, setError] = useState<string | null>(null);
 
   const supabase = createClient();
+  const currentUserIdRef = useRef(currentUserId);
+
+  useEffect(() => {
+    currentUserIdRef.current = currentUserId;
+    setMembers((prev) => sortMembers(prev, currentUserId));
+  }, [currentUserId]);
 
   const fetchMembers = useCallback(async () => {
     try {
       setError(null);
-      const { data, error: fetchErr } = await supabase
-        .from("users")
-        .select("*");
+      let query = supabase.from("users").select("*");
+      const adminId = getAdminUserId();
+      if (adminId) {
+        query = query.neq("id", adminId);
+      }
+      const { data, error: fetchErr } = await query;
 
       if (fetchErr) {
         throw fetchErr;
       }
 
       if (data) {
-        setMembers(sortMembers(data as UserProfile[], currentUserId));
+        setMembers(sortMembers(filterAdmin(data as UserProfile[]), currentUserIdRef.current));
       }
     } catch (err) {
       console.error("Failed to fetch group members:", err);
@@ -58,12 +78,14 @@ export function useLiveRoom(currentUserId?: string) {
     } finally {
       setLoading(false);
     }
-  }, [supabase, currentUserId]);
+  }, [supabase]);
 
   useEffect(() => {
     let channel: ReturnType<typeof supabase.channel> | null = null;
 
     fetchMembers();
+
+    const adminId = getAdminUserId();
 
     // Set up Realtime postgres_changes subscription on public.users
     channel = supabase
@@ -77,20 +99,27 @@ export function useLiveRoom(currentUserId?: string) {
 
             if (payload.eventType === "INSERT") {
               const newProfile = payload.new as UserProfile;
+              if (newProfile.is_admin === true || (adminId && newProfile.id === adminId)) {
+                return prevMembers;
+              }
               if (!updated.some((m) => m.id === newProfile.id)) {
                 updated.push(newProfile);
               }
             } else if (payload.eventType === "UPDATE") {
               const updatedProfile = payload.new as UserProfile;
-              updated = updated.map((m) =>
-                m.id === updatedProfile.id ? updatedProfile : m
-              );
+              if (updatedProfile.is_admin === true || (adminId && updatedProfile.id === adminId)) {
+                updated = updated.filter((m) => m.id !== updatedProfile.id);
+              } else {
+                updated = updated.map((m) =>
+                  m.id === updatedProfile.id ? updatedProfile : m
+                );
+              }
             } else if (payload.eventType === "DELETE") {
               const deletedId = (payload.old as { id: string }).id;
               updated = updated.filter((m) => m.id !== deletedId);
             }
 
-            return sortMembers(updated, currentUserId);
+            return sortMembers(filterAdmin(updated), currentUserIdRef.current);
           });
         }
       )
@@ -107,7 +136,7 @@ export function useLiveRoom(currentUserId?: string) {
         supabase.removeChannel(channel);
       }
     };
-  }, [supabase, currentUserId, fetchMembers]);
+  }, [supabase, fetchMembers]);
 
   return {
     members,

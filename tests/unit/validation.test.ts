@@ -18,8 +18,17 @@ describe("Input Validation Schemas", () => {
 
   it("validates focus tag (optional, max 60 chars)", () => {
     expect(validateFocusTag("").value).toBeNull();
+    expect(validateFocusTag("").isValid).toBe(true);
     expect(validateFocusTag(null).value).toBeNull();
+    expect(validateFocusTag(null).isValid).toBe(true);
     expect(validateFocusTag(" Quantum Mechanics ").value).toBe("Quantum Mechanics");
+    expect(validateFocusTag(" Quantum Mechanics ").isValid).toBe(true);
+
+    const tooLong = "a".repeat(65);
+    const result = validateFocusTag(tooLong);
+    expect(result.isValid).toBe(false);
+    expect(result.error).toContain("cannot exceed 60 characters");
+    expect(result.value?.length).toBe(60);
   });
 
   it("validates goal tasks list (1-10 valid non-empty tasks)", () => {

@@ -44,23 +44,24 @@ export default function OnboardingPage() {
     setError(null);
 
     try {
-      const { error: upsertErr } = await (
+      const { error: updateErr } = await (
         supabase.from("users") as unknown as {
-          upsert: (data: Record<string, unknown>) => Promise<{ error: unknown }>;
+          update: (data: Record<string, unknown>) => {
+            eq: (col: string, val: string) => Promise<{ error: unknown }>;
+          };
         }
-      ).upsert({
-        id: user.id,
-        display_name: validation.value,
-        avatar_url: avatarUrl || null,
-        current_status: "offline",
-      });
+      )
+        .update({
+          display_name: validation.value,
+          avatar_url: avatarUrl || null,
+        })
+        .eq("id", user.id);
 
-      if (upsertErr) throw upsertErr;
+      if (updateErr) throw updateErr;
 
       await refreshProfile();
       // Direct new user to interactive welcome guide first
-      router.push("/guide?welcome=true");
-      router.refresh();
+      window.location.href = "/guide?welcome=true";
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save profile");
     } finally {

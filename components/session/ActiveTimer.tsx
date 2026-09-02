@@ -49,7 +49,7 @@ export function ActiveTimer({
       <div
         className={`relative w-full max-w-sm px-6 py-4 rounded-2xl bg-gradient-to-b from-zinc-900/90 via-zinc-950 to-zinc-950 border transition-all duration-300 flex flex-col items-center ${
           isStudying
-            ? "border-emerald-500/40 ring-1 ring-emerald-500/20 shadow-[0_0_30px_rgba(16,185,129,0.15)]"
+            ? "border-fuchsia-500/40 ring-1 ring-fuchsia-500/20 shadow-[0_0_30px_rgba(217,70,239,0.2)]"
             : isBreak
             ? "border-amber-500/40 ring-1 ring-amber-500/20 shadow-[0_0_30px_rgba(245,158,11,0.15)]"
             : "border-zinc-800/80"
@@ -58,8 +58,8 @@ export function ActiveTimer({
         {/* Status Label Header */}
         <div className="text-[10px] font-extrabold uppercase tracking-wider mb-1">
           {isStudying ? (
-            <span className="text-emerald-400 flex items-center space-x-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+            <span className="text-fuchsia-400 flex items-center space-x-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-fuchsia-400 animate-ping" />
               <span>Active Live Study</span>
             </span>
           ) : isBreak ? (

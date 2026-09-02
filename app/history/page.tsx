@@ -233,8 +233,8 @@ export default function HistoryPage() {
                             {/* Top Line: Duration Pill + Time Interval */}
                             <div className="flex flex-wrap items-center justify-between gap-1.5 sm:gap-2">
                               <div className="flex items-center space-x-2 sm:space-x-2.5 min-w-0">
-                                {/* Faded Soft Teal/Ice Duration Badge */}
-                                <span className="px-2 py-0.5 sm:px-2.5 sm:py-0.5 rounded-lg bg-teal-500/10 border border-teal-500/25 text-teal-200 font-mono text-xs sm:text-sm font-black shadow-sm shrink-0">
+                                {/* Soft Faded Violet Duration Badge */}
+                                <span className="px-2 py-0.5 sm:px-2.5 sm:py-0.5 rounded-lg bg-violet-500/10 border border-violet-500/25 text-violet-200 font-mono text-xs sm:text-sm font-black shadow-sm shrink-0">
                                   {durationStr}
                                 </span>
 
@@ -251,15 +251,15 @@ export default function HistoryPage() {
                             {completedTasks.length > 0 && (
                               <div className="pt-1.5 border-t border-zinc-800/70 flex flex-wrap gap-1.5 items-center">
                                 <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-zinc-400 mr-1 flex items-center space-x-1 shrink-0">
-                                  <CheckCircle2 className="w-3 h-3 text-emerald-400/80" />
+                                  <CheckCircle2 className="w-3 h-3 text-violet-400" />
                                   <span>Goals:</span>
                                 </span>
                                 {completedTasks.map((t) => (
                                   <span
                                     key={t.id}
-                                    className="inline-flex items-center space-x-1 px-2 py-0.5 sm:px-2.5 sm:py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-200 text-[11px] sm:text-xs font-medium max-w-full truncate shadow-sm"
+                                    className="inline-flex items-center space-x-1 px-2 py-0.5 sm:px-2.5 sm:py-0.5 rounded-md bg-violet-500/10 border border-violet-500/20 text-violet-200 text-[11px] sm:text-xs font-medium max-w-full truncate shadow-sm"
                                   >
-                                    <span className="text-emerald-400/80 font-bold">✓</span>
+                                    <span className="text-violet-400 font-bold">✓</span>
                                     <span className="truncate">{t.task}</span>
                                   </span>
                                 ))}

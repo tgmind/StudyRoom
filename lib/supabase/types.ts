@@ -11,6 +11,7 @@ export interface UserProfile {
   break_started_at?: string | null;
   active_study_seconds_snapshot?: number | null;
   has_achiever_badge: boolean;
+  is_admin?: boolean;
   created_at: string;
 }
 
@@ -169,6 +170,26 @@ export interface Database {
       rpc_calculate_weekly_achiever: {
         Args: Record<string, never>;
         Returns: string | null;
+      };
+      rpc_admin_get_all_users: {
+        Args: { p_admin_email: string };
+        Returns: Json;
+      };
+      rpc_admin_rename_user: {
+        Args: { p_admin_email: string; p_target_user_id: string; p_new_name: string };
+        Returns: Json;
+      };
+      rpc_admin_delete_user: {
+        Args: { p_admin_email: string; p_target_user_id: string };
+        Returns: Json;
+      };
+      rpc_admin_force_end_session: {
+        Args: { p_admin_email: string; p_target_user_id: string };
+        Returns: Json;
+      };
+      rpc_admin_get_platform_stats: {
+        Args: { p_admin_email: string };
+        Returns: Json;
       };
     };
     Enums: {

@@ -44,7 +44,7 @@ export const MemberCard = memo(function MemberCard({
         isAchiever
           ? "bg-gradient-to-b from-amber-950/40 via-zinc-900/95 to-zinc-950 border-amber-400/60 ring-1 ring-amber-400/30 shadow-[0_4px_25px_rgba(251,191,36,0.18)]"
           : isStudying
-          ? "bg-gradient-to-b from-zinc-900/90 to-zinc-950/95 border-emerald-500/40 ring-1 ring-emerald-500/20 shadow-[0_4px_20px_rgba(16,185,129,0.1)]"
+          ? "bg-gradient-to-b from-zinc-900/90 to-zinc-950/95 border-fuchsia-500/40 ring-1 ring-fuchsia-500/20 shadow-[0_4px_20px_rgba(217,70,239,0.15)]"
           : isBreak
           ? "bg-gradient-to-b from-amber-950/30 via-zinc-900/90 to-zinc-950/95 border-amber-500/50 ring-1 ring-amber-500/30 shadow-[0_4px_20px_rgba(245,158,11,0.12)]"
           : "bg-zinc-950/60 border-zinc-900/80 opacity-50 grayscale hover:opacity-90 hover:grayscale-0"
@@ -69,10 +69,10 @@ export const MemberCard = memo(function MemberCard({
         </span>
       ) : isStudying ? (
         <span
-          className="absolute top-2.5 left-2.5 flex items-center space-x-1 px-2 py-0.5 rounded-full bg-emerald-950/80 border border-emerald-500/40 text-emerald-400 text-[9px] font-extrabold uppercase tracking-wider shadow-sm"
+          className="absolute top-2.5 left-2.5 flex items-center space-x-1 px-2 py-0.5 rounded-full bg-fuchsia-950/80 border border-fuchsia-500/40 text-fuchsia-300 text-[9px] font-extrabold uppercase tracking-wider shadow-sm"
           title="Member is studying"
         >
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+          <span className="w-1.5 h-1.5 rounded-full bg-fuchsia-400 animate-ping" />
           <span>Studying</span>
         </span>
       ) : null}
@@ -99,7 +99,7 @@ export const MemberCard = memo(function MemberCard({
             isAchiever
               ? "border-amber-400 ring-2 ring-amber-400/50 shadow-[0_0_15px_rgba(251,191,36,0.3)]"
               : isStudying
-              ? "border-emerald-500 ring-2 ring-emerald-500/40 shadow-[0_0_15px_rgba(16,185,129,0.2)]"
+              ? "border-fuchsia-500 ring-2 ring-fuchsia-500/40 shadow-[0_0_15px_rgba(217,70,239,0.25)]"
               : isBreak
               ? "border-amber-500 ring-2 ring-amber-500/40 shadow-[0_0_15px_rgba(245,158,11,0.2)]"
               : "border-zinc-800"
@@ -121,7 +121,7 @@ export const MemberCard = memo(function MemberCard({
           {!isOffline && (
             <span
               className={`absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-zinc-950 ${
-                isStudying ? "bg-emerald-500" : "bg-amber-500"
+                isStudying ? "bg-fuchsia-500" : "bg-amber-500"
               }`}
             />
           )}
@@ -154,8 +154,8 @@ export const MemberCard = memo(function MemberCard({
       {/* Bottom: Live Digital Timer Readout Pill */}
       <div className="w-full mt-3 pt-2.5 border-t border-zinc-800/60 flex justify-center">
         {isStudying ? (
-          <div className="font-mono text-xs font-black tracking-tight px-3 py-1 rounded-full border shadow-inner flex items-center space-x-1.5 bg-emerald-950/40 text-emerald-400 border-emerald-500/30 tabular-nums">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          <div className="font-mono text-xs font-black tracking-tight px-3 py-1 rounded-full border shadow-inner flex items-center space-x-1.5 bg-fuchsia-950/40 text-fuchsia-300 border-fuchsia-500/30 tabular-nums">
+            <span className="w-1.5 h-1.5 rounded-full bg-fuchsia-400 animate-pulse" />
             <span>{formatDurationSeconds(elapsedSeconds)}</span>
           </div>
         ) : isBreak ? (

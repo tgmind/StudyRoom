@@ -47,7 +47,7 @@ export function validateFocusTag(rawInput?: string | null): ValidationResult<str
   }
 
   if (trimmed.length > 60) {
-    return { isValid: true, value: trimmed.substring(0, 60), error: "Focus tag cannot exceed 60 characters" };
+    return { isValid: false, value: trimmed.substring(0, 60), error: "Focus tag cannot exceed 60 characters" };
   }
 
   return { isValid: true, value: trimmed };

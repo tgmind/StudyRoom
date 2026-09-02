@@ -9,6 +9,7 @@ import { BottomNav } from "@/components/navigation/BottomNav";
 import { LeaderboardCard } from "@/components/leaderboard/LeaderboardCard";
 import { ScoringBreakdown } from "@/components/leaderboard/ScoringBreakdown";
 import { Trophy, HelpCircle, Star, Sparkles, Clock, Target, Flame } from "lucide-react";
+import { getAdminUserId, isAdminUserId } from "@/hooks/useAdmin";
 
 type RpcCaller = {
   rpc: (name: string, params?: Record<string, unknown>) => Promise<{ data: unknown; error: Error | null }>;
@@ -35,7 +36,14 @@ export default function LeaderboardPage() {
 
       if (rpcErr) throw rpcErr;
 
-      setEntries((data as unknown as LeaderboardEntry[]) || []);
+      const rawEntries = (data as unknown as LeaderboardEntry[]) || [];
+      const filtered = rawEntries.filter((e) => {
+        if (isAdminUserId(e.user_id)) return false;
+        if ((e as unknown as { is_admin?: boolean }).is_admin === true) return false;
+        return true;
+      });
+
+      setEntries(filtered);
     } catch (err) {
       console.error("Failed to fetch leaderboard:", err);
       setError(err instanceof Error ? err.message : "Failed to load leaderboard");
@@ -89,16 +97,16 @@ export default function LeaderboardPage() {
 
           {/* Transparent Metric Formula Chips */}
           <div className="grid grid-cols-3 gap-1.5 sm:gap-2.5 pt-2 border-t border-zinc-800/80 text-[10px] sm:text-xs">
-            <div className="p-2 rounded-xl bg-zinc-950/60 border border-teal-500/15 text-center min-w-0">
-              <div className="flex items-center justify-center space-x-1 text-teal-300 font-bold mb-0.5 whitespace-nowrap">
+            <div className="p-2 rounded-xl bg-zinc-950/60 border border-violet-500/15 text-center min-w-0">
+              <div className="flex items-center justify-center space-x-1 text-violet-300 font-bold mb-0.5 whitespace-nowrap">
                 <Clock className="w-3 h-3 shrink-0" />
                 <span>50% Hours</span>
               </div>
               <span className="text-[9px] sm:text-[10px] text-zinc-500 block leading-tight">Study Duration</span>
             </div>
 
-            <div className="p-2 rounded-xl bg-zinc-950/60 border border-emerald-500/15 text-center min-w-0">
-              <div className="flex items-center justify-center space-x-1 text-emerald-300 font-bold mb-0.5 whitespace-nowrap">
+            <div className="p-2 rounded-xl bg-zinc-950/60 border border-fuchsia-500/15 text-center min-w-0">
+              <div className="flex items-center justify-center space-x-1 text-fuchsia-300 font-bold mb-0.5 whitespace-nowrap">
                 <Target className="w-3 h-3 shrink-0" />
                 <span>30% Goals</span>
               </div>

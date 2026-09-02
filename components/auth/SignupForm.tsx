@@ -14,6 +14,7 @@ export function SignupForm() {
   const [displayName, setDisplayName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const router = useRouter();
   const supabase = createClient();
@@ -32,6 +33,7 @@ export function SignupForm() {
 
     setLoading(true);
     setError(null);
+    setSuccess(null);
 
     try {
       const { data, error: authErr } = await supabase.auth.signUp({
@@ -46,23 +48,34 @@ export function SignupForm() {
 
       if (authErr) throw authErr;
 
-      // If user profile needs display_name setup
       if (data.user) {
-        if (!displayName.trim()) {
-          router.push("/onboarding");
-        } else {
-          // Explicitly upsert display_name if trigger didn't pick it up
-          await (
-            supabase.from("users") as unknown as {
-              upsert: (data: Record<string, unknown>) => Promise<{ error: unknown }>;
-            }
-          ).upsert({
-            id: data.user.id,
-            display_name: displayName.trim(),
-          });
-          router.push("/room");
+        if (!data.session) {
+          // Email confirmation is required by Supabase project settings
+          setSuccess(
+            "Account created successfully! If email confirmation is enabled, please verify your email before logging in. You can now proceed to Log In."
+          );
+          return;
         }
-        router.refresh();
+
+        // Active session established: update display_name if provided
+        if (displayName.trim()) {
+          try {
+            await (
+              supabase.from("users") as unknown as {
+                update: (data: Record<string, unknown>) => {
+                  eq: (col: string, val: string) => Promise<{ error: unknown }>;
+                };
+              }
+            )
+              .update({ display_name: displayName.trim() })
+              .eq("id", data.user.id);
+          } catch {
+            // non-fatal
+          }
+          window.location.href = "/room";
+        } else {
+          window.location.href = "/onboarding";
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create account");
@@ -94,6 +107,13 @@ export function SignupForm() {
         {error && (
           <div className="p-3 bg-red-950/50 border border-red-800 rounded-lg text-xs font-medium text-red-200">
             {error}
+          </div>
+        )}
+
+        {success && (
+          <div className="p-3.5 bg-violet-950/40 border border-violet-800/80 rounded-xl text-xs font-medium text-violet-200 space-y-1">
+            <p className="font-bold text-violet-100">Notice</p>
+            <p className="text-violet-300 leading-relaxed">{success}</p>
           </div>
         )}
 

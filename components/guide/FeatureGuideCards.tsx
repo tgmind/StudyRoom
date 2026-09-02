@@ -31,9 +31,9 @@ export function FeatureGuideCards() {
       description:
         "Navigate to the Goals tab and create your 24-hour goal window. Add 1 to 10 actionable tasks. Once created, your window runs for exactly 24 hours. You can append more goals anytime, but goals cannot be deleted to enforce real discipline.",
       badge: "Step 1",
-      accent: "teal",
-      badgeColor: "bg-teal-500/10 text-teal-300 border-teal-500/30",
-      iconColor: "text-teal-300 bg-teal-500/10 border-teal-500/25",
+      accent: "violet",
+      badgeColor: "bg-violet-500/10 text-violet-300 border-violet-500/30",
+      iconColor: "text-violet-300 bg-violet-500/10 border-violet-500/25",
     },
     {
       stepNumber: "02",
@@ -43,9 +43,9 @@ export function FeatureGuideCards() {
       description:
         "Head to the Room tab and tap 'Start Studying'. Your timer immediately begins tracking your focus time and your status is broadcast live to all peer study members in the room.",
       badge: "Step 2",
-      accent: "emerald",
-      badgeColor: "bg-emerald-500/10 text-emerald-300 border-emerald-500/30",
-      iconColor: "text-emerald-300 bg-emerald-500/10 border-emerald-500/25",
+      accent: "fuchsia",
+      badgeColor: "bg-fuchsia-500/10 text-fuchsia-300 border-fuchsia-500/30",
+      iconColor: "text-fuchsia-300 bg-fuchsia-500/10 border-fuchsia-500/25",
     },
     {
       stepNumber: "03",
@@ -80,9 +80,9 @@ export function FeatureGuideCards() {
       subtitle: "Zero clock drift or timer loss",
       description:
         "StudyRoom calculates active study duration from authoritative PostgreSQL timestamps. It never relies on fragile browser interval ticks. Pauses and breaks are excluded from your study total with microsecond precision.",
-      accent: "border-teal-500/25 bg-zinc-900/80 text-teal-300",
+      accent: "border-violet-500/25 bg-zinc-900/80 text-violet-300",
       pill: "Authoritative Sync",
-      pillBg: "bg-teal-500/10 text-teal-300 border-teal-500/30",
+      pillBg: "bg-violet-500/10 text-violet-300 border-violet-500/30",
     },
     {
       icon: Target,
@@ -90,9 +90,9 @@ export function FeatureGuideCards() {
       subtitle: "Personal 24h accountability cycles",
       description:
         "Goal windows run for exactly 24 hours from creation rather than resetting at midnight. You can append new goals at any time, but tasks cannot be deleted—uncompleted goals count towards your weekly completion rate.",
-      accent: "border-emerald-500/25 bg-zinc-900/80 text-emerald-300",
+      accent: "border-fuchsia-500/25 bg-zinc-900/80 text-fuchsia-300",
       pill: "High Accountability",
-      pillBg: "bg-emerald-500/10 text-emerald-300 border-emerald-500/30",
+      pillBg: "bg-fuchsia-500/10 text-fuchsia-300 border-fuchsia-500/30",
     },
     {
       icon: CheckCircle2,
@@ -158,7 +158,7 @@ export function FeatureGuideCards() {
           onClick={() => setActiveTab("features")}
           className={`py-2 px-1 sm:px-3 rounded-xl text-xs font-black transition-all touch-manipulation flex items-center justify-center space-x-1 sm:space-x-1.5 whitespace-nowrap ${
             activeTab === "features"
-              ? "bg-emerald-500/15 text-emerald-200 border border-emerald-500/35 shadow-sm"
+              ? "bg-fuchsia-500/15 text-fuchsia-200 border border-fuchsia-500/35 shadow-sm"
               : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40"
           }`}
         >
@@ -305,23 +305,23 @@ export function FeatureGuideCards() {
             {/* Split Composition Bar */}
             <div className="space-y-1.5 pt-1">
               <div className="flex justify-between items-center text-[10px] font-mono font-bold">
-                <span className="text-teal-400">50% Study Hours</span>
-                <span className="text-emerald-400">30% 24h Goals</span>
+                <span className="text-violet-400">50% Study Hours</span>
+                <span className="text-fuchsia-400">30% 24h Goals</span>
                 <span className="text-amber-400">20% Streak</span>
               </div>
               <div className="w-full h-3 bg-zinc-950 rounded-full border border-zinc-800 flex overflow-hidden p-0.5 gap-1">
-                <div className="h-full bg-teal-500 rounded-l-full shadow-sm" style={{ width: "50%" }} />
-                <div className="h-full bg-emerald-500 shadow-sm" style={{ width: "30%" }} />
+                <div className="h-full bg-violet-500 rounded-l-full shadow-sm" style={{ width: "50%" }} />
+                <div className="h-full bg-fuchsia-500 shadow-sm" style={{ width: "30%" }} />
                 <div className="h-full bg-amber-500 rounded-r-full shadow-sm" style={{ width: "20%" }} />
               </div>
             </div>
           </div>
 
           {/* Component 1: 50% Active Study Duration */}
-          <div className="p-4 sm:p-5 rounded-2xl bg-zinc-900/80 border border-teal-500/30 space-y-3 shadow-md backdrop-blur-md">
+          <div className="p-4 sm:p-5 rounded-2xl bg-zinc-900/80 border border-violet-500/30 space-y-3 shadow-md backdrop-blur-md">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center space-x-2.5 min-w-0">
-                <div className="p-2 rounded-xl bg-teal-500/10 border border-teal-500/25 text-teal-300 shrink-0">
+                <div className="p-2 rounded-xl bg-violet-500/10 border border-violet-500/25 text-violet-300 shrink-0">
                   <Clock className="w-4 h-4" />
                 </div>
                 <div className="min-w-0">
@@ -334,7 +334,7 @@ export function FeatureGuideCards() {
                 </div>
               </div>
 
-              <span className="font-mono text-xs font-black text-teal-300 px-3 py-1 rounded-full bg-teal-500/10 border border-teal-500/30 shrink-0">
+              <span className="font-mono text-xs font-black text-violet-300 px-3 py-1 rounded-full bg-violet-500/10 border border-violet-500/30 shrink-0">
                 50% Weight
               </span>
             </div>
@@ -345,12 +345,12 @@ export function FeatureGuideCards() {
 
             {/* Formula Block */}
             <div className="p-3 bg-zinc-950/80 border border-zinc-800/90 rounded-xl space-y-1">
-              <div className="flex items-center space-x-1.5 text-[10px] font-bold text-teal-400 uppercase tracking-wider">
+              <div className="flex items-center space-x-1.5 text-[10px] font-bold text-violet-400 uppercase tracking-wider">
                 <Calculator className="w-3 h-3" />
                 <span>Formula</span>
               </div>
               <div className="font-mono text-xs text-zinc-200 flex flex-wrap items-center gap-1.5">
-                <span className="text-teal-300 font-bold">Study Score</span>
+                <span className="text-violet-300 font-bold">Study Score</span>
                 <Equal className="w-3.5 h-3.5 text-zinc-500" />
                 <span>(Your Weekly Minutes ÷ Top Peer Minutes) × 50</span>
               </div>
@@ -358,10 +358,10 @@ export function FeatureGuideCards() {
           </div>
 
           {/* Component 2: 30% 24h Goal Completion Rate */}
-          <div className="p-4 sm:p-5 rounded-2xl bg-zinc-900/80 border border-emerald-500/30 space-y-3 shadow-md backdrop-blur-md">
+          <div className="p-4 sm:p-5 rounded-2xl bg-zinc-900/80 border border-fuchsia-500/30 space-y-3 shadow-md backdrop-blur-md">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center space-x-2.5 min-w-0">
-                <div className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-300 shrink-0">
+                <div className="p-2 rounded-xl bg-fuchsia-500/10 border border-fuchsia-500/25 text-fuchsia-300 shrink-0">
                   <Target className="w-4 h-4" />
                 </div>
                 <div className="min-w-0">
@@ -374,7 +374,7 @@ export function FeatureGuideCards() {
                 </div>
               </div>
 
-              <span className="font-mono text-xs font-black text-emerald-300 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 shrink-0">
+              <span className="font-mono text-xs font-black text-fuchsia-300 px-3 py-1 rounded-full bg-fuchsia-500/10 border border-fuchsia-500/30 shrink-0">
                 30% Weight
               </span>
             </div>
@@ -385,12 +385,12 @@ export function FeatureGuideCards() {
 
             {/* Formula Block */}
             <div className="p-3 bg-zinc-950/80 border border-zinc-800/90 rounded-xl space-y-1">
-              <div className="flex items-center space-x-1.5 text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
+              <div className="flex items-center space-x-1.5 text-[10px] font-bold text-fuchsia-400 uppercase tracking-wider">
                 <Calculator className="w-3 h-3" />
                 <span>Formula</span>
               </div>
               <div className="font-mono text-xs text-zinc-200 flex flex-wrap items-center gap-1.5">
-                <span className="text-emerald-300 font-bold">Goal Score</span>
+                <span className="text-fuchsia-300 font-bold">Goal Score</span>
                 <Equal className="w-3.5 h-3.5 text-zinc-500" />
                 <span>(Completed Tasks ÷ Total Committed Tasks) × 30</span>
               </div>
