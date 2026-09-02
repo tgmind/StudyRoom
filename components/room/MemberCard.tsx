@@ -46,8 +46,9 @@ export const MemberCard = memo(function MemberCard({
   const total24hStudySeconds =
     (member.past_24h_study_seconds ?? 0) + (isStudying || isBreak ? elapsedSeconds : 0);
 
-  // 4. Completed Sessions Count
-  const sessionsCount = member.total_sessions_count ?? 0;
+  // 4. Total Sessions Count (completed sessions + active in-progress session)
+  const isCurrentSessionActive = isStudying || isBreak;
+  const sessionsCount = (member.total_sessions_count ?? 0) + (isCurrentSessionActive ? 1 : 0);
 
   const initials = member.display_name
     ? member.display_name.substring(0, 2).toUpperCase()
@@ -183,7 +184,7 @@ export const MemberCard = memo(function MemberCard({
 
         <div
           className="flex items-center gap-1 min-w-0"
-          title={`Completed study sessions: ${sessionsCount}`}
+          title={`${sessionsCount} session${sessionsCount === 1 ? "" : "s"} (${isCurrentSessionActive ? "current session in progress" : "completed"})`}
         >
           <BookOpen className="w-2.5 h-2.5 text-violet-400/90 shrink-0" />
           <span className="font-bold text-zinc-200 tabular-nums text-[10px] sm:text-[11px]">

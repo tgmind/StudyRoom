@@ -228,7 +228,10 @@ export function AdminUserRow({ user, onRename, onDelete, onForceEnd }: AdminUser
         {/* Row 3: Meta + Actions */}
         <div className="flex items-center justify-between pl-12">
           <div className="flex items-center gap-3 text-[10px] text-zinc-500">
-            <span>{user.total_sessions_count} sessions</span>
+            <span>
+              {(user.total_sessions_count ?? 0) + (isActive ? 1 : 0)}{" "}
+              {(user.total_sessions_count ?? 0) + (isActive ? 1 : 0) === 1 ? "session" : "sessions"}
+            </span>
             {user.active_goal_count > 0 && (
               <span className="text-violet-400/80">{user.active_goal_count} active goal(s)</span>
             )}
