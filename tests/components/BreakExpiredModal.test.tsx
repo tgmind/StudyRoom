@@ -24,7 +24,7 @@ describe("BreakExpiredModal Component", () => {
     expect(screen.getByText("Dismiss")).toBeInTheDocument();
   });
 
-  it("calls onStartNewSession when 'Start New Session' is clicked", () => {
+  it("calls onStartNewSession when 'Start New Session' is clicked without onProceedToGoals", () => {
     const handleStartNew = vi.fn();
     const handleClose = vi.fn();
 
@@ -40,5 +40,62 @@ describe("BreakExpiredModal Component", () => {
     fireEvent.click(screen.getByText("Start New Session"));
     expect(handleClose).toHaveBeenCalled();
     expect(handleStartNew).toHaveBeenCalled();
+  });
+
+  it("calls onProceedToGoals(true) when 'Start New Session' is clicked with active goals", () => {
+    const handleProceedToGoals = vi.fn();
+    const handleClose = vi.fn();
+
+    render(
+      <BreakExpiredModal
+        isOpen={true}
+        onClose={handleClose}
+        onProceedToGoals={handleProceedToGoals}
+        hasActiveGoals={true}
+        savedStudySeconds={3600}
+      />
+    );
+
+    fireEvent.click(screen.getByText("Start New Session"));
+    expect(handleClose).toHaveBeenCalled();
+    expect(handleProceedToGoals).toHaveBeenCalledWith(true);
+  });
+
+  it("calls onProceedToGoals(false) when 'Update Goals' is clicked", () => {
+    const handleProceedToGoals = vi.fn();
+    const handleClose = vi.fn();
+
+    render(
+      <BreakExpiredModal
+        isOpen={true}
+        onClose={handleClose}
+        onProceedToGoals={handleProceedToGoals}
+        hasActiveGoals={true}
+        savedStudySeconds={3600}
+      />
+    );
+
+    fireEvent.click(screen.getByText("Update Goals"));
+    expect(handleClose).toHaveBeenCalled();
+    expect(handleProceedToGoals).toHaveBeenCalledWith(false);
+  });
+
+  it("calls onClose when 'Dismiss' is clicked", () => {
+    const handleProceedToGoals = vi.fn();
+    const handleClose = vi.fn();
+
+    render(
+      <BreakExpiredModal
+        isOpen={true}
+        onClose={handleClose}
+        onProceedToGoals={handleProceedToGoals}
+        hasActiveGoals={true}
+        savedStudySeconds={3600}
+      />
+    );
+
+    fireEvent.click(screen.getByText("Dismiss"));
+    expect(handleClose).toHaveBeenCalled();
+    expect(handleProceedToGoals).not.toHaveBeenCalled();
   });
 });

@@ -188,6 +188,7 @@ export function useDailyGoals(userId?: string) {
           .from("study_sessions")
           .select("id, completed_tasks")
           .eq("user_id", userId)
+          .not("end_time", "is", null)
           .order("end_time", { ascending: false })
           .limit(1)
           .maybeSingle();

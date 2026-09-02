@@ -153,6 +153,51 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
     return () => clearInterval(intervalId);
   }, [currentStatus, profile, blocks, finishSession]);
 
+  // Persist active break state to localStorage so background tab / phone sleep is trackable
+  useEffect(() => {
+    if (typeof window === "undefined" || !profile) return;
+    if (currentStatus === "break" && profile.break_started_at) {
+      try {
+        const accruedSeconds = profile.active_study_seconds_snapshot ?? elapsedStudySecondsRef.current;
+        localStorage.setItem(
+          "studyroom_active_break",
+          JSON.stringify({
+            userId: profile.id,
+            breakStartedAt: profile.break_started_at,
+            accruedSeconds,
+          })
+        );
+      } catch {
+        // storage disabled or quota exceeded
+      }
+    } else if (currentStatus === "studying") {
+      try {
+        localStorage.removeItem("studyroom_active_break");
+      } catch {}
+    }
+  }, [currentStatus, profile]);
+
+  // Check if an offline user had an expired break that ended while offline / in background
+  useEffect(() => {
+    if (typeof window === "undefined" || !profile || currentStatus === "break") return;
+    try {
+      const stored = localStorage.getItem("studyroom_active_break");
+      if (stored) {
+        const data = JSON.parse(stored);
+        if (data.userId === profile.id && data.breakStartedAt) {
+          const breakStartMs = new Date(data.breakStartedAt).getTime();
+          if (!isNaN(breakStartMs) && Date.now() - breakStartMs >= 3600 * 1000) {
+            setSavedStudySecondsOnBreakExpiry(data.accruedSeconds || 0);
+            setIsBreakExpiredNoticeOpen(true);
+          }
+        }
+        localStorage.removeItem("studyroom_active_break");
+      }
+    } catch {
+      // storage error
+    }
+  }, [profile, currentStatus]);
+
   // Periodic UI refresh loop: Only ticks when actively 'studying'; frozen on 'break' or 'offline'
   useEffect(() => {
     if (currentStatus === "offline") {
@@ -278,6 +323,11 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
 
   const closeBreakExpiredNotice = () => {
     setIsBreakExpiredNoticeOpen(false);
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.removeItem("studyroom_active_break");
+      } catch {}
+    }
   };
 
   const openBreakBlock = blocks.find((b) => b.block_type === "break" && !b.end_time);

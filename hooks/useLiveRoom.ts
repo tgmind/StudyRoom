@@ -61,6 +61,7 @@ export function useLiveRoom(currentUserId?: string) {
   const supabase = createClient();
   const currentUserIdRef = useRef(currentUserId);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const recentlyStoppedBreakUserIdsRef = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
     currentUserIdRef.current = currentUserId;
@@ -108,10 +109,15 @@ export function useLiveRoom(currentUserId?: string) {
         );
 
         if (expiredBreakUsers.length > 0) {
+          const nowMs = Date.now();
           expiredBreakUsers.forEach((expired) => {
-            (supabase as unknown as { rpc: (name: string, params: Record<string, unknown>) => Promise<unknown> })
-              .rpc("rpc_stop_user_session", { p_user_id: expired.id })
-              .catch((err: unknown) => console.warn("[LiveRoom] Auto-stop expired break failed:", err));
+            const lastAttempt = recentlyStoppedBreakUserIdsRef.current.get(expired.id) || 0;
+            if (nowMs - lastAttempt > 15000) {
+              recentlyStoppedBreakUserIdsRef.current.set(expired.id, nowMs);
+              (supabase as unknown as { rpc: (name: string, params: Record<string, unknown>) => Promise<unknown> })
+                .rpc("rpc_stop_user_session", { p_user_id: expired.id })
+                .catch((err: unknown) => console.warn("[LiveRoom] Auto-stop expired break failed:", err));
+            }
           });
         }
 

@@ -28,26 +28,45 @@ export function BreakGoalUpdateModal({
 }: BreakGoalUpdateModalProps) {
   const tasks: GoalTask[] = activeGoal?.tasks || [];
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const isBusy = isLoading || isSubmitting;
 
   // Toggle task selection
   const toggleTask = (taskId: string, alreadyCompleted: boolean) => {
-    if (alreadyCompleted) return;
+    if (alreadyCompleted || isBusy) return;
     setSelectedTaskIds((prev) =>
       prev.includes(taskId) ? prev.filter((id) => id !== taskId) : [...prev, taskId]
     );
   };
 
   const handleSaveWithGoals = async () => {
-    const newlyCompleted = selectedTaskIds;
-    await onConfirmSaveGoals(newlyCompleted);
-    setSelectedTaskIds([]);
-    onClose();
+    if (isBusy) return;
+    setIsSubmitting(true);
+    try {
+      const newlyCompleted = selectedTaskIds;
+      await onConfirmSaveGoals(newlyCompleted);
+      setSelectedTaskIds([]);
+      onClose();
+    } catch (err) {
+      console.error("Save goals error in modal:", err);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleSkipGoals = async () => {
-    setSelectedTaskIds([]);
-    await onConfirmSaveGoals([]);
-    onClose();
+    if (isBusy) return;
+    setIsSubmitting(true);
+    try {
+      setSelectedTaskIds([]);
+      await onConfirmSaveGoals([]);
+      onClose();
+    } catch (err) {
+      console.error("Skip goals error in modal:", err);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const hasSelectedTasks = selectedTaskIds.length > 0;
@@ -140,7 +159,7 @@ export function BreakGoalUpdateModal({
             variant="secondary"
             size="md"
             onClick={handleSkipGoals}
-            disabled={isLoading}
+            disabled={isBusy}
             className="w-full sm:w-auto px-4 font-bold text-xs bg-zinc-900 text-zinc-300 hover:bg-zinc-800 border-zinc-700"
           >
             {isStartingNewSession ? "Skip & Start New" : "Skip Goals"}
@@ -153,7 +172,7 @@ export function BreakGoalUpdateModal({
               variant="primary"
               size="md"
               onClick={handleSaveWithGoals}
-              isLoading={isLoading}
+              isLoading={isBusy}
               className="w-full sm:w-auto px-5 font-extrabold text-xs shadow-md bg-violet-600 hover:bg-violet-500 text-white border-violet-500 shadow-violet-600/20"
             >
               Save Goals ({selectedTaskIds.length})
@@ -164,7 +183,7 @@ export function BreakGoalUpdateModal({
               variant="primary"
               size="md"
               onClick={handleSkipGoals}
-              disabled={isLoading}
+              disabled={isBusy}
               className="w-full sm:w-auto px-5 font-extrabold text-xs shadow-md bg-zinc-100 text-zinc-950 hover:bg-white border-white flex items-center justify-center space-x-1.5"
             >
               <Play className="w-3.5 h-3.5 fill-current" />
@@ -176,7 +195,7 @@ export function BreakGoalUpdateModal({
               variant="primary"
               size="md"
               onClick={handleSkipGoals}
-              disabled={isLoading}
+              disabled={isBusy}
               className="w-full sm:w-auto px-5 font-extrabold text-xs shadow-md bg-zinc-100 text-zinc-950 hover:bg-white border-white"
             >
               Done

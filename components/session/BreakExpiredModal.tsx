@@ -41,9 +41,6 @@ export function BreakExpiredModal({
 
   const handleDismiss = () => {
     onClose();
-    if (onProceedToGoals && hasActiveGoals) {
-      onProceedToGoals(false);
-    }
   };
 
   return (

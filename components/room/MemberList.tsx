@@ -87,8 +87,10 @@ export const MemberList = memo(function MemberList({
       }
 
       // 2. Active studying before break
-      if (a.current_status !== b.current_status) {
-        return a.current_status === "studying" ? -1 : 1;
+      const statusA = getEffectiveMemberStatus(a, currentTimestamp);
+      const statusB = getEffectiveMemberStatus(b, currentTimestamp);
+      if (statusA !== statusB) {
+        return statusA === "studying" ? -1 : 1;
       }
 
       // 3. Alphabetical tie-breaker

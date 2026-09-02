@@ -67,7 +67,14 @@ export default function RoomPage() {
     }
   }, [effectiveProfile?.current_status, resumeSession]);
 
-  const { activeGoal, countdown, createGoal, completeGoalTasks, refreshGoals } = useDailyGoals(user?.id);
+  const {
+    activeGoal,
+    countdown,
+    createGoal,
+    completeGoalTasks,
+    refreshGoals,
+    actionLoading: goalActionLoading,
+  } = useDailyGoals(user?.id);
   const [isGoalSetupModalOpen, setIsGoalSetupModalOpen] = useState(false);
   const [isBreakGoalModalOpen, setIsBreakGoalModalOpen] = useState(false);
   const [isPendingStartNewAfterBreak, setIsPendingStartNewAfterBreak] = useState(false);
@@ -137,19 +144,24 @@ export default function RoomPage() {
   };
 
   const handleSaveGoalsAfterBreak = async (completedTaskIds: string[]) => {
-    if (completedTaskIds.length > 0) {
-      await completeGoalTasks(completedTaskIds);
-      await Promise.allSettled([refreshGoals(), refreshProfile(), refreshMembers()]);
-    }
-    setIsBreakGoalModalOpen(false);
+    try {
+      if (completedTaskIds.length > 0) {
+        await completeGoalTasks(completedTaskIds);
+        await Promise.allSettled([refreshGoals(), refreshProfile(), refreshMembers()]);
+      }
+    } catch (err) {
+      console.error("Failed to save goals after break:", err);
+    } finally {
+      setIsBreakGoalModalOpen(false);
 
-    if (isPendingStartNewAfterBreak) {
-      setIsPendingStartNewAfterBreak(false);
-      const isGoalMissingOrExpired = !activeGoal || countdown.isExpired;
-      if (isGoalMissingOrExpired) {
-        setIsGoalSetupModalOpen(true);
-      } else {
-        await handleStartSession(null);
+      if (isPendingStartNewAfterBreak) {
+        setIsPendingStartNewAfterBreak(false);
+        const isGoalMissingOrExpired = !activeGoal || countdown.isExpired;
+        if (isGoalMissingOrExpired) {
+          setIsGoalSetupModalOpen(true);
+        } else {
+          await handleStartSession(null);
+        }
       }
     }
   };
@@ -229,7 +241,7 @@ export default function RoomPage() {
         activeGoal={activeGoal}
         savedStudySeconds={savedStudySecondsOnBreakExpiry}
         isStartingNewSession={isPendingStartNewAfterBreak}
-        isLoading={actionLoading}
+        isLoading={goalActionLoading || actionLoading}
       />
 
       {/* Goal Setup Modal when starting after break */}
@@ -237,7 +249,7 @@ export default function RoomPage() {
         isOpen={isGoalSetupModalOpen}
         onClose={() => setIsGoalSetupModalOpen(false)}
         onConfirmCreate={handleGoalCreatedFromModal}
-        isLoading={actionLoading}
+        isLoading={goalActionLoading || actionLoading}
       />
 
       <BottomNav />
