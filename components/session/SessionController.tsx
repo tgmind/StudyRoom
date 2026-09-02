@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/Button";
 import { ActiveTimer } from "@/components/session/ActiveTimer";
 import { StopHookModal } from "@/components/session/StopHookModal";
 import { CreateGoalModal } from "@/components/goals/CreateGoalModal";
+import { MandatoryNotificationModal } from "@/components/session/MandatoryNotificationModal";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { UserStatus, DailyGoal } from "@/lib/supabase/types";
 import { GoalCountdownResult } from "@/lib/time/countdown";
 import { Play, Pause, Square, RotateCcw } from "lucide-react";
@@ -39,6 +41,9 @@ export const SessionController = memo(function SessionController({
 }: SessionControllerProps) {
   const [isStopModalOpen, setIsStopModalOpen] = useState(false);
   const [isGoalSetupModalOpen, setIsGoalSetupModalOpen] = useState(false);
+  const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
+
+  const { isSupported, isSubscribed, permission } = usePushNotifications();
 
   const isIdle = status === "offline";
   const isStudying = status === "studying";
@@ -48,6 +53,24 @@ export const SessionController = memo(function SessionController({
 
   // Direct Start Studying Flow
   const handleStartStudyingClick = async () => {
+    try {
+      // Enforce mandatory notifications before starting session
+      if (isSupported && !isSubscribed && permission !== "granted") {
+        setIsNotificationModalOpen(true);
+        return;
+      }
+
+      if (isGoalMissingOrExpired) {
+        setIsGoalSetupModalOpen(true);
+      } else {
+        await onStartSession(null);
+      }
+    } catch {
+      // handled by parent error state
+    }
+  };
+
+  const handleNotificationGrantedAndProceed = async () => {
     try {
       if (isGoalMissingOrExpired) {
         setIsGoalSetupModalOpen(true);
@@ -181,6 +204,13 @@ export const SessionController = memo(function SessionController({
         activeGoal={activeGoal}
         elapsedSeconds={elapsedSeconds}
         isLoading={isLoading}
+      />
+
+      {/* Mandatory Push Notification Modal */}
+      <MandatoryNotificationModal
+        isOpen={isNotificationModalOpen}
+        onClose={() => setIsNotificationModalOpen(false)}
+        onPermissionGranted={handleNotificationGrantedAndProceed}
       />
     </div>
   );

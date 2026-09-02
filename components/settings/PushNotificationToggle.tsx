@@ -87,10 +87,10 @@ export function PushNotificationToggle() {
               ? "bg-violet-500/15 text-violet-300 border-violet-500/30"
               : isDenied
               ? "bg-rose-500/15 text-rose-300 border-rose-500/30"
-              : "bg-zinc-800 text-zinc-400 border-zinc-700"
+              : "bg-amber-500/15 text-amber-300 border-amber-500/30"
           }`}
         >
-          {isSubscribed ? "Active" : isDenied ? "Blocked" : "Off"}
+          {isSubscribed ? "Active" : isDenied ? "Blocked" : "Required"}
         </span>
       </div>
 
@@ -118,37 +118,42 @@ export function PushNotificationToggle() {
       )}
 
       {isDenied && (
-        <div className="p-3 bg-amber-950/40 border border-amber-800/80 rounded-xl text-xs font-medium text-amber-200 flex items-center space-x-2">
-          <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />
+        <div className="p-3 bg-rose-950/40 border border-rose-800/80 rounded-xl text-xs font-medium text-rose-200 flex items-center space-x-2">
+          <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
           <span>
-            Notifications are blocked in your browser settings. To enable reminders, allow notifications in your browser or phone site settings.
+            Notifications are blocked in your browser settings. Notifications are required to study—please allow notifications in your browser or phone site permissions.
           </span>
         </div>
       )}
 
-      {/* Action Button */}
+      {/* Action Button or Active Badge */}
       <div className="pt-1">
-        <Button
-          type="button"
-          variant={isSubscribed ? "secondary" : "primary"}
-          size="md"
-          isLoading={loading}
-          disabled={isDenied}
-          onClick={handleToggle}
-          className="w-full font-extrabold text-xs sm:text-sm space-x-1.5 shadow-md"
-        >
-          {isSubscribed ? (
-            <>
-              <BellOff className="w-4 h-4" />
-              <span>Disable Study Reminders</span>
-            </>
-          ) : (
-            <>
-              <Sparkles className="w-4 h-4" />
-              <span>Enable Study Reminders</span>
-            </>
-          )}
-        </Button>
+        {isSubscribed ? (
+          <div className="p-3.5 bg-violet-500/10 border border-violet-500/25 rounded-2xl flex items-center space-x-3 text-violet-200">
+            <CheckCircle2 className="w-5 h-5 text-violet-400 shrink-0" />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-bold text-violet-200">
+                Mandatory Study Reminders Active
+              </p>
+              <p className="text-[11px] text-zinc-400 mt-0.5">
+                Notifications are compulsory for all StudyRoom members to ensure active timer honesty.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <Button
+            type="button"
+            variant="primary"
+            size="md"
+            isLoading={loading}
+            disabled={isDenied}
+            onClick={subscribe}
+            className="w-full font-extrabold text-xs sm:text-sm space-x-1.5 shadow-md"
+          >
+            <Sparkles className="w-4 h-4" />
+            <span>Enable Mandatory Reminders</span>
+          </Button>
+        )}
       </div>
     </div>
   );
