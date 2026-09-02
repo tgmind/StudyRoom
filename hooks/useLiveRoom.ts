@@ -4,29 +4,35 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { UserProfile, UserStatus } from "@/lib/supabase/types";
 import { getAdminUserId, isAdminUserId } from "@/hooks/useAdmin";
+import { calculateMemberElapsedStudySeconds } from "@/lib/time/format";
 
-export function sortMembers(members: UserProfile[], currentUserId?: string): UserProfile[] {
+export function sortMembers(members: UserProfile[], _currentUserId?: string): UserProfile[] {
   const statusPriority: Record<UserStatus, number> = {
     studying: 1,
     break: 2,
     offline: 3,
   };
 
-  return [...members].sort((a, b) => {
-    // 1. Current user always at the top
-    if (currentUserId) {
-      if (a.id === currentUserId) return -1;
-      if (b.id === currentUserId) return 1;
-    }
+  const now = new Date();
 
-    // 2. Status priority: Studying > Break > Offline
+  return [...members].sort((a, b) => {
+    // 1. Status priority: Active members (studying/break) > Offline
     const priorityA = statusPriority[a.current_status] ?? 99;
     const priorityB = statusPriority[b.current_status] ?? 99;
     if (priorityA !== priorityB) {
       return priorityA - priorityB;
     }
 
-    // 3. Deterministic alphabetical ordering by display_name
+    // 2. Active members in Live Study: Decreasing order of study session time
+    if (a.current_status !== "offline" && b.current_status !== "offline") {
+      const elapsedA = calculateMemberElapsedStudySeconds(a, now);
+      const elapsedB = calculateMemberElapsedStudySeconds(b, now);
+      if (elapsedB !== elapsedA) {
+        return elapsedB - elapsedA;
+      }
+    }
+
+    // 3. Deterministic tie-breaker: alphabetical by display_name
     return a.display_name.localeCompare(b.display_name);
   });
 }

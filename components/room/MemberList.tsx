@@ -1,9 +1,20 @@
 "use client";
 
-import React, { memo, useEffect, useState, useMemo } from "react";
+import React, {
+  memo,
+  useEffect,
+  useLayoutEffect,
+  useState,
+  useMemo,
+  useRef,
+  useCallback,
+} from "react";
 import { UserProfile } from "@/lib/supabase/types";
 import { MemberCard } from "@/components/room/MemberCard";
 import { Users, WifiOff, Flame, Coffee } from "lucide-react";
+import { calculateMemberElapsedStudySeconds } from "@/lib/time/format";
+
+const useIsomorphicLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 interface MemberListProps {
   members: UserProfile[];
@@ -48,6 +59,102 @@ export const MemberList = memo(function MemberList({
 
     return () => clearInterval(intervalId);
   }, [activeMembers.length]);
+
+  // Authoritative dynamic study duration for global ranking
+  const getMemberStudySeconds = useCallback(
+    (member: UserProfile, now: Date): number => {
+      if (member.id === currentUserId && currentUserElapsedSeconds !== undefined) {
+        return currentUserElapsedSeconds;
+      }
+      return calculateMemberElapsedStudySeconds(member, now);
+    },
+    [currentUserId, currentUserElapsedSeconds]
+  );
+
+  // Sorted in decreasing order of active study session time in Global view
+  const sortedActiveMembers = useMemo(() => {
+    return [...activeMembers].sort((a, b) => {
+      const elapsedA = getMemberStudySeconds(a, currentTimestamp);
+      const elapsedB = getMemberStudySeconds(b, currentTimestamp);
+
+      // 1. Decreasing order of active study session time (highest study time first)
+      if (elapsedB !== elapsedA) {
+        return elapsedB - elapsedA;
+      }
+
+      // 2. Active studying before break
+      if (a.current_status !== b.current_status) {
+        return a.current_status === "studying" ? -1 : 1;
+      }
+
+      // 3. Alphabetical tie-breaker
+      return a.display_name.localeCompare(b.display_name);
+    });
+  }, [activeMembers, currentTimestamp, getMemberStudySeconds]);
+
+  // Refs for tracking DOM card elements and their bounding rectangles across re-orders
+  const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const prevRectsRef = useRef<Map<string, DOMRect>>(new Map());
+  const prevOrderRef = useRef<string[]>([]);
+
+  // Synchronous layout effect before paint to animate smooth position transitions (FLIP)
+  useIsomorphicLayoutEffect(() => {
+    const prevRects = prevRectsRef.current;
+    const currentOrder = sortedActiveMembers.map((m) => m.id);
+    const hasOrderChanged =
+      prevOrderRef.current.length > 0 &&
+      (prevOrderRef.current.length !== currentOrder.length ||
+        prevOrderRef.current.some((id, idx) => id !== currentOrder[idx]));
+
+    if (hasOrderChanged && prevRects.size > 0) {
+      sortedActiveMembers.forEach((member) => {
+        const el = cardRefs.current.get(member.id);
+        const prevRect = prevRects.get(member.id);
+
+        if (el && prevRect) {
+          const currentRect = el.getBoundingClientRect();
+          const deltaX = prevRect.left - currentRect.left;
+          const deltaY = prevRect.top - currentRect.top;
+
+          if (deltaX !== 0 || deltaY !== 0) {
+            // Cancel any ongoing transition to ensure fluid overtaking
+            el.getAnimations?.().forEach((anim) => anim.cancel());
+
+            // Smooth satisfying overtaking transition
+            el.animate(
+              [
+                {
+                  transform: `translate3d(${deltaX}px, ${deltaY}px, 0) scale(1.02)`,
+                  zIndex: 20,
+                  boxShadow: "0 10px 28px -4px rgba(217, 70, 239, 0.3)",
+                },
+                {
+                  transform: "translate3d(0, 0, 0) scale(1)",
+                  zIndex: 1,
+                  boxShadow: "none",
+                },
+              ],
+              {
+                duration: 650,
+                easing: "cubic-bezier(0.25, 1.15, 0.35, 1)", // Satisfying smooth spring curve
+              }
+            );
+          }
+        }
+      });
+    }
+
+    // Capture current rects & order for the next transition check
+    const nextRects = new Map<string, DOMRect>();
+    sortedActiveMembers.forEach((member) => {
+      const el = cardRefs.current.get(member.id);
+      if (el) {
+        nextRects.set(member.id, el.getBoundingClientRect());
+      }
+    });
+    prevRectsRef.current = nextRects;
+    prevOrderRef.current = currentOrder;
+  }, [sortedActiveMembers]);
 
   if (isLoading) {
     return (
@@ -103,18 +210,29 @@ export const MemberList = memo(function MemberList({
           </div>
         </div>
 
-        {activeMembers.length > 0 ? (
+        {sortedActiveMembers.length > 0 ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3.5">
-            {activeMembers.map((member) => (
-              <MemberCard
+            {sortedActiveMembers.map((member) => (
+              <div
                 key={member.id}
-                member={member}
-                isCurrentUser={member.id === currentUserId}
-                customElapsedSeconds={
-                  member.id === currentUserId ? currentUserElapsedSeconds : undefined
-                }
-                currentTimestamp={currentTimestamp}
-              />
+                ref={(el) => {
+                  if (el) {
+                    cardRefs.current.set(member.id, el);
+                  } else {
+                    cardRefs.current.delete(member.id);
+                  }
+                }}
+                className="will-change-transform"
+              >
+                <MemberCard
+                  member={member}
+                  isCurrentUser={member.id === currentUserId}
+                  customElapsedSeconds={
+                    member.id === currentUserId ? currentUserElapsedSeconds : undefined
+                  }
+                  currentTimestamp={currentTimestamp}
+                />
+              </div>
             ))}
           </div>
         ) : (
