@@ -59,43 +59,49 @@ export async function updateSession(request: NextRequest) {
       user.id === adminUid ||
       profileData?.is_admin === true;
 
+    const createRedirect = (targetPath: string) => {
+      const url = request.nextUrl.clone();
+      url.pathname = targetPath;
+      const redirectResponse = NextResponse.redirect(url);
+      supabaseResponse.cookies.getAll().forEach((cookie) => {
+        redirectResponse.cookies.set(cookie.name, cookie.value, cookie);
+      });
+      return redirectResponse;
+    };
+
     if (isAdmin) {
       // Admin user: redirect to /admin from ANY other route (including /login, /room, /)
       if (!isAdminRoute) {
-        const url = request.nextUrl.clone();
-        url.pathname = "/admin";
-        return NextResponse.redirect(url);
+        return createRedirect("/admin");
       }
       return supabaseResponse;
     }
 
     // Non-admin user: block access to /admin
     if (isAdminRoute) {
-      const url = request.nextUrl.clone();
-      url.pathname = "/room";
-      return NextResponse.redirect(url);
+      return createRedirect("/room");
     }
 
     // Regular user flow: check profile onboarding status
     const isProfileIncomplete = !profileData || !profileData.display_name || profileData.display_name.trim() === "";
 
     if (isProfileIncomplete && !isOnboardingRoute) {
-      const url = request.nextUrl.clone();
-      url.pathname = "/onboarding";
-      return NextResponse.redirect(url);
+      return createRedirect("/onboarding");
     }
 
     if (!isProfileIncomplete && (isAuthRoute || isOnboardingRoute || pathname === "/")) {
-      const url = request.nextUrl.clone();
-      url.pathname = "/room";
-      return NextResponse.redirect(url);
+      return createRedirect("/room");
     }
   } else {
     // Unauthenticated access attempt to protected, admin, or onboarding routes
     if (isProtectedRoute || isOnboardingRoute || isAdminRoute) {
       const url = request.nextUrl.clone();
       url.pathname = "/login";
-      return NextResponse.redirect(url);
+      const redirectResponse = NextResponse.redirect(url);
+      supabaseResponse.cookies.getAll().forEach((cookie) => {
+        redirectResponse.cookies.set(cookie.name, cookie.value, cookie);
+      });
+      return redirectResponse;
     }
   }
 
