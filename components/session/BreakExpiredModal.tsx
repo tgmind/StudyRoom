@@ -3,26 +3,46 @@
 import React from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
-import { Clock, Play, CheckCircle2 } from "lucide-react";
+import { Clock, Play, CheckCircle2, Target } from "lucide-react";
 import { formatDurationSeconds } from "@/lib/time/format";
 
 interface BreakExpiredModalProps {
   isOpen: boolean;
   onClose: () => void;
   onStartNewSession?: () => void;
+  onProceedToGoals?: (startNewSession: boolean) => void;
   savedStudySeconds?: number;
+  hasActiveGoals?: boolean;
 }
 
 export function BreakExpiredModal({
   isOpen,
   onClose,
   onStartNewSession,
+  onProceedToGoals,
   savedStudySeconds = 0,
+  hasActiveGoals = true,
 }: BreakExpiredModalProps) {
   const handleStartNew = () => {
     onClose();
-    if (onStartNewSession) {
+    if (onProceedToGoals && hasActiveGoals) {
+      onProceedToGoals(true);
+    } else if (onStartNewSession) {
       onStartNewSession();
+    }
+  };
+
+  const handleUpdateGoals = () => {
+    onClose();
+    if (onProceedToGoals) {
+      onProceedToGoals(false);
+    }
+  };
+
+  const handleDismiss = () => {
+    onClose();
+    if (onProceedToGoals && hasActiveGoals) {
+      onProceedToGoals(false);
     }
   };
 
@@ -61,20 +81,33 @@ export function BreakExpiredModal({
         </div>
 
         {/* Action Buttons */}
-        <div className="pt-2 flex flex-col sm:flex-row items-center justify-end space-y-2 sm:space-y-0 sm:space-x-3">
+        <div className="pt-2 flex flex-col sm:flex-row items-center justify-end gap-2 sm:gap-2.5">
           <Button
             type="button"
             variant="secondary"
-            onClick={onClose}
-            className="w-full sm:w-auto text-xs font-bold"
+            onClick={handleDismiss}
+            className="w-full sm:w-auto text-xs font-bold text-zinc-400 hover:text-zinc-200"
           >
             Dismiss
           </Button>
+
+          {hasActiveGoals && onProceedToGoals && (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={handleUpdateGoals}
+              className="w-full sm:w-auto text-xs font-bold space-x-1.5 bg-violet-950/40 text-violet-300 border-violet-700/60 hover:bg-violet-900/50"
+            >
+              <Target className="w-3.5 h-3.5 text-violet-400" />
+              <span>Update Goals</span>
+            </Button>
+          )}
+
           <Button
             type="button"
             variant="primary"
             onClick={handleStartNew}
-            className="w-full sm:w-auto text-xs font-extrabold space-x-2 shadow-lg px-5 bg-zinc-100 text-zinc-950 hover:bg-white"
+            className="w-full sm:w-auto text-xs font-extrabold space-x-2 shadow-lg px-5 bg-zinc-100 text-zinc-950 hover:bg-white border-white"
           >
             <Play className="w-3.5 h-3.5 fill-current" />
             <span>Start New Session</span>

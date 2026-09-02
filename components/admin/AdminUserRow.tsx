@@ -15,6 +15,7 @@ import {
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import type { AdminUser } from "@/hooks/useAdmin";
+import { getEffectiveMemberStatus } from "@/lib/time/break";
 
 interface AdminUserRowProps {
   user: AdminUser;
@@ -128,7 +129,8 @@ export function AdminUserRow({ user, onRename, onDelete, onForceEnd }: AdminUser
     }
   };
 
-  const isActive = user.current_status === "studying" || user.current_status === "break";
+  const effectiveStatus = getEffectiveMemberStatus(user, new Date());
+  const isActive = effectiveStatus === "studying" || effectiveStatus === "break";
 
   return (
     <>
@@ -141,20 +143,20 @@ export function AdminUserRow({ user, onRename, onDelete, onForceEnd }: AdminUser
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={user.avatar_url}
-                alt={user.display_name}
-                className="w-full h-full object-cover rounded-full"
+                alt={user.display_name || "User"}
+                className="w-full h-full object-cover"
               />
             ) : (
-              <span className="text-xs font-bold text-zinc-400">
-                {user.display_name.charAt(0).toUpperCase()}
+              <span className="text-xs font-bold text-zinc-300">
+                {(user.display_name || "?").charAt(0).toUpperCase()}
               </span>
             )}
           </div>
 
-          {/* Name (editable) */}
-          <div className="min-w-0 flex-1">
+          {/* Name & Joined */}
+          <div className="flex-1 min-w-0">
             {isEditing ? (
-              <div className="flex items-center space-x-1.5">
+              <div className="flex items-center gap-1.5">
                 <input
                   ref={inputRef}
                   type="text"
@@ -203,7 +205,7 @@ export function AdminUserRow({ user, onRename, onDelete, onForceEnd }: AdminUser
           </div>
 
           {/* Status Badge */}
-          <StatusBadge status={user.current_status} />
+          <StatusBadge status={effectiveStatus} />
         </div>
 
         {/* Row 2: Session Info (if active) */}
@@ -217,7 +219,7 @@ export function AdminUserRow({ user, onRename, onDelete, onForceEnd }: AdminUser
             <span className="text-zinc-400">
               Duration: <span className="text-zinc-300 font-medium tabular-nums">{formatTimeSince(user.session_start_time)}</span>
             </span>
-            {user.current_status === "break" && user.break_started_at && (
+            {effectiveStatus === "break" && user.break_started_at && (
               <span className="text-amber-400/80">
                 Break: <span className="font-medium tabular-nums">{formatTimeSince(user.break_started_at)}</span>
               </span>

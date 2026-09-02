@@ -13,6 +13,7 @@ import { UserProfile } from "@/lib/supabase/types";
 import { MemberCard } from "@/components/room/MemberCard";
 import { Users, WifiOff, Flame, Coffee } from "lucide-react";
 import { calculateMemberElapsedStudySeconds } from "@/lib/time/format";
+import { getEffectiveMemberStatus } from "@/lib/time/break";
 
 const useIsomorphicLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
@@ -29,36 +30,39 @@ export const MemberList = memo(function MemberList({
   currentUserElapsedSeconds,
   isLoading = false,
 }: MemberListProps) {
-  // Memoize filtered member groupings directly from members array
-  const studyingMembers = useMemo(
-    () => (members || []).filter((m) => m.current_status === "studying"),
-    [members]
-  );
-  const breakMembers = useMemo(
-    () => (members || []).filter((m) => m.current_status === "break"),
-    [members]
-  );
-  const activeMembers = useMemo(
-    () => [...studyingMembers, ...breakMembers],
-    [studyingMembers, breakMembers]
-  );
-  const offlineMembers = useMemo(
-    () => (members || []).filter((m) => m.current_status === "offline"),
-    [members]
-  );
-
   // Single shared master tick for all room member cards
   const [currentTimestamp, setCurrentTimestamp] = useState(new Date());
 
   useEffect(() => {
-    if (activeMembers.length === 0) return;
+    const hasAnyActiveOrBreak = (members || []).some(
+      (m) => m.current_status === "studying" || m.current_status === "break"
+    );
+    if (!hasAnyActiveOrBreak) return;
 
     const intervalId = setInterval(() => {
       setCurrentTimestamp(new Date());
     }, 1000);
 
     return () => clearInterval(intervalId);
-  }, [activeMembers.length]);
+  }, [members]);
+
+  // Memoize filtered member groupings based on authoritative live effective status
+  const studyingMembers = useMemo(
+    () => (members || []).filter((m) => getEffectiveMemberStatus(m, currentTimestamp) === "studying"),
+    [members, currentTimestamp]
+  );
+  const breakMembers = useMemo(
+    () => (members || []).filter((m) => getEffectiveMemberStatus(m, currentTimestamp) === "break"),
+    [members, currentTimestamp]
+  );
+  const activeMembers = useMemo(
+    () => [...studyingMembers, ...breakMembers],
+    [studyingMembers, breakMembers]
+  );
+  const offlineMembers = useMemo(
+    () => (members || []).filter((m) => getEffectiveMemberStatus(m, currentTimestamp) === "offline"),
+    [members, currentTimestamp]
+  );
 
   // Authoritative dynamic study duration for global ranking
   const getMemberStudySeconds = useCallback(

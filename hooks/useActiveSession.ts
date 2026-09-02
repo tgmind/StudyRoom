@@ -21,6 +21,11 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
   const [savedStudySecondsOnBreakExpiry, setSavedStudySecondsOnBreakExpiry] = useState(0);
   const isAutoTerminatingRef = useRef(false);
 
+  const onStatusChangeRef = useRef(onStatusChange);
+  useEffect(() => {
+    onStatusChangeRef.current = onStatusChange;
+  }, [onStatusChange]);
+
   const supabase = createClient();
   const currentStatus: UserStatus = profile?.current_status ?? "offline";
 
@@ -133,6 +138,7 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
           // Terminate session with no additional task completions
           await finishSession([]);
           setIsBreakExpiredNoticeOpen(true);
+          if (onStatusChangeRef.current) onStatusChangeRef.current();
         } catch (terminateErr) {
           console.error("Auto-termination on break expiry failed:", terminateErr);
         }

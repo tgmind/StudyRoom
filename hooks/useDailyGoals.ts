@@ -164,6 +164,63 @@ export function useDailyGoals(userId?: string) {
     }
   };
 
+  const completeGoalTasks = async (taskIds: string[]) => {
+    if (!userId || !activeGoal || taskIds.length === 0 || actionLoading) return;
+
+    setActionLoading(true);
+    setError(null);
+
+    try {
+      const updatedTasks: GoalTask[] = (activeGoal.tasks || []).map((t) =>
+        taskIds.includes(t.id) ? { ...t, completed: true } : t
+      );
+
+      const { error: updateErr } = await (supabase as any)
+        .from("daily_goals")
+        .update({ tasks: updatedTasks })
+        .eq("id", activeGoal.id);
+
+      if (updateErr) throw updateErr;
+
+      // Also record task completions in the latest study session if available
+      try {
+        const { data: latestSession } = await (supabase as any)
+          .from("study_sessions")
+          .select("id, completed_tasks")
+          .eq("user_id", userId)
+          .order("end_time", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (latestSession) {
+          const newlyCompletedObjects = activeGoal.tasks
+            .filter((t) => taskIds.includes(t.id))
+            .map((t) => ({ id: t.id, task: t.task }));
+
+          const existingTasks = (latestSession.completed_tasks || []) as { id: string; task: string }[];
+          const existingIds = new Set(existingTasks.map((et) => et.id));
+          const toAdd = newlyCompletedObjects.filter((nt) => !existingIds.has(nt.id));
+          const combined = [...existingTasks, ...toAdd];
+
+          await (supabase as any)
+            .from("study_sessions")
+            .update({ completed_tasks: combined })
+            .eq("id", latestSession.id);
+        }
+      } catch (sessionErr) {
+        console.warn("Could not associate completed tasks with latest session:", sessionErr);
+      }
+
+      await fetchActiveGoal();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to update goal tasks";
+      setError(msg);
+      throw err;
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   return {
     activeGoal,
     countdown,
@@ -172,6 +229,7 @@ export function useDailyGoals(userId?: string) {
     error,
     createGoal,
     addTasksToGoal,
+    completeGoalTasks,
     refreshGoals: fetchActiveGoal,
   };
 }

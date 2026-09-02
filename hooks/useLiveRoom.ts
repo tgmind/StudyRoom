@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { UserProfile, UserStatus } from "@/lib/supabase/types";
 import { getAdminUserId, isAdminUserId } from "@/hooks/useAdmin";
 import { calculateMemberElapsedStudySeconds } from "@/lib/time/format";
+import { getEffectiveMemberStatus, isMemberBreakExpired } from "@/lib/time/break";
 
 export function sortMembers(members: UserProfile[], _currentUserId?: string): UserProfile[] {
   const statusPriority: Record<UserStatus, number> = {
@@ -16,15 +17,18 @@ export function sortMembers(members: UserProfile[], _currentUserId?: string): Us
   const now = new Date();
 
   return [...members].sort((a, b) => {
+    const statusA = getEffectiveMemberStatus(a, now);
+    const statusB = getEffectiveMemberStatus(b, now);
+
     // 1. Status priority: Active members (studying/break) > Offline
-    const priorityA = statusPriority[a.current_status] ?? 99;
-    const priorityB = statusPriority[b.current_status] ?? 99;
+    const priorityA = statusPriority[statusA] ?? 99;
+    const priorityB = statusPriority[statusB] ?? 99;
     if (priorityA !== priorityB) {
       return priorityA - priorityB;
     }
 
     // 2. Active members in Live Study: Decreasing order of study session time
-    if (a.current_status !== "offline" && b.current_status !== "offline") {
+    if (statusA !== "offline" && statusB !== "offline") {
       const elapsedA = calculateMemberElapsedStudySeconds(a, now);
       const elapsedB = calculateMemberElapsedStudySeconds(b, now);
       if (elapsedB !== elapsedA) {
@@ -98,6 +102,19 @@ export function useLiveRoom(currentUserId?: string) {
       }
 
       if (data) {
+        const now = new Date();
+        const expiredBreakUsers = (data as UserProfile[]).filter(
+          (u) => u.current_status === "break" && isMemberBreakExpired(u, now)
+        );
+
+        if (expiredBreakUsers.length > 0) {
+          expiredBreakUsers.forEach((expired) => {
+            (supabase as unknown as { rpc: (name: string, params: Record<string, unknown>) => Promise<unknown> })
+              .rpc("rpc_stop_user_session", { p_user_id: expired.id })
+              .catch((err: unknown) => console.warn("[LiveRoom] Auto-stop expired break failed:", err));
+          });
+        }
+
         const enriched = (data as UserProfile[]).map((u) => {
           const stat = statsMap.get(u.id) || { past24hSeconds: 0, totalSessions: 0 };
           return {

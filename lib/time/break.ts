@@ -68,3 +68,35 @@ export function calculateBreakStatus(
     progressPercent,
   };
 }
+
+/**
+ * Checks if a member profile's break has exceeded the 1-hour limit (>= 3600 seconds).
+ */
+export function isMemberBreakExpired(
+  member: { current_status: string; break_started_at?: string | null },
+  now: Date = new Date()
+): boolean {
+  if (member.current_status !== "break" || !member.break_started_at) {
+    return false;
+  }
+  const breakMs = new Date(member.break_started_at).getTime();
+  if (isNaN(breakMs)) return false;
+  return now.getTime() - breakMs >= MAX_BREAK_SECONDS * 1000;
+}
+
+/**
+ * Returns the effective status of a member: if their break exceeded 1 hour,
+ * their session is terminated and effective status is 'offline'.
+ */
+export function getEffectiveMemberStatus(
+  member: { current_status: string; break_started_at?: string | null },
+  now: Date = new Date()
+): "studying" | "break" | "offline" {
+  if (member.current_status === "break" && isMemberBreakExpired(member, now)) {
+    return "offline";
+  }
+  if (member.current_status === "studying" || member.current_status === "break" || member.current_status === "offline") {
+    return member.current_status;
+  }
+  return "offline";
+}

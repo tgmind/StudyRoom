@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { calculateBreakStatus, MAX_BREAK_SECONDS } from "@/lib/time/break";
+import { calculateBreakStatus, MAX_BREAK_SECONDS, isMemberBreakExpired, getEffectiveMemberStatus } from "@/lib/time/break";
 
 describe("Break Timer Calculations", () => {
   it("returns default zero values when no break start time is provided", () => {
@@ -34,5 +34,31 @@ describe("Break Timer Calculations", () => {
     expect(beyondStatus.elapsedBreakSeconds).toBe(3900);
     expect(beyondStatus.remainingBreakSeconds).toBe(0);
     expect(beyondStatus.isExpired).toBe(true);
+  });
+
+  describe("isMemberBreakExpired & getEffectiveMemberStatus", () => {
+    it("correctly identifies active breaks within 1 hour as not expired", () => {
+      const now = new Date("2026-09-01T12:00:00Z");
+      const breakStarted = new Date("2026-09-01T11:45:00Z").toISOString(); // 15 mins ago
+
+      const member = { current_status: "break" as const, break_started_at: breakStarted };
+      expect(isMemberBreakExpired(member, now)).toBe(false);
+      expect(getEffectiveMemberStatus(member, now)).toBe("break");
+    });
+
+    it("identifies breaks >= 1 hour as expired and returns effective status 'offline'", () => {
+      const now = new Date("2026-09-01T12:00:00Z");
+      const breakStarted65m = new Date("2026-09-01T10:55:00Z").toISOString(); // 65 mins ago
+
+      const member = { current_status: "break" as const, break_started_at: breakStarted65m };
+      expect(isMemberBreakExpired(member, now)).toBe(true);
+      expect(getEffectiveMemberStatus(member, now)).toBe("offline");
+    });
+
+    it("preserves studying and offline statuses without modification", () => {
+      const now = new Date("2026-09-01T12:00:00Z");
+      expect(getEffectiveMemberStatus({ current_status: "studying" }, now)).toBe("studying");
+      expect(getEffectiveMemberStatus({ current_status: "offline" }, now)).toBe("offline");
+    });
   });
 });

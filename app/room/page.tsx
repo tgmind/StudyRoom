@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useLiveRoom } from "@/hooks/useLiveRoom";
 import { useActiveSession } from "@/hooks/useActiveSession";
@@ -10,6 +10,7 @@ import { BottomNav } from "@/components/navigation/BottomNav";
 import { SessionController } from "@/components/session/SessionController";
 import { MemberList } from "@/components/room/MemberList";
 import { BreakExpiredModal } from "@/components/session/BreakExpiredModal";
+import { BreakGoalUpdateModal } from "@/components/session/BreakGoalUpdateModal";
 import { CreateGoalModal } from "@/components/goals/CreateGoalModal";
 
 export default function RoomPage() {
@@ -22,9 +23,11 @@ export default function RoomPage() {
     broadcastStatusChange,
   } = useLiveRoom(user?.id);
 
-  // Derive live profile: prioritize realtime member data over initial static profile
-  const currentMember = members.find((m) => m.id === user?.id);
-  const effectiveProfile = currentMember || profile;
+  const effectiveProfile = useMemo(() => {
+    if (!profile) return null;
+    const liveMatch = members.find((m) => m.id === profile.id);
+    return liveMatch || profile;
+  }, [profile, members]);
 
   const {
     status,
@@ -40,6 +43,15 @@ export default function RoomPage() {
     resumeSession,
     finishSession,
   } = useActiveSession(effectiveProfile, () => {
+    if (user) {
+      broadcastStatusChange({
+        id: user.id,
+        current_status: "offline",
+        session_start_time: null,
+        break_started_at: null,
+        current_focus: null,
+      });
+    }
     refreshProfile();
     refreshMembers();
   });
@@ -55,8 +67,10 @@ export default function RoomPage() {
     }
   }, [effectiveProfile?.current_status, resumeSession]);
 
-  const { activeGoal, countdown, createGoal, refreshGoals } = useDailyGoals(user?.id);
+  const { activeGoal, countdown, createGoal, completeGoalTasks, refreshGoals } = useDailyGoals(user?.id);
   const [isGoalSetupModalOpen, setIsGoalSetupModalOpen] = useState(false);
+  const [isBreakGoalModalOpen, setIsBreakGoalModalOpen] = useState(false);
+  const [isPendingStartNewAfterBreak, setIsPendingStartNewAfterBreak] = useState(false);
 
   const handleStartSession = async (focusTag?: string | null) => {
     if (user) {
@@ -109,6 +123,35 @@ export default function RoomPage() {
 
   const handleCreateGoal = async (tasks: string[]) => {
     await createGoal(tasks);
+  };
+
+  const handleProceedFromBreakNotice = (startNewSession: boolean) => {
+    closeBreakExpiredNotice();
+    setIsPendingStartNewAfterBreak(startNewSession);
+
+    if (activeGoal?.tasks && activeGoal.tasks.length > 0) {
+      setIsBreakGoalModalOpen(true);
+    } else if (startNewSession) {
+      handleStartNewSessionAfterBreak();
+    }
+  };
+
+  const handleSaveGoalsAfterBreak = async (completedTaskIds: string[]) => {
+    if (completedTaskIds.length > 0) {
+      await completeGoalTasks(completedTaskIds);
+      await Promise.allSettled([refreshGoals(), refreshProfile(), refreshMembers()]);
+    }
+    setIsBreakGoalModalOpen(false);
+
+    if (isPendingStartNewAfterBreak) {
+      setIsPendingStartNewAfterBreak(false);
+      const isGoalMissingOrExpired = !activeGoal || countdown.isExpired;
+      if (isGoalMissingOrExpired) {
+        setIsGoalSetupModalOpen(true);
+      } else {
+        await handleStartSession(null);
+      }
+    }
   };
 
   const handleStartNewSessionAfterBreak = async () => {
@@ -170,7 +213,23 @@ export default function RoomPage() {
         isOpen={isBreakExpiredNoticeOpen}
         onClose={closeBreakExpiredNotice}
         onStartNewSession={handleStartNewSessionAfterBreak}
+        onProceedToGoals={handleProceedFromBreakNotice}
         savedStudySeconds={savedStudySecondsOnBreakExpiry}
+        hasActiveGoals={Boolean(activeGoal?.tasks && activeGoal.tasks.length > 0)}
+      />
+
+      {/* Goal Updates Prompt Modal after 1-hour Break Expiry */}
+      <BreakGoalUpdateModal
+        isOpen={isBreakGoalModalOpen}
+        onClose={() => {
+          setIsBreakGoalModalOpen(false);
+          setIsPendingStartNewAfterBreak(false);
+        }}
+        onConfirmSaveGoals={handleSaveGoalsAfterBreak}
+        activeGoal={activeGoal}
+        savedStudySeconds={savedStudySecondsOnBreakExpiry}
+        isStartingNewSession={isPendingStartNewAfterBreak}
+        isLoading={actionLoading}
       />
 
       {/* Goal Setup Modal when starting after break */}

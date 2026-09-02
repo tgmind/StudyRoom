@@ -12,6 +12,8 @@ import {
 } from "@/lib/time/format";
 import { Crown, Star, Coffee, Clock, BookOpen } from "lucide-react";
 
+import { getEffectiveMemberStatus } from "@/lib/time/break";
+
 interface MemberCardProps {
   member: UserProfile;
   isCurrentUser?: boolean;
@@ -25,13 +27,15 @@ export const MemberCard = memo(function MemberCard({
   customElapsedSeconds,
   currentTimestamp = new Date(),
 }: MemberCardProps) {
-  const isStudying = member.current_status === "studying";
-  const isBreak = member.current_status === "break";
-  const isOffline = member.current_status === "offline";
+  const effectiveStatus = getEffectiveMemberStatus(member, currentTimestamp);
+  const isStudying = effectiveStatus === "studying";
+  const isBreak = effectiveStatus === "break";
+  const isOffline = effectiveStatus === "offline";
+  const isBreakExpired = member.current_status === "break" && isOffline;
   const isAchiever = member.has_achiever_badge === true;
 
-  const showDeepNight = isDeepNight(member.current_status, currentTimestamp);
-  const showEarlyBird = isEarlyBird(member.current_status, currentTimestamp);
+  const showDeepNight = isDeepNight(effectiveStatus, currentTimestamp);
+  const showEarlyBird = isEarlyBird(effectiveStatus, currentTimestamp);
 
   // 1. Live Active Session Study Seconds (0 if offline)
   const elapsedSeconds =
@@ -40,11 +44,12 @@ export const MemberCard = memo(function MemberCard({
       : calculateMemberElapsedStudySeconds(member, currentTimestamp);
 
   // 2. Live Break Timer (ticking by the second when on break, 0 otherwise)
-  const liveBreakSeconds = calculateMemberLiveBreakSeconds(member, currentTimestamp);
+  const liveBreakSeconds = isBreak ? calculateMemberLiveBreakSeconds(member, currentTimestamp) : 0;
 
-  // 3. Total Study Duration of Current 24 Hours
+  // 3. Total Study Duration of Current 24 Hours (seamlessly preserves saved study time on expired break)
   const total24hStudySeconds =
-    (member.past_24h_study_seconds ?? 0) + (isStudying || isBreak ? elapsedSeconds : 0);
+    (member.past_24h_study_seconds ?? 0) +
+    (isStudying || isBreak ? elapsedSeconds : isBreakExpired ? (member.active_study_seconds_snapshot ?? 0) : 0);
 
   // 4. Total Sessions Count (completed sessions + active in-progress session)
   const isCurrentSessionActive = isStudying || isBreak;
