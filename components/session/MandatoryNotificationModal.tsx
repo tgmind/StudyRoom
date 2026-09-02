@@ -4,7 +4,15 @@ import React, { useState, useEffect } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
-import { Bell, CheckCircle2, AlertCircle, Smartphone, Sparkles, RefreshCw, Lock } from "lucide-react";
+import {
+  Bell,
+  CheckCircle2,
+  AlertCircle,
+  Smartphone,
+  Sparkles,
+  RefreshCw,
+  Settings,
+} from "lucide-react";
 
 interface MandatoryNotificationModalProps {
   isOpen: boolean;
@@ -48,7 +56,7 @@ export function MandatoryNotificationModal({
       const current = refreshPermission();
       if (current === "denied") {
         setRequestError(
-          "Notifications are still marked as Blocked by your browser. Follow the 3 steps above to set Notifications to Allow, then tap again."
+          "Notifications are still marked as Blocked by your phone. Please turn on Allow Notifications in App Info / Phone Settings, then tap here again."
         );
       }
     }
@@ -88,35 +96,55 @@ export function MandatoryNotificationModal({
           </div>
         </div>
 
-        {/* Actionable Unblock Guide if Denied */}
+        {/* Actionable Unblock Guide for Phone App Settings if Denied */}
         {isDenied ? (
           <div className="p-3.5 bg-amber-950/40 border border-amber-700/80 rounded-2xl text-xs text-amber-200 space-y-2.5">
             <div className="flex items-center space-x-2 font-extrabold text-amber-300">
-              <Lock className="w-4 h-4 shrink-0 text-amber-400" />
-              <span>How to Unblock on Android / Browser:</span>
+              <Settings className="w-4 h-4 shrink-0 text-amber-400" />
+              <span>Allow Notifications in Phone App Settings:</span>
             </div>
             <p className="text-[11px] text-zinc-300 leading-snug">
-              Browsers don&apos;t allow websites to show the popup prompt once denied. You can easily unblock it:
+              Android does not re-open the popup once denied. Please enable notifications in your phone&apos;s app settings:
             </p>
-            <ol className="list-decimal list-inside text-[11px] text-zinc-200 space-y-1.5 pl-1 font-medium">
-              <li>
-                Tap the <strong>Lock (🔒) or Tune icon</strong> in the Chrome address bar at the top.
-              </li>
-              <li>
-                Tap <strong>Permissions</strong> $\rightarrow$ toggle <strong>Notifications</strong> to <strong>Allow</strong>.
-              </li>
-              <li>
-                Come back here and tap <strong>&quot;I Have Allowed — Continue&quot;</strong> below!
-              </li>
-            </ol>
+            <div className="space-y-2 text-[11px] text-zinc-200 bg-zinc-950/60 p-2.5 rounded-xl border border-zinc-800">
+              <div className="flex items-start space-x-2">
+                <span className="font-bold text-amber-400 shrink-0">1.</span>
+                <span>
+                  <strong>Long-press</strong> the <strong>StudyRoom</strong> icon on your phone home screen → tap <strong>App Info (ⓘ)</strong>.
+                  <br />
+                  <span className="text-[10px] text-zinc-400">
+                    (Or open phone <strong>Settings → Apps → StudyRoom</strong>)
+                  </span>
+                </span>
+              </div>
+              <div className="flex items-start space-x-2">
+                <span className="font-bold text-amber-400 shrink-0">2.</span>
+                <span>
+                  Tap <strong>Notifications</strong> → Turn <strong>Allow Notifications</strong> to <strong>ON</strong>.
+                </span>
+              </div>
+              <div className="flex items-start space-x-2">
+                <span className="font-bold text-amber-400 shrink-0">3.</span>
+                <span>
+                  Switch back to StudyRoom and tap <strong>&quot;I&apos;ve Allowed — Continue&quot;</strong> below!
+                </span>
+              </div>
+            </div>
           </div>
         ) : null}
+
+        {permission === "granted" && (
+          <div className="p-3 bg-emerald-950/40 border border-emerald-700/80 rounded-2xl text-xs text-emerald-200 flex items-center space-x-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>Notification permission granted! Tap below to start studying.</span>
+          </div>
+        )}
 
         {!isSupported && (
           <div className="p-3 bg-amber-950/30 border border-amber-800/50 rounded-xl text-xs text-amber-300/90 flex items-start space-x-2">
             <Smartphone className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" />
             <span>
-              On iPhone / iPad: Tap <strong>Share</strong> $\rightarrow$ <strong>Add to Home Screen</strong>, then launch the app from your Home Screen to enable notifications.
+              On iPhone / iPad: Tap <strong>Share</strong> → <strong>Add to Home Screen</strong>, then launch the app from your Home Screen to enable notifications.
             </span>
           </div>
         )}

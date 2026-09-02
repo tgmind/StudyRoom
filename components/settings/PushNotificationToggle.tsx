@@ -118,13 +118,13 @@ export function PushNotificationToggle() {
       )}
 
       {isDenied && (
-        <div className="p-3 bg-amber-950/40 border border-amber-700/80 rounded-xl text-xs font-medium text-amber-200 space-y-1.5">
+        <div className="p-3.5 bg-amber-950/40 border border-amber-700/80 rounded-2xl text-xs font-medium text-amber-200 space-y-2">
           <div className="flex items-center space-x-2 text-amber-300 font-bold">
             <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />
-            <span>Notifications are blocked in your browser</span>
+            <span>Notifications blocked in phone settings</span>
           </div>
           <p className="text-[11px] text-zinc-300">
-            To unblock: Tap the <strong>Lock (🔒) icon</strong> in the address bar at the top, switch <strong>Notifications</strong> to <strong>Allow</strong>, then tap the button below.
+            To unblock: Long-press the <strong>StudyRoom</strong> icon on your phone home screen → tap <strong>App Info (ⓘ)</strong> → <strong>Notifications</strong> → turn <strong>Allow Notifications</strong> to <strong>ON</strong>.
           </p>
         </div>
       )}
