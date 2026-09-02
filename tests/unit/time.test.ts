@@ -2,8 +2,10 @@ import { describe, it, expect } from "vitest";
 import {
   formatDurationSeconds,
   formatMinutesToHours,
+  formatSecondsToHuman,
   calculateActiveStudySeconds,
   calculateMemberElapsedStudySeconds,
+  calculateMemberLiveBreakSeconds,
 } from "@/lib/time/format";
 import { SessionBlock, UserProfile } from "@/lib/supabase/types";
 
@@ -99,5 +101,38 @@ describe("Time Formatting & Active Study Calculation", () => {
     const at22s = new Date(t0.getTime() + 22 * 1000);
     // Timer MUST be 11s (10s base + 1s since resume) - the 11s break is 100% EXCLUDED!
     expect(calculateMemberElapsedStudySeconds(resumedMember, at22s)).toBe(11);
+  });
+
+  it("formats seconds into human duration strings matching admin format (e.g. 2h 27m or 49m)", () => {
+    expect(formatSecondsToHuman(0)).toBe("0m");
+    expect(formatSecondsToHuman(59)).toBe("0m");
+    expect(formatSecondsToHuman(60)).toBe("1m");
+    expect(formatSecondsToHuman(2940)).toBe("49m"); // 49 mins
+    expect(formatSecondsToHuman(8820)).toBe("2h 27m"); // 2h 27m
+  });
+
+  it("calculates live break timer seconds correctly when on break and 0 when not on break", () => {
+    const t0 = new Date("2026-09-01T12:00:00Z");
+
+    const breakUser: UserProfile = {
+      id: "u-break",
+      display_name: "Break User",
+      avatar_url: null,
+      current_status: "break",
+      current_focus: null,
+      session_start_time: t0.toISOString(),
+      break_started_at: t0.toISOString(),
+      has_achiever_badge: false,
+      created_at: t0.toISOString(),
+    };
+
+    const at5m = new Date(t0.getTime() + 300 * 1000); // 5 mins later
+    expect(calculateMemberLiveBreakSeconds(breakUser, at5m)).toBe(300);
+
+    const offlineUser: UserProfile = {
+      ...breakUser,
+      current_status: "offline",
+    };
+    expect(calculateMemberLiveBreakSeconds(offlineUser, at5m)).toBe(0);
   });
 });

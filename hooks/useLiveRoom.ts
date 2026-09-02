@@ -77,8 +77,36 @@ export function useLiveRoom(currentUserId?: string) {
         throw fetchErr;
       }
 
+      // Fetch study sessions to compute rolling 24-hour study duration and completed session counts
+      const cutoffTime = Date.now() - 24 * 60 * 60 * 1000;
+      const { data: sessionData } = await supabase
+        .from("study_sessions")
+        .select("user_id, duration_minutes, end_time");
+
+      type SessionRow = { user_id: string; duration_minutes: number; end_time: string };
+      const rawSessions = sessionData as unknown as SessionRow[] | null;
+      const statsMap = new Map<string, { past24hSeconds: number; totalSessions: number }>();
+      if (rawSessions) {
+        for (const s of rawSessions) {
+          const entry = statsMap.get(s.user_id) || { past24hSeconds: 0, totalSessions: 0 };
+          entry.totalSessions += 1;
+          if (s.end_time && new Date(s.end_time).getTime() >= cutoffTime) {
+            entry.past24hSeconds += (s.duration_minutes || 0) * 60;
+          }
+          statsMap.set(s.user_id, entry);
+        }
+      }
+
       if (data) {
-        setMembers(sortMembers(filterAdmin(data as UserProfile[]), currentUserIdRef.current));
+        const enriched = (data as UserProfile[]).map((u) => {
+          const stat = statsMap.get(u.id) || { past24hSeconds: 0, totalSessions: 0 };
+          return {
+            ...u,
+            past_24h_study_seconds: stat.past24hSeconds,
+            total_sessions_count: stat.totalSessions,
+          };
+        });
+        setMembers(sortMembers(filterAdmin(enriched), currentUserIdRef.current));
       }
     } catch (err) {
       console.error("Failed to fetch group members:", err);
@@ -104,7 +132,17 @@ export function useLiveRoom(currentUserId?: string) {
       const exists = prevMembers.some((m) => m.id === updatedProfile.id);
       let next: UserProfile[];
       if (exists) {
-        next = prevMembers.map((m) => (m.id === updatedProfile.id ? { ...m, ...updatedProfile } : m));
+        next = prevMembers.map((m) => {
+          if (m.id === updatedProfile.id) {
+            return {
+              ...m,
+              ...updatedProfile,
+              past_24h_study_seconds: updatedProfile.past_24h_study_seconds ?? m.past_24h_study_seconds ?? 0,
+              total_sessions_count: updatedProfile.total_sessions_count ?? m.total_sessions_count ?? 0,
+            };
+          }
+          return m;
+        });
       } else {
         // If it's a new member joining, fetch full list to ensure all columns present
         fetchMembers();
@@ -176,6 +214,13 @@ export function useLiveRoom(currentUserId?: string) {
           if (msg.payload && (msg.payload as { id?: string }).id) {
             applyProfileUpdate(msg.payload as Partial<UserProfile> & { id: string });
           }
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "study_sessions" },
+        () => {
+          fetchMembers();
         }
       )
       .subscribe((status) => {

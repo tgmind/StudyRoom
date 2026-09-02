@@ -16,6 +16,8 @@ export interface UserProfile {
   three_hour_prompt_sent_at?: string | null;
   last_offline_reminder_sent_at?: string | null;
   break_warning_prompt_sent_at?: string | null;
+  past_24h_study_seconds?: number;
+  total_sessions_count?: number;
 }
 
 export interface GoalTask {

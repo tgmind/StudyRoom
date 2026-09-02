@@ -105,3 +105,32 @@ export function calculateActiveStudyMinutes(
   const seconds = calculateActiveStudySeconds(blocks, now);
   return Math.floor(seconds / 60);
 }
+
+/**
+ * Format total study seconds into clean human duration string matching admin format (e.g. "2h 45m" or "45m" or "0m").
+ */
+export function formatSecondsToHuman(totalSeconds: number): string {
+  const safeSeconds = Math.max(0, Math.floor(totalSeconds));
+  const totalMinutes = Math.floor(safeSeconds / 60);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+  return `${minutes}m`;
+}
+
+/**
+ * Calculate live break seconds elapsed since break_started_at.
+ */
+export function calculateMemberLiveBreakSeconds(
+  member: UserProfile,
+  now: Date = new Date()
+): number {
+  if (member.current_status !== "break" || !member.break_started_at) {
+    return 0;
+  }
+  const breakMs = new Date(member.break_started_at).getTime();
+  if (isNaN(breakMs)) return 0;
+  return Math.max(0, Math.floor((now.getTime() - breakMs) / 1000));
+}
