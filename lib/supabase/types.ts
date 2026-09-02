@@ -13,6 +13,9 @@ export interface UserProfile {
   has_achiever_badge: boolean;
   is_admin?: boolean;
   created_at: string;
+  three_hour_prompt_sent_at?: string | null;
+  last_offline_reminder_sent_at?: string | null;
+  break_warning_prompt_sent_at?: string | null;
 }
 
 export interface GoalTask {

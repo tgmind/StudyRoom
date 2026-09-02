@@ -43,7 +43,7 @@ export const SessionController = memo(function SessionController({
   const [isGoalSetupModalOpen, setIsGoalSetupModalOpen] = useState(false);
   const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
 
-  const { isSupported, isSubscribed, permission } = usePushNotifications();
+  const { isSupported, isSubscribed, permission, subscribe } = usePushNotifications();
 
   const isIdle = status === "offline";
   const isStudying = status === "studying";
@@ -55,9 +55,17 @@ export const SessionController = memo(function SessionController({
   const handleStartStudyingClick = async () => {
     try {
       // Enforce mandatory notifications before starting session
-      if (isSupported && !isSubscribed && permission !== "granted") {
-        setIsNotificationModalOpen(true);
-        return;
+      if (isSupported && !isSubscribed) {
+        if (permission === "granted") {
+          const ok = await subscribe();
+          if (!ok) {
+            setIsNotificationModalOpen(true);
+            return;
+          }
+        } else {
+          setIsNotificationModalOpen(true);
+          return;
+        }
       }
 
       if (isGoalMissingOrExpired) {

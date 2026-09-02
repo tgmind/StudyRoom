@@ -293,7 +293,9 @@ BEGIN
        session_start_time = v_now,
        last_resumed_at = v_now,
        break_started_at = NULL,
-       active_study_seconds_snapshot = 0
+       active_study_seconds_snapshot = 0,
+       three_hour_prompt_sent_at = NULL,
+       break_warning_prompt_sent_at = NULL
   WHERE id = v_user_id;
 
   -- Create active study block
@@ -576,7 +578,9 @@ BEGIN
       session_start_time = NULL,
       last_resumed_at = NULL,
       break_started_at = NULL,
-      active_study_seconds_snapshot = 0
+      active_study_seconds_snapshot = 0,
+      three_hour_prompt_sent_at = NULL,
+      break_warning_prompt_sent_at = NULL
   WHERE id = v_user_id;
 
   RETURN jsonb_build_object(
@@ -1371,7 +1375,9 @@ BEGIN
       session_start_time = NULL,
       last_resumed_at = NULL,
       break_started_at = NULL,
-      active_study_seconds_snapshot = 0
+      active_study_seconds_snapshot = 0,
+      three_hour_prompt_sent_at = NULL,
+      break_warning_prompt_sent_at = NULL
   WHERE id = p_user_id;
 
   RETURN jsonb_build_object(

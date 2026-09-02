@@ -38,8 +38,7 @@ async function handleCheck(request: NextRequest) {
   const tokenParam = request.nextUrl.searchParams.get("token");
 
   if (cronSecret && authHeader !== `Bearer ${cronSecret}` && tokenParam !== cronSecret) {
-    // In production with cronSecret set, require bearer token or ?token=
-    // If not set, allow for development/testing
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -116,24 +115,25 @@ async function handleCheck(request: NextRequest) {
     }
 
     // ------------------------------------------------------------
-    // 2. Query offline users absent for >= 24 hours
+    // 2. Query offline users absent for >= 24 hours (exclude brand new accounts < 24h)
     // ------------------------------------------------------------
     const { data: offlineUsers, error: offlineErr } = await supabase
       .from("users")
       .select("id, display_name, last_offline_reminder_sent_at")
       .eq("current_status", "offline")
+      .lte("created_at", twentyFourHoursAgo)
       .or(`last_offline_reminder_sent_at.is.null,last_offline_reminder_sent_at.lte.${twentyFourHoursAgo}`);
 
     if (offlineErr) {
       console.error("[Push] Error fetching offline users:", offlineErr);
     } else if (offlineUsers && offlineUsers.length > 0) {
       for (const user of offlineUsers) {
-        // Check if user has had any study session in the last 24h
+        // Check if user has had any study session in the last 24h (by start_time or end_time)
         const { count } = await supabase
           .from("study_sessions")
           .select("id", { count: "exact", head: true })
           .eq("user_id", user.id)
-          .gte("start_time", twentyFourHoursAgo);
+          .gte("end_time", twentyFourHoursAgo);
 
         // If user has 0 sessions in the past 24 hours, send reminder
         if (!count || count === 0) {
@@ -221,6 +221,25 @@ async function handleCheck(request: NextRequest) {
             .from("users")
             .update({ break_warning_prompt_sent_at: now.toISOString() })
             .eq("id", user.id);
+        }
+      }
+    }
+
+    // ------------------------------------------------------------
+    // 4. Auto-expire breaks exceeding 60 minutes
+    // ------------------------------------------------------------
+    const { data: expiredBreakUsers } = await supabase
+      .from("users")
+      .select("id")
+      .eq("current_status", "break")
+      .lte("break_started_at", sixtyMinutesAgo);
+
+    if (expiredBreakUsers && expiredBreakUsers.length > 0) {
+      for (const user of expiredBreakUsers) {
+        try {
+          await supabase.rpc("rpc_stop_user_session", { p_user_id: user.id });
+        } catch (err) {
+          console.warn("[Push] Error auto-stopping expired break for user:", user.id, err);
         }
       }
     }
