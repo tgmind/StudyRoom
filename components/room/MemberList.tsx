@@ -222,7 +222,7 @@ export const MemberList = memo(function MemberList({
                     cardRefs.current.delete(member.id);
                   }
                 }}
-                className="will-change-transform"
+                className="will-change-transform h-full flex flex-col"
               >
                 <MemberCard
                   member={member}
@@ -255,15 +255,16 @@ export const MemberList = memo(function MemberList({
 
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3.5">
             {offlineMembers.map((member) => (
-              <MemberCard
-                key={member.id}
-                member={member}
-                isCurrentUser={member.id === currentUserId}
-                customElapsedSeconds={
-                  member.id === currentUserId ? currentUserElapsedSeconds : undefined
-                }
-                currentTimestamp={currentTimestamp}
-              />
+              <div key={member.id} className="h-full flex flex-col">
+                <MemberCard
+                  member={member}
+                  isCurrentUser={member.id === currentUserId}
+                  customElapsedSeconds={
+                    member.id === currentUserId ? currentUserElapsedSeconds : undefined
+                  }
+                  currentTimestamp={currentTimestamp}
+                />
+              </div>
             ))}
           </div>
         </div>

@@ -10,7 +10,7 @@ import {
   formatSecondsToHuman,
   calculateMemberLiveBreakSeconds,
 } from "@/lib/time/format";
-import { Crown, Star, Pause, Coffee, Clock, BookOpen } from "lucide-react";
+import { Crown, Star, Coffee, Clock, BookOpen } from "lucide-react";
 
 interface MemberCardProps {
   member: UserProfile;
@@ -43,7 +43,6 @@ export const MemberCard = memo(function MemberCard({
   const liveBreakSeconds = calculateMemberLiveBreakSeconds(member, currentTimestamp);
 
   // 3. Total Study Duration of Current 24 Hours
-  // Sum of completed study session seconds in past 24h + current active study seconds (if currently studying or on break)
   const total24hStudySeconds =
     (member.past_24h_study_seconds ?? 0) + (isStudying || isBreak ? elapsedSeconds : 0);
 
@@ -56,7 +55,7 @@ export const MemberCard = memo(function MemberCard({
 
   return (
     <div
-      className={`relative isolate flex flex-col items-center justify-between p-3 sm:p-4 rounded-2xl border transition-all duration-200 select-none ${
+      className={`relative isolate flex flex-col items-center justify-between p-3.5 sm:p-4 rounded-2xl border transition-all duration-200 select-none h-full w-full ${
         isAchiever
           ? "bg-gradient-to-b from-amber-950/40 via-zinc-900/95 to-zinc-950 border-amber-400/60 ring-1 ring-amber-400/30 shadow-[0_4px_25px_rgba(251,191,36,0.18)]"
           : isStudying
@@ -100,8 +99,8 @@ export const MemberCard = memo(function MemberCard({
         </span>
       )}
 
-      {/* Top: Avatar DP Container */}
-      <div className={`relative flex flex-col items-center ${isAchiever || isBreak || isStudying ? "mt-3.5" : "mt-1"}`}>
+      {/* Top: Avatar DP Container with Strict Geometric Constraints */}
+      <div className={`relative flex flex-col items-center ${isAchiever || isBreak || isStudying ? "mt-3" : "mt-1"}`}>
         {/* Crown for Weekly Achiever */}
         {isAchiever && (
           <div className="absolute -top-3 animate-bounce">
@@ -109,9 +108,9 @@ export const MemberCard = memo(function MemberCard({
           </div>
         )}
 
-        {/* Avatar DP */}
+        {/* Avatar DP (Guaranteed 56x56 px circle on all devices) */}
         <div
-          className={`relative w-13 h-13 sm:w-14 sm:h-14 rounded-full bg-zinc-800 border-2 overflow-hidden shrink-0 aspect-square flex items-center justify-center font-extrabold text-zinc-100 text-sm shadow-md ${
+          className={`relative w-14 h-14 min-w-[3.5rem] min-h-[3.5rem] max-w-[3.5rem] max-h-[3.5rem] rounded-full bg-zinc-800 border-2 overflow-hidden shrink-0 aspect-square flex items-center justify-center font-extrabold text-zinc-100 text-sm shadow-md ${
             isAchiever
               ? "border-amber-400 ring-2 ring-amber-400/50 shadow-[0_0_15px_rgba(251,191,36,0.3)]"
               : isStudying
@@ -126,7 +125,7 @@ export const MemberCard = memo(function MemberCard({
             <img
               src={member.avatar_url}
               alt={member.display_name}
-              className="w-full h-full object-cover object-center rounded-full block"
+              className="w-full h-full object-cover object-center rounded-full block pointer-events-none"
               loading="lazy"
             />
           ) : (
@@ -160,17 +159,15 @@ export const MemberCard = memo(function MemberCard({
           )}
         </div>
 
-        {/* Time of Day Badges */}
-        {(showDeepNight || showEarlyBird) && (
-          <div className="flex items-center justify-center space-x-1 pt-0.5">
-            {showDeepNight && <IndicatorTag type="night" />}
-            {showEarlyBird && <IndicatorTag type="early" />}
-          </div>
-        )}
+        {/* Fixed height container for badges to maintain identical card height */}
+        <div className="h-4 flex items-center justify-center space-x-1">
+          {showDeepNight && <IndicatorTag type="night" />}
+          {showEarlyBird && <IndicatorTag type="early" />}
+        </div>
       </div>
 
       {/* Middle Stats Row: 24h Total Study Duration + Sessions Count */}
-      <div className="w-full flex items-center justify-center gap-1.5 xs:gap-2 text-[10px] text-zinc-400 mt-2 pt-1.5 border-t border-zinc-800/40 min-w-0">
+      <div className="w-full flex items-center justify-center gap-1.5 xs:gap-2 text-[10px] text-zinc-400 mt-2 py-1 border-t border-zinc-800/40 min-w-0 select-none">
         <div
           className="flex items-center gap-1 min-w-0"
           title={`Total study duration in current 24 hours: ${formatSecondsToHuman(total24hStudySeconds)}`}
@@ -198,28 +195,23 @@ export const MemberCard = memo(function MemberCard({
         </div>
       </div>
 
-      {/* Bottom: Live Digital Timer Readout Pill */}
-      <div className="w-full mt-2 pt-2 border-t border-zinc-800/60 flex justify-center">
+      {/* Bottom: Live Digital Timer Readout Pill (Uniform Symmetrical Height Across All Cards) */}
+      <div className="w-full mt-2 pt-2 border-t border-zinc-800/60 flex justify-center items-center min-h-[36px]">
         {isStudying ? (
-          <div className="font-mono text-xs font-black tracking-tight px-2.5 sm:px-3 py-1 rounded-full border shadow-inner flex items-center space-x-1.5 bg-fuchsia-950/40 text-fuchsia-300 border-fuchsia-500/30 tabular-nums">
+          <div className="font-mono text-xs font-black tracking-tight px-3 py-1 rounded-full border shadow-inner flex items-center space-x-1.5 bg-fuchsia-950/40 text-fuchsia-300 border-fuchsia-500/30 tabular-nums">
             <span className="w-1.5 h-1.5 rounded-full bg-fuchsia-400 animate-pulse" />
             <span>{formatDurationSeconds(elapsedSeconds)}</span>
           </div>
         ) : isBreak ? (
-          <div className="w-full flex flex-col items-center gap-1">
-            {/* Live Break Timer (Ticking Up Second-by-Second) */}
-            <div className="font-mono text-xs font-black tracking-tight px-2.5 py-1 rounded-full border shadow-inner flex items-center space-x-1.5 bg-amber-950/60 text-amber-300 border-amber-500/50 tabular-nums animate-pulse">
-              <Coffee className="w-3 h-3 text-amber-400 shrink-0" />
-              <span>Break {formatDurationSeconds(liveBreakSeconds)}</span>
-            </div>
-            {/* Paused Study Session Timer Sub-Readout */}
-            <div className="text-[10px] text-zinc-400 font-medium flex items-center space-x-1 tabular-nums">
-              <Pause className="w-2.5 h-2.5 text-amber-400/70 shrink-0" />
-              <span>Study: {formatDurationSeconds(elapsedSeconds)}</span>
-            </div>
+          <div
+            className="font-mono text-xs font-black tracking-tight px-3 py-1 rounded-full border shadow-inner flex items-center space-x-1.5 bg-amber-950/60 text-amber-300 border-amber-500/50 tabular-nums animate-pulse"
+            title={`Live Break: ${formatDurationSeconds(liveBreakSeconds)} | Paused Study: ${formatDurationSeconds(elapsedSeconds)}`}
+          >
+            <Coffee className="w-3 h-3 text-amber-400 shrink-0" />
+            <span>Break {formatDurationSeconds(liveBreakSeconds)}</span>
           </div>
         ) : (
-          <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-zinc-900/60 border border-zinc-800/80">
+          <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider px-3 py-1 rounded-full bg-zinc-900/60 border border-zinc-800/80">
             Offline
           </span>
         )}
