@@ -7,6 +7,10 @@ import { getAdminUserId, isAdminUserId } from "@/hooks/useAdmin";
 import { calculateMemberElapsedStudySeconds } from "@/lib/time/format";
 import { getEffectiveMemberStatus, isMemberBreakExpired } from "@/lib/time/break";
 
+type RpcCaller = {
+  rpc: (name: string, params?: Record<string, unknown>) => PromiseLike<{ data: unknown; error: { message: string } | null }>;
+};
+
 export function sortMembers(members: UserProfile[], _currentUserId?: string): UserProfile[] {
   const statusPriority: Record<UserStatus, number> = {
     studying: 1,
@@ -109,16 +113,28 @@ export function useLiveRoom(currentUserId?: string) {
         );
 
         if (expiredBreakUsers.length > 0) {
-          const nowMs = Date.now();
-          expiredBreakUsers.forEach((expired) => {
-            const lastAttempt = recentlyStoppedBreakUserIdsRef.current.get(expired.id) || 0;
-            if (nowMs - lastAttempt > 15000) {
-              recentlyStoppedBreakUserIdsRef.current.set(expired.id, nowMs);
-              (supabase as unknown as { rpc: (name: string, params: Record<string, unknown>) => Promise<unknown> })
-                .rpc("rpc_stop_user_session", { p_user_id: expired.id })
-                .catch((err: unknown) => console.warn("[LiveRoom] Auto-stop expired break failed:", err));
-            }
-          });
+          try {
+            const nowMs = Date.now();
+            expiredBreakUsers.forEach((expired) => {
+              const lastAttempt = recentlyStoppedBreakUserIdsRef.current.get(expired.id) || 0;
+              if (nowMs - lastAttempt > 15000) {
+                recentlyStoppedBreakUserIdsRef.current.set(expired.id, nowMs);
+                Promise.resolve(
+                  (supabase as unknown as RpcCaller).rpc("rpc_stop_user_session", { p_user_id: expired.id })
+                )
+                  .then(({ error: rpcErr }) => {
+                    if (rpcErr) {
+                      console.warn("[LiveRoom] Auto-stop expired break RPC error:", rpcErr);
+                    }
+                  })
+                  .catch((err: unknown) => {
+                    console.warn("[LiveRoom] Auto-stop expired break failed:", err);
+                  });
+              }
+            });
+          } catch (autoStopErr) {
+            console.warn("[LiveRoom] Error initiating auto-stop for expired breaks:", autoStopErr);
+          }
         }
 
         const enriched = (data as UserProfile[]).map((u) => {
