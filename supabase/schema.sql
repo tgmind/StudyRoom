@@ -360,7 +360,8 @@ BEGIN
   SET current_status = 'break',
       last_resumed_at = NULL,
       break_started_at = v_now,
-      active_study_seconds_snapshot = v_total_study_seconds
+      active_study_seconds_snapshot = v_total_study_seconds,
+      break_warning_prompt_sent_at = NULL
   WHERE id = v_user_id;
 
   RETURN jsonb_build_object(
@@ -420,7 +421,8 @@ BEGIN
   UPDATE public.users
   SET current_status = 'studying',
       last_resumed_at = v_now,
-      break_started_at = NULL
+      break_started_at = NULL,
+      break_warning_prompt_sent_at = NULL
   WHERE id = v_user_id;
 
   RETURN jsonb_build_object(
