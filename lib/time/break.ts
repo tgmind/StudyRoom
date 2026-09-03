@@ -1,3 +1,5 @@
+import { getServerNow } from "./clockSync";
+
 /**
  * Break duration and 1-hour expiry constants & calculations.
  */
@@ -18,7 +20,7 @@ export interface BreakStatusResult {
  */
 export function calculateBreakStatus(
   breakStartedAt: string | Date | null | undefined,
-  now: Date = new Date()
+  now: Date = getServerNow()
 ): BreakStatusResult {
   if (!breakStartedAt) {
     return {
@@ -74,7 +76,7 @@ export function calculateBreakStatus(
  */
 export function isMemberBreakExpired(
   member: { current_status: string; break_started_at?: string | null },
-  now: Date = new Date()
+  now: Date = getServerNow()
 ): boolean {
   if (member.current_status !== "break" || !member.break_started_at) {
     return false;
@@ -90,7 +92,7 @@ export function isMemberBreakExpired(
  */
 export function getEffectiveMemberStatus(
   member: { current_status: string; break_started_at?: string | null },
-  now: Date = new Date()
+  now: Date = getServerNow()
 ): "studying" | "break" | "offline" {
   if (member.current_status === "break" && isMemberBreakExpired(member, now)) {
     return "offline";

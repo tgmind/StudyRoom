@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { DailyGoal, GoalTask } from "@/lib/supabase/types";
 import { calculateGoalCountdown, GoalCountdownResult } from "@/lib/time/countdown";
+import { getServerNow, calibrateWithServerTime } from "@/lib/time/clockSync";
 import { validateGoalTasks } from "@/lib/validation/schemas";
 
 type RpcCaller = {
@@ -32,7 +33,7 @@ export function useDailyGoals(userId?: string) {
 
     try {
       setError(null);
-      const now = new Date().toISOString();
+      const now = getServerNow().toISOString();
 
       const { data, error: fetchErr } = await supabase
         .from("daily_goals")
@@ -50,7 +51,7 @@ export function useDailyGoals(userId?: string) {
       if (data) {
         const goal = data as DailyGoal;
         setActiveGoal(goal);
-        setCountdown(calculateGoalCountdown(goal.expires_at, new Date()));
+        setCountdown(calculateGoalCountdown(goal.expires_at, getServerNow()));
       } else {
         setActiveGoal(null);
         setCountdown({
@@ -69,6 +70,19 @@ export function useDailyGoals(userId?: string) {
 
   useEffect(() => {
     fetchActiveGoal();
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        fetchActiveGoal();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("focus", handleVisibility);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("focus", handleVisibility);
+    };
   }, [fetchActiveGoal]);
 
   // Periodic 1s countdown tick for active goal
@@ -76,7 +90,7 @@ export function useDailyGoals(userId?: string) {
     if (!activeGoal) return;
 
     const intervalId = setInterval(() => {
-      const updated = calculateGoalCountdown(activeGoal.expires_at, new Date());
+      const updated = calculateGoalCountdown(activeGoal.expires_at, getServerNow());
       setCountdown(updated);
 
       if (updated.isExpired) {

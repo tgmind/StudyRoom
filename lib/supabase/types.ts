@@ -18,6 +18,7 @@ export interface UserProfile {
   break_warning_prompt_sent_at?: string | null;
   past_24h_study_seconds?: number;
   total_sessions_count?: number;
+  last_break_expired_study_seconds?: number | null;
 }
 
 export interface GoalTask {
@@ -168,6 +169,14 @@ export interface Database {
     Functions: {
       rpc_stop_user_session: {
         Args: { p_user_id: string };
+        Returns: Json;
+      };
+      rpc_acknowledge_break_expiry: {
+        Args: Record<string, never>;
+        Returns: Json;
+      };
+      rpc_cleanup_expired_breaks: {
+        Args: Record<string, never>;
         Returns: Json;
       };
       rpc_start_session: {

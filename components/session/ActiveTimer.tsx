@@ -4,6 +4,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import { formatDurationSeconds } from "@/lib/time/format";
 import { UserStatus } from "@/lib/supabase/types";
 import { calculateBreakStatus } from "@/lib/time/break";
+import { getServerNow } from "@/lib/time/clockSync";
 import { Coffee, AlertCircle, Clock } from "lucide-react";
 
 interface ActiveTimerProps {
@@ -20,20 +21,31 @@ export function ActiveTimer({
   const isStudying = status === "studying";
   const isBreak = status === "break";
 
-  // Strict realtime clock for live break countdown
-  const [currentTimestamp, setCurrentTimestamp] = useState(() => new Date());
+  // Strict realtime clock for live break countdown (calibrated to atomic server clock)
+  const [currentTimestamp, setCurrentTimestamp] = useState(() => getServerNow());
 
   useEffect(() => {
     if (!isBreak) return;
 
     // Immediately sync timestamp on status switch
-    setCurrentTimestamp(new Date());
+    const tick = () => setCurrentTimestamp(getServerNow());
+    tick();
 
-    const intervalId = setInterval(() => {
-      setCurrentTimestamp(new Date());
-    }, 1000);
+    const intervalId = setInterval(tick, 1000);
 
-    return () => clearInterval(intervalId);
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        tick();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("focus", handleVisibility);
+
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("focus", handleVisibility);
+    };
   }, [isBreak, breakStartedAt]);
 
   const breakStatus = useMemo(() => {

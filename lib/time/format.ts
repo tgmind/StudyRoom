@@ -1,4 +1,5 @@
 import { SessionBlock, UserProfile } from "@/lib/supabase/types";
+import { getServerNow } from "./clockSync";
 
 /**
  * Format total seconds into HH:MM:SS string.
@@ -36,7 +37,7 @@ export function formatMinutesToHours(minutes: number): string {
  */
 export function calculateActiveStudySeconds(
   blocks: SessionBlock[],
-  now: Date = new Date()
+  now: Date = getServerNow()
 ): number {
   if (!blocks || blocks.length === 0) return 0;
 
@@ -64,7 +65,7 @@ export function calculateActiveStudySeconds(
  */
 export function calculateMemberElapsedStudySeconds(
   member: UserProfile,
-  now: Date = new Date()
+  now: Date = getServerNow()
 ): number {
   if (member.current_status === "offline") return 0;
 
@@ -108,7 +109,7 @@ export function calculateMemberElapsedStudySeconds(
  */
 export function calculateActiveStudyMinutes(
   blocks: SessionBlock[],
-  now: Date = new Date()
+  now: Date = getServerNow()
 ): number {
   const seconds = calculateActiveStudySeconds(blocks, now);
   return Math.floor(seconds / 60);
@@ -133,7 +134,7 @@ export function formatSecondsToHuman(totalSeconds: number): string {
  */
 export function calculateMemberLiveBreakSeconds(
   member: UserProfile,
-  now: Date = new Date()
+  now: Date = getServerNow()
 ): number {
   if (member.current_status !== "break" || !member.break_started_at) {
     return 0;

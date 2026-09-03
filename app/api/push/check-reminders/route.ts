@@ -236,21 +236,32 @@ async function handleCheck(request: NextRequest) {
     // ------------------------------------------------------------
     // 4. Auto-expire breaks exceeding 60 minutes
     // ------------------------------------------------------------
-    const { data: expiredBreakUsers } = await supabase
-      .from("users")
-      .select("id")
-      .eq("current_status", "break")
-      .lte("break_started_at", sixtyMinutesAgo);
+    try {
+      const { data: cleanupRes, error: cleanupErr } = await (supabase as any).rpc("rpc_cleanup_expired_breaks");
+      if (cleanupErr) {
+        throw cleanupErr;
+      }
+      if (cleanupRes?.terminated_count) {
+        console.log(`[Push] Atomically terminated ${cleanupRes.terminated_count} expired break(s)`);
+      }
+    } catch {
+      // Fallback to client-side loop for backward compatibility
+      const { data: expiredBreakUsers } = await supabase
+        .from("users")
+        .select("id")
+        .eq("current_status", "break")
+        .lte("break_started_at", sixtyMinutesAgo);
 
-    if (expiredBreakUsers && expiredBreakUsers.length > 0) {
-      for (const user of expiredBreakUsers) {
-        try {
-          const { error: rpcErr } = await (supabase as any).rpc("rpc_stop_user_session", { p_user_id: user.id });
-          if (rpcErr) {
-            console.warn("[Push] Error auto-stopping expired break for user:", user.id, rpcErr);
+      if (expiredBreakUsers && expiredBreakUsers.length > 0) {
+        for (const user of expiredBreakUsers) {
+          try {
+            const { error: rpcErr } = await (supabase as any).rpc("rpc_stop_user_session", { p_user_id: user.id });
+            if (rpcErr) {
+              console.warn("[Push] Error auto-stopping expired break for user:", user.id, rpcErr);
+            }
+          } catch (err) {
+            console.warn("[Push] Error auto-stopping expired break for user:", user.id, err);
           }
-        } catch (err) {
-          console.warn("[Push] Error auto-stopping expired break for user:", user.id, err);
         }
       }
     }

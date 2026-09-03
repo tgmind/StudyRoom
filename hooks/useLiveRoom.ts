@@ -6,6 +6,7 @@ import { UserProfile, UserStatus } from "@/lib/supabase/types";
 import { getAdminUserId, isAdminUserId } from "@/hooks/useAdmin";
 import { calculateMemberElapsedStudySeconds } from "@/lib/time/format";
 import { getEffectiveMemberStatus, isMemberBreakExpired } from "@/lib/time/break";
+import { getServerNow } from "@/lib/time/clockSync";
 
 type RpcCaller = {
   rpc: (name: string, params?: Record<string, unknown>) => PromiseLike<{ data: unknown; error: { message: string } | null }>;
@@ -18,7 +19,7 @@ export function sortMembers(members: UserProfile[], _currentUserId?: string): Us
     offline: 3,
   };
 
-  const now = new Date();
+  const now = getServerNow();
 
   return [...members].sort((a, b) => {
     const statusA = getEffectiveMemberStatus(a, now);
@@ -87,7 +88,8 @@ export function useLiveRoom(currentUserId?: string) {
       }
 
       // Fetch study sessions to compute rolling 24-hour study duration and completed session counts
-      const cutoffTime = Date.now() - 24 * 60 * 60 * 1000;
+      const serverNow = getServerNow();
+      const cutoffTime = serverNow.getTime() - 24 * 60 * 60 * 1000;
       const { data: sessionData } = await supabase
         .from("study_sessions")
         .select("user_id, duration_minutes, end_time");
@@ -107,14 +109,14 @@ export function useLiveRoom(currentUserId?: string) {
       }
 
       if (data) {
-        const now = new Date();
+        const now = getServerNow();
         const expiredBreakUsers = (data as UserProfile[]).filter(
           (u) => u.current_status === "break" && isMemberBreakExpired(u, now)
         );
 
         if (expiredBreakUsers.length > 0) {
           try {
-            const nowMs = Date.now();
+            const nowMs = now.getTime();
             if (recentlyStoppedBreakUserIdsRef.current.size > 200) {
               recentlyStoppedBreakUserIdsRef.current.clear();
             }

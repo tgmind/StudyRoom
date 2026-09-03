@@ -10,6 +10,7 @@ import {
   formatSecondsToHuman,
   calculateMemberLiveBreakSeconds,
 } from "@/lib/time/format";
+import { getServerNow } from "@/lib/time/clockSync";
 import { Crown, Star, Coffee, Clock, BookOpen } from "lucide-react";
 
 import { getEffectiveMemberStatus } from "@/lib/time/break";
@@ -25,7 +26,7 @@ export const MemberCard = memo(function MemberCard({
   member,
   isCurrentUser = false,
   customElapsedSeconds,
-  currentTimestamp = new Date(),
+  currentTimestamp = getServerNow(),
 }: MemberCardProps) {
   const effectiveStatus = getEffectiveMemberStatus(member, currentTimestamp);
   const isStudying = effectiveStatus === "studying";

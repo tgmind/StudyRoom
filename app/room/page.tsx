@@ -42,14 +42,14 @@ export default function RoomPage() {
     pauseSession,
     resumeSession,
     finishSession,
-  } = useActiveSession(effectiveProfile, () => {
-    if (user) {
+  } = useActiveSession(effectiveProfile, (newStatus) => {
+    if (user && newStatus) {
       broadcastStatusChange({
         id: user.id,
-        current_status: "offline",
-        session_start_time: null,
-        break_started_at: null,
-        current_focus: null,
+        current_status: newStatus,
+        session_start_time: newStatus === "offline" ? null : undefined,
+        break_started_at: newStatus === "break" ? new Date().toISOString() : null,
+        current_focus: newStatus === "offline" ? null : undefined,
       });
     }
     refreshProfile();
@@ -79,7 +79,10 @@ export default function RoomPage() {
   const [isBreakGoalModalOpen, setIsBreakGoalModalOpen] = useState(false);
   const [isPendingStartNewAfterBreak, setIsPendingStartNewAfterBreak] = useState(false);
 
+  const hasPendingGoals = Boolean(activeGoal?.tasks && activeGoal.tasks.some((t) => !t.completed));
+
   const handleStartSession = async (focusTag?: string | null) => {
+    await startSession(focusTag ?? null);
     if (user) {
       broadcastStatusChange({
         id: user.id,
@@ -89,10 +92,10 @@ export default function RoomPage() {
         current_focus: focusTag ?? null,
       });
     }
-    await startSession(focusTag ?? null);
   };
 
   const handlePauseSession = async () => {
+    await pauseSession();
     if (user) {
       broadcastStatusChange({
         id: user.id,
@@ -100,21 +103,29 @@ export default function RoomPage() {
         break_started_at: new Date().toISOString(),
       });
     }
-    await pauseSession();
   };
 
   const handleResumeSession = async () => {
-    if (user) {
+    const res = await resumeSession();
+    if (user && res?.success) {
       broadcastStatusChange({
         id: user.id,
         current_status: "studying",
         break_started_at: null,
       });
+    } else if (user && res?.expired) {
+      broadcastStatusChange({
+        id: user.id,
+        current_status: "offline",
+        session_start_time: null,
+        break_started_at: null,
+        current_focus: null,
+      });
     }
-    await resumeSession();
   };
 
   const handleFinishSession = async (completedTaskIds: string[]) => {
+    await finishSession(completedTaskIds);
     if (user) {
       broadcastStatusChange({
         id: user.id,
@@ -124,7 +135,6 @@ export default function RoomPage() {
         current_focus: null,
       });
     }
-    await finishSession(completedTaskIds);
     await Promise.allSettled([refreshGoals(), refreshProfile(), refreshMembers()]);
   };
 
@@ -136,7 +146,7 @@ export default function RoomPage() {
     closeBreakExpiredNotice();
     setIsPendingStartNewAfterBreak(startNewSession);
 
-    if (activeGoal?.tasks && activeGoal.tasks.length > 0) {
+    if (hasPendingGoals) {
       setIsBreakGoalModalOpen(true);
     } else if (startNewSession) {
       handleStartNewSessionAfterBreak();
@@ -227,7 +237,7 @@ export default function RoomPage() {
         onStartNewSession={handleStartNewSessionAfterBreak}
         onProceedToGoals={handleProceedFromBreakNotice}
         savedStudySeconds={savedStudySecondsOnBreakExpiry}
-        hasActiveGoals={Boolean(activeGoal?.tasks && activeGoal.tasks.length > 0)}
+        hasActiveGoals={hasPendingGoals}
       />
 
       {/* Goal Updates Prompt Modal after 1-hour Break Expiry */}

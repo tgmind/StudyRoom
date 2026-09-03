@@ -1,3 +1,5 @@
+import { getServerNow } from "./clockSync";
+
 export interface GoalCountdownResult {
   isExpired: boolean;
   remainingSeconds: number;
@@ -9,7 +11,7 @@ export interface GoalCountdownResult {
  */
 export function calculateGoalCountdown(
   expiresAtISO: string,
-  now: Date = new Date()
+  now: Date = getServerNow()
 ): GoalCountdownResult {
   const expiresAt = new Date(expiresAtISO).getTime();
   const current = now.getTime();

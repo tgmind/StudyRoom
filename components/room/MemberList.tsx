@@ -14,6 +14,7 @@ import { MemberCard } from "@/components/room/MemberCard";
 import { Users, WifiOff, Flame, Coffee } from "lucide-react";
 import { calculateMemberElapsedStudySeconds } from "@/lib/time/format";
 import { getEffectiveMemberStatus } from "@/lib/time/break";
+import { getServerNow } from "@/lib/time/clockSync";
 
 const useIsomorphicLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
@@ -30,21 +31,34 @@ export const MemberList = memo(function MemberList({
   currentUserElapsedSeconds,
   isLoading = false,
 }: MemberListProps) {
-  // Single shared master tick for all room member cards
-  const [currentTimestamp, setCurrentTimestamp] = useState(new Date());
+  // Single shared master tick for all room member cards (calibrated to atomic server clock)
+  const [currentTimestamp, setCurrentTimestamp] = useState(() => getServerNow());
+
+  const hasAnyActiveOrBreak = (members || []).some(
+    (m) => m.current_status === "studying" || m.current_status === "break"
+  );
 
   useEffect(() => {
-    const hasAnyActiveOrBreak = (members || []).some(
-      (m) => m.current_status === "studying" || m.current_status === "break"
-    );
     if (!hasAnyActiveOrBreak) return;
 
-    const intervalId = setInterval(() => {
-      setCurrentTimestamp(new Date());
-    }, 1000);
+    const tick = () => setCurrentTimestamp(getServerNow());
+    tick();
+    const intervalId = setInterval(tick, 1000);
 
-    return () => clearInterval(intervalId);
-  }, [members]);
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        tick();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("focus", handleVisibility);
+
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("focus", handleVisibility);
+    };
+  }, [hasAnyActiveOrBreak]);
 
   // Memoize filtered member groupings based on authoritative live effective status
   const studyingMembers = useMemo(

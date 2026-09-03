@@ -33,6 +33,7 @@ ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_resumed_at TIMESTAMPTZ;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS break_started_at TIMESTAMPTZ;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS active_study_seconds_snapshot INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_break_expired_study_seconds INTEGER DEFAULT NULL;
 
 -- Ensure full replica identity for realtime update payloads
 ALTER TABLE public.users REPLICA IDENTITY FULL;
@@ -295,7 +296,8 @@ BEGIN
        break_started_at = NULL,
        active_study_seconds_snapshot = 0,
        three_hour_prompt_sent_at = NULL,
-       break_warning_prompt_sent_at = NULL
+       break_warning_prompt_sent_at = NULL,
+       last_break_expired_study_seconds = NULL
   WHERE id = v_user_id;
 
   -- Create active study block
@@ -310,7 +312,8 @@ BEGIN
     'session_start_time', v_now,
     'last_resumed_at', v_now,
     'active_study_seconds_snapshot', 0,
-    'block_id', v_block_id
+    'block_id', v_block_id,
+    'server_now', v_now
   );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -369,7 +372,8 @@ BEGIN
     'status', 'break',
     'paused_at', v_now,
     'break_started_at', v_now,
-    'active_study_seconds_snapshot', v_total_study_seconds
+    'active_study_seconds_snapshot', v_total_study_seconds,
+    'server_now', v_now
   );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -382,6 +386,7 @@ DECLARE
   v_status TEXT;
   v_break_started_at TIMESTAMPTZ;
   v_now TIMESTAMPTZ := NOW();
+  v_total_study_seconds INTEGER := 0;
 BEGIN
   v_user_id := auth.uid();
   IF v_user_id IS NULL THEN
@@ -400,11 +405,23 @@ BEGIN
   -- 1-HOUR BREAK EXPIRY ENFORCEMENT:
   -- If break exceeded 1 hour (3600 seconds), end session and save only study time before break
   IF v_break_started_at IS NOT NULL AND EXTRACT(EPOCH FROM (v_now - v_break_started_at)) >= 3600 THEN
+    -- Capture accrued study duration for cross-device notice
+    SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(end_time, v_now) - start_time))), 0)::INTEGER
+    INTO v_total_study_seconds
+    FROM public.session_blocks
+    WHERE user_id = v_user_id AND block_type = 'study' AND session_id IS NULL;
+
     PERFORM public.rpc_finish_session(ARRAY[]::TEXT[]);
+
+    UPDATE public.users
+    SET last_break_expired_study_seconds = v_total_study_seconds
+    WHERE id = v_user_id;
+
     RETURN jsonb_build_object(
       'success', false,
       'error', 'break_expired',
-      'message', 'You stayed on break for more than 1 hour. Session has been stopped. Start a new session.'
+      'message', 'You stayed on break for more than 1 hour. Session has been stopped. Start a new session.',
+      'server_now', v_now
     );
   END IF;
 
@@ -422,13 +439,15 @@ BEGIN
   SET current_status = 'studying',
       last_resumed_at = v_now,
       break_started_at = NULL,
-      break_warning_prompt_sent_at = NULL
+      break_warning_prompt_sent_at = NULL,
+      last_break_expired_study_seconds = NULL
   WHERE id = v_user_id;
 
   RETURN jsonb_build_object(
     'success', true,
     'status', 'studying',
-    'resumed_at', v_now
+    'resumed_at', v_now,
+    'server_now', v_now
   );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -591,7 +610,8 @@ BEGIN
     'duration_minutes', v_duration_minutes,
     'start_time', v_session_start,
     'end_time', v_now,
-    'completed_tasks', v_session_completed_tasks
+    'completed_tasks', v_session_completed_tasks,
+    'server_now', v_now
   );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -1379,13 +1399,59 @@ BEGIN
       break_started_at = NULL,
       active_study_seconds_snapshot = 0,
       three_hour_prompt_sent_at = NULL,
-      break_warning_prompt_sent_at = NULL
+      break_warning_prompt_sent_at = NULL,
+      last_break_expired_study_seconds = CASE WHEN v_status = 'break' THEN v_total_study_seconds::INTEGER ELSE NULL END
   WHERE id = p_user_id;
 
   RETURN jsonb_build_object(
     'success', true,
     'session_id', v_session_id,
-    'duration_minutes', v_duration_minutes
+    'duration_minutes', v_duration_minutes,
+    'server_now', v_now
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- RPC to acknowledge and clear break-expiry notice for authenticated user
+CREATE OR REPLACE FUNCTION public.rpc_acknowledge_break_expiry()
+RETURNS JSONB AS $$
+DECLARE
+  v_user_id UUID := auth.uid();
+BEGIN
+  IF v_user_id IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  UPDATE public.users
+  SET last_break_expired_study_seconds = NULL
+  WHERE id = v_user_id;
+
+  RETURN jsonb_build_object('success', true);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- RPC to atomically terminate all expired breaks across the entire platform
+CREATE OR REPLACE FUNCTION public.rpc_cleanup_expired_breaks()
+RETURNS JSONB AS $$
+DECLARE
+  v_count INTEGER := 0;
+  v_user_rec RECORD;
+  v_now TIMESTAMPTZ := NOW();
+BEGIN
+  FOR v_user_rec IN
+    SELECT id FROM public.users
+    WHERE current_status = 'break'
+      AND break_started_at IS NOT NULL
+      AND EXTRACT(EPOCH FROM (v_now - break_started_at)) >= 3600
+  LOOP
+    PERFORM public.rpc_stop_user_session(v_user_rec.id);
+    v_count := v_count + 1;
+  END LOOP;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'terminated_count', v_count,
+    'server_now', v_now
   );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

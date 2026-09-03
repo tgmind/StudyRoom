@@ -5,12 +5,13 @@ import { createClient } from "@/lib/supabase/client";
 import { UserProfile, SessionBlock, UserStatus } from "@/lib/supabase/types";
 import { calculateActiveStudySeconds, calculateMemberElapsedStudySeconds } from "@/lib/time/format";
 import { calculateBreakStatus, BreakStatusResult, getEffectiveMemberStatus, isMemberBreakExpired } from "@/lib/time/break";
+import { getServerNow, calibrateWithServerTime } from "@/lib/time/clockSync";
 
 type RpcCaller = {
   rpc: (name: string, params?: Record<string, unknown>) => Promise<{ data: unknown; error: Error | null }>;
 };
 
-export function useActiveSession(profile: UserProfile | null, onStatusChange?: () => void) {
+export function useActiveSession(profile: UserProfile | null, onStatusChange?: (newStatus?: UserStatus) => void) {
   const [blocks, setBlocks] = useState<SessionBlock[]>([]);
   const [elapsedStudySeconds, setElapsedStudySeconds] = useState(0);
   const [actionLoading, setActionLoading] = useState(false);
@@ -28,7 +29,7 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
 
   const supabase = createClient();
   const currentStatus: UserStatus = profile?.current_status ?? "offline";
-  const effectiveStatus: UserStatus = profile ? getEffectiveMemberStatus(profile, new Date()) : "offline";
+  const effectiveStatus: UserStatus = profile ? getEffectiveMemberStatus(profile, getServerNow()) : "offline";
 
   // Fetch session blocks for current unfinalized session
   const fetchSessionBlocks = useCallback(async () => {
@@ -54,11 +55,11 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
       const fetchedBlocks = (data || []) as SessionBlock[];
       setBlocks(fetchedBlocks);
 
-      // Compute authoritative elapsed seconds
+      // Compute authoritative elapsed seconds with server synchronized atomic time
       if (profile) {
-        setElapsedStudySeconds(calculateMemberElapsedStudySeconds(profile, new Date()));
+        setElapsedStudySeconds(calculateMemberElapsedStudySeconds(profile, getServerNow()));
       } else {
-        setElapsedStudySeconds(calculateActiveStudySeconds(fetchedBlocks, new Date()));
+        setElapsedStudySeconds(calculateActiveStudySeconds(fetchedBlocks, getServerNow()));
       }
     } catch (err) {
       console.error("Failed to fetch session blocks:", err);
@@ -94,7 +95,12 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
           session_id?: string;
           duration_minutes?: number;
           error?: string;
+          server_now?: string;
         };
+
+        if (res?.server_now) {
+          calibrateWithServerTime(res.server_now);
+        }
 
         if (typeof window !== "undefined") {
           try {
@@ -106,7 +112,7 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
           if (res.error?.toLowerCase().includes("no active session")) {
             setBlocks([]);
             setElapsedStudySeconds(0);
-            if (onStatusChangeRef.current) onStatusChangeRef.current();
+            if (onStatusChangeRef.current) onStatusChangeRef.current("offline");
             return { ...res, success: true };
           }
           throw new Error(res.error || "Failed to finish session");
@@ -114,7 +120,7 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
 
         setBlocks([]);
         setElapsedStudySeconds(0);
-        if (onStatusChangeRef.current) onStatusChangeRef.current();
+        if (onStatusChangeRef.current) onStatusChangeRef.current("offline");
 
         return res;
       } catch (err) {
@@ -131,7 +137,7 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
         ) {
           setBlocks([]);
           setElapsedStudySeconds(0);
-          if (onStatusChangeRef.current) onStatusChangeRef.current();
+          if (onStatusChangeRef.current) onStatusChangeRef.current("offline");
           return { success: true };
         }
         setError(msg);
@@ -159,11 +165,18 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
     const checkBreakTimeout = async () => {
       if (isAutoTerminatingRef.current) return;
 
-      const breakStatus: BreakStatusResult = calculateBreakStatus(breakStart, new Date());
+      const serverNow = getServerNow();
+      const breakStatus: BreakStatusResult = calculateBreakStatus(breakStart, serverNow);
 
       if (breakStatus.isExpired) {
         isAutoTerminatingRef.current = true;
-        const accruedSeconds = profile.active_study_seconds_snapshot ?? elapsedStudySecondsRef.current;
+        const calculatedSeconds = calculateMemberElapsedStudySeconds(profile, serverNow);
+        const accruedSeconds =
+          profile.active_study_seconds_snapshot && profile.active_study_seconds_snapshot > 0
+            ? profile.active_study_seconds_snapshot
+            : calculatedSeconds > 0
+            ? calculatedSeconds
+            : elapsedStudySecondsRef.current;
         setSavedStudySecondsOnBreakExpiry(accruedSeconds);
 
         try {
@@ -174,7 +187,7 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
         } finally {
           setError(null);
           setIsBreakExpiredNoticeOpen(true);
-          if (onStatusChangeRef.current) onStatusChangeRef.current();
+          if (onStatusChangeRef.current) onStatusChangeRef.current("offline");
         }
       }
     };
@@ -184,7 +197,21 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
 
     // Check every 2 seconds while on break
     const intervalId = setInterval(checkBreakTimeout, 2000);
-    return () => clearInterval(intervalId);
+
+    // Instant check when user unlocks phone or focuses tab
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        checkBreakTimeout();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("focus", handleVisibility);
+
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("focus", handleVisibility);
+    };
   }, [currentStatus, profile, blocks, finishSession]);
 
   // Persist active break state to localStorage so background tab / phone sleep is trackable
@@ -214,13 +241,30 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
   // Check if an offline user had an expired break that ended while offline / in background
   useEffect(() => {
     if (typeof window === "undefined" || !profile || currentStatus === "break") return;
+
+    // 1. Authoritative Server Check: Profile indicates last session ended due to expired break
+    if (
+      currentStatus === "offline" &&
+      profile.last_break_expired_study_seconds !== undefined &&
+      profile.last_break_expired_study_seconds !== null &&
+      profile.last_break_expired_study_seconds > 0
+    ) {
+      setSavedStudySecondsOnBreakExpiry(profile.last_break_expired_study_seconds);
+      setIsBreakExpiredNoticeOpen(true);
+      try {
+        localStorage.removeItem("studyroom_active_break");
+      } catch {}
+      return;
+    }
+
+    // 2. Client Fallback: Check localStorage if user was active on this specific device
     try {
       const stored = localStorage.getItem("studyroom_active_break");
       if (stored) {
         const data = JSON.parse(stored);
         if (data.userId === profile.id && data.breakStartedAt) {
           const breakStartMs = new Date(data.breakStartedAt).getTime();
-          if (!isNaN(breakStartMs) && Date.now() - breakStartMs >= 3600 * 1000) {
+          if (!isNaN(breakStartMs) && getServerNow().getTime() - breakStartMs >= 3600 * 1000) {
             setSavedStudySecondsOnBreakExpiry(data.accruedSeconds || 0);
             setIsBreakExpiredNoticeOpen(true);
           }
@@ -232,34 +276,63 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
     }
   }, [profile, currentStatus]);
 
-  // Periodic UI refresh loop: Only ticks when actively 'studying'; frozen on 'break' or 'offline'
+  const profileRef = useRef(profile);
+  profileRef.current = profile;
+  const blocksRef = useRef(blocks);
+  blocksRef.current = blocks;
+
+  // Immediate sync when profile or blocks updates
   useEffect(() => {
     if (currentStatus === "offline") {
       setElapsedStudySeconds(0);
       return;
     }
+    const p = profileRef.current;
+    const b = blocksRef.current;
+    const serverNow = getServerNow();
+    if (p) {
+      setElapsedStudySeconds(calculateMemberElapsedStudySeconds(p, serverNow));
+    } else {
+      setElapsedStudySeconds(calculateActiveStudySeconds(b, serverNow));
+    }
+  }, [currentStatus, profile, blocks]);
 
-    const computeCurrentSeconds = (now: Date) => {
-      if (profile) {
-        return calculateMemberElapsedStudySeconds(profile, now);
-      }
-      return calculateActiveStudySeconds(blocks, now);
-    };
-
-    if (currentStatus === "break") {
-      // Freeze timer at current calculated active study duration
-      setElapsedStudySeconds(computeCurrentSeconds(new Date()));
+  // Periodic UI refresh loop: Runs continuously without 4-second polling phase resets
+  useEffect(() => {
+    if (currentStatus !== "studying") {
       return;
     }
 
-    // Actively studying: tick every 1 second
-    setElapsedStudySeconds(computeCurrentSeconds(new Date()));
-    const intervalId = setInterval(() => {
-      setElapsedStudySeconds(computeCurrentSeconds(new Date()));
-    }, 1000);
+    const computeCurrentSeconds = (now: Date) => {
+      const p = profileRef.current;
+      const b = blocksRef.current;
+      if (p) {
+        return calculateMemberElapsedStudySeconds(p, now);
+      }
+      return calculateActiveStudySeconds(b, now);
+    };
 
-    return () => clearInterval(intervalId);
-  }, [currentStatus, profile, blocks]);
+    const tick = () => {
+      setElapsedStudySeconds(computeCurrentSeconds(getServerNow()));
+    };
+
+    tick();
+    const intervalId = setInterval(tick, 1000);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        tick();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("focus", handleVisibility);
+
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("focus", handleVisibility);
+    };
+  }, [currentStatus]);
 
   const startSession = async (focusTag?: string | null) => {
     if (actionLoadingRef.current) return;
@@ -274,11 +347,15 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
 
       if (rpcErr) throw rpcErr;
 
-      const res = data as unknown as { success: boolean; error?: string };
+      const res = data as unknown as { success: boolean; error?: string; server_now?: string };
+      if (res?.server_now) {
+        calibrateWithServerTime(res.server_now);
+      }
       if (!res.success) throw new Error(res.error || "Failed to start session");
 
       await fetchSessionBlocks();
-      if (onStatusChangeRef.current) onStatusChangeRef.current();
+      if (onStatusChangeRef.current) onStatusChangeRef.current("studying");
+      return res;
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Start session failed";
       setError(msg);
@@ -299,11 +376,15 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
       const { data, error: rpcErr } = await (supabase as unknown as RpcCaller).rpc("rpc_pause_session");
       if (rpcErr) throw rpcErr;
 
-      const res = data as unknown as { success: boolean; error?: string };
+      const res = data as unknown as { success: boolean; error?: string; server_now?: string };
+      if (res?.server_now) {
+        calibrateWithServerTime(res.server_now);
+      }
       if (!res.success) throw new Error(res.error || "Failed to pause session");
 
       await fetchSessionBlocks();
-      if (onStatusChangeRef.current) onStatusChangeRef.current();
+      if (onStatusChangeRef.current) onStatusChangeRef.current("break");
+      return res;
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Pause session failed";
       setError(msg);
@@ -314,8 +395,8 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
     }
   };
 
-  const resumeSession = async () => {
-    if (actionLoadingRef.current) return;
+  const resumeSession = async (): Promise<{ success: boolean; expired?: boolean }> => {
+    if (actionLoadingRef.current) return { success: false };
     actionLoadingRef.current = true;
     setActionLoading(true);
     setError(null);
@@ -328,7 +409,12 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
         success: boolean;
         error?: string;
         message?: string;
+        server_now?: string;
       };
+
+      if (res?.server_now) {
+        calibrateWithServerTime(res.server_now);
+      }
 
       if (!res.success) {
         if (res.error === "break_expired") {
@@ -336,14 +422,15 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
           setSavedStudySecondsOnBreakExpiry(accruedSeconds);
           setIsBreakExpiredNoticeOpen(true);
           await fetchSessionBlocks();
-          if (onStatusChangeRef.current) onStatusChangeRef.current();
-          return;
+          if (onStatusChangeRef.current) onStatusChangeRef.current("offline");
+          return { success: false, expired: true };
         }
         throw new Error(res.error || res.message || "Failed to resume session");
       }
 
       await fetchSessionBlocks();
-      if (onStatusChangeRef.current) onStatusChangeRef.current();
+      if (onStatusChangeRef.current) onStatusChangeRef.current("studying");
+      return { success: true };
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Resume session failed";
       if (
@@ -356,7 +443,8 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
         setSavedStudySecondsOnBreakExpiry(accruedSeconds);
         setIsBreakExpiredNoticeOpen(true);
         setError(null);
-        if (onStatusChangeRef.current) onStatusChangeRef.current();
+        if (onStatusChangeRef.current) onStatusChangeRef.current("offline");
+        return { success: false, expired: true };
       } else {
         setError(msg);
         throw err;
@@ -373,6 +461,9 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
       try {
         localStorage.removeItem("studyroom_active_break");
       } catch {}
+    }
+    if (profile?.last_break_expired_study_seconds) {
+      Promise.resolve((supabase as unknown as RpcCaller).rpc("rpc_acknowledge_break_expiry")).catch(() => {});
     }
   };
 
