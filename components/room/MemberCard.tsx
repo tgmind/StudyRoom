@@ -207,7 +207,7 @@ export const MemberCard = memo(function MemberCard({
 
         <div
           className="flex items-center gap-1 min-w-0"
-          title={`${sessionsCount} session${sessionsCount === 1 ? "" : "s"} (${isCurrentSessionActive ? "current session in progress" : "completed"})`}
+          title={`${sessionsCount} session${sessionsCount === 1 ? "" : "s"} this week (${isCurrentSessionActive ? "current session in progress" : "completed"})`}
         >
           <BookOpen className={`${compact ? "w-2 h-2" : "w-2.5 h-2.5"} text-violet-400/90 shrink-0`} />
           <span className="font-bold text-zinc-200 tabular-nums text-[10px]">

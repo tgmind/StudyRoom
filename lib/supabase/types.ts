@@ -18,6 +18,7 @@ export interface UserProfile {
   break_warning_prompt_sent_at?: string | null;
   past_24h_study_seconds?: number;
   total_sessions_count?: number;
+  weekly_sessions_count?: number;
   last_break_expired_study_seconds?: number | null;
   weekly_study_seconds?: number;
   last_offline_at?: string | null;

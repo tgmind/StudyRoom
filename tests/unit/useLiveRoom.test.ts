@@ -161,4 +161,66 @@ describe("useLiveRoom Hook", () => {
     expect(result.current.members).toHaveLength(1);
     expect(result.current.members[0].id).toBe("user-expired-break-2");
   });
+
+  it("calculates weekly sessions count correctly resetting older sessions from previous weeks", async () => {
+    const mockUsers = [
+      {
+        id: "user-weekly",
+        display_name: "Diana",
+        current_status: "offline",
+        last_offline_at: new Date().toISOString(),
+      },
+    ];
+
+    const now = new Date();
+    // One session 1 hour ago (clearly within current week unless exactly Monday 00:30 UTC)
+    const sessionThisWeek = {
+      user_id: "user-weekly",
+      duration_minutes: 45,
+      start_time: new Date(now.getTime() - 3600 * 1000).toISOString(),
+      end_time: new Date(now.getTime() - 1800 * 1000).toISOString(),
+    };
+    // One session 10 days ago (definitely in a past week)
+    const sessionPastWeek = {
+      user_id: "user-weekly",
+      duration_minutes: 60,
+      start_time: new Date(now.getTime() - 10 * 24 * 3600 * 1000).toISOString(),
+      end_time: new Date(now.getTime() - (10 * 24 * 3600 - 3600) * 1000).toISOString(),
+    };
+
+    mockFrom.mockImplementation((table: string) => {
+      if (table === "users") {
+        return {
+          select: vi.fn().mockReturnValue({
+            neq: vi.fn().mockResolvedValue({ data: mockUsers, error: null }),
+            then: (onfulfilled: (res: { data: unknown; error: null }) => unknown) =>
+              Promise.resolve({ data: mockUsers, error: null }).then(onfulfilled),
+          }),
+        };
+      }
+      if (table === "study_sessions") {
+        return {
+          select: vi.fn().mockReturnValue({
+            then: (onfulfilled: (res: { data: unknown; error: null }) => unknown) =>
+              Promise.resolve({ data: [sessionThisWeek, sessionPastWeek], error: null }).then(onfulfilled),
+          }),
+        };
+      }
+      return {
+        select: vi.fn().mockResolvedValue({ data: [], error: null }),
+      };
+    });
+
+    const { result } = renderHook(() => useLiveRoom());
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.members).toHaveLength(1);
+    const member = result.current.members[0];
+    // Must track weekly session count (1 session), ignoring the 10-days-ago session
+    expect(member.total_sessions_count).toBe(1);
+    expect(member.weekly_sessions_count).toBe(1);
+  });
 });

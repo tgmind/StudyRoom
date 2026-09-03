@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useStudyHistory } from "@/hooks/useStudyHistory";
@@ -8,7 +8,8 @@ import { TopHeader } from "@/components/navigation/TopHeader";
 import { BottomNav } from "@/components/navigation/BottomNav";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
-import { formatMinutesToHours, formatSessionTime, formatSessionDate } from "@/lib/time/format";
+import { formatMinutesToHours, formatSessionTime, formatSessionDate, getWeekStartTimestamp } from "@/lib/time/format";
+import { getServerNow } from "@/lib/time/clockSync";
 import { StudySession } from "@/lib/supabase/types";
 import {
   History,
@@ -19,12 +20,17 @@ import {
   ArrowRight,
   Sparkles,
   CheckCircle2,
+  Archive,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 
 export default function HistoryPage() {
   const { user, profile } = useAuth();
   const { sessions, loading, actionLoading, clearHistory, error } = useStudyHistory(user?.id);
   const [isClearModalOpen, setIsClearModalOpen] = useState(false);
+  const [isPastWeeksExpanded, setIsPastWeeksExpanded] = useState(false);
+  const archiveTopRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
   const handleConfirmClear = async () => {
@@ -32,15 +38,36 @@ export default function HistoryPage() {
     setIsClearModalOpen(false);
   };
 
-  // Group sessions by date label
-  const groupedSessions: { [dateLabel: string]: StudySession[] } = {};
+  // Group sessions by current week vs past weeks
+  const currentWeekStartMs = getWeekStartTimestamp(getServerNow());
+  const currentWeekSessions: { [dateLabel: string]: StudySession[] } = {};
+  const pastWeekSessions: { [dateLabel: string]: StudySession[] } = {};
+
+  let pastWeeksCount = 0;
+  let pastWeeksMinutes = 0;
+
   for (const s of sessions) {
+    const sessionTime = new Date(s.start_time).getTime();
+    const isCurrentWeek = sessionTime >= currentWeekStartMs;
     const label = formatSessionDate(s.start_time);
-    if (!groupedSessions[label]) {
-      groupedSessions[label] = [];
+
+    if (isCurrentWeek) {
+      if (!currentWeekSessions[label]) {
+        currentWeekSessions[label] = [];
+      }
+      currentWeekSessions[label].push(s);
+    } else {
+      if (!pastWeekSessions[label]) {
+        pastWeekSessions[label] = [];
+      }
+      pastWeekSessions[label].push(s);
+      pastWeeksCount += 1;
+      pastWeeksMinutes += s.duration_minutes || 0;
     }
-    groupedSessions[label].push(s);
   }
+
+  const currentWeekEntries = Object.entries(currentWeekSessions);
+  const pastWeekEntries = Object.entries(pastWeekSessions);
 
   const totalStudyMinutes = sessions.reduce((acc, s) => acc + s.duration_minutes, 0);
 
@@ -167,80 +194,222 @@ export default function HistoryPage() {
           </div>
         ) : (
           <div className="space-y-6">
-            {Object.entries(groupedSessions).map(([dateLabel, dateSessions]) => {
-              const dayMinutes = dateSessions.reduce((acc, s) => acc + s.duration_minutes, 0);
+            {/* 1. Current Week Sessions (Occupies screen by default) */}
+            {currentWeekEntries.length > 0 ? (
+              currentWeekEntries.map(([dateLabel, dateSessions]) => {
+                const dayMinutes = dateSessions.reduce((acc, s) => acc + s.duration_minutes, 0);
 
-              return (
-                <section key={dateLabel} className="space-y-3">
-                  {/* Date Section Header */}
-                  <div className="flex items-center justify-between px-1 text-xs sm:text-sm gap-2">
-                    <div className="flex items-center space-x-1.5 font-bold uppercase tracking-wider text-zinc-300 text-[11px] sm:text-xs truncate min-w-0">
-                      <Calendar className="w-3.5 h-3.5 text-violet-400 shrink-0" />
-                      <span className="truncate">{dateLabel}</span>
+                return (
+                  <section key={dateLabel} className="space-y-3">
+                    {/* Date Section Header */}
+                    <div className="flex items-center justify-between px-1 text-xs sm:text-sm gap-2">
+                      <div className="flex items-center space-x-1.5 font-bold uppercase tracking-wider text-zinc-300 text-[11px] sm:text-xs truncate min-w-0">
+                        <Calendar className="w-3.5 h-3.5 text-violet-400 shrink-0" />
+                        <span className="truncate">{dateLabel}</span>
+                      </div>
+                      <span className="font-mono text-[10px] sm:text-[11px] text-zinc-400 font-semibold whitespace-nowrap shrink-0">
+                        {dateSessions.length} {dateSessions.length === 1 ? "session" : "sessions"} • {formatMinutesToHours(dayMinutes)}
+                      </span>
                     </div>
-                    <span className="font-mono text-[10px] sm:text-[11px] text-zinc-400 font-semibold whitespace-nowrap shrink-0">
-                      {dateSessions.length} {dateSessions.length === 1 ? "session" : "sessions"} • {formatMinutesToHours(dayMinutes)}
+
+                    {/* Responsive Flexible Session Cards */}
+                    <div className="space-y-2.5 relative pl-4 sm:pl-6 before:absolute before:top-2 before:bottom-2 before:left-1.5 sm:before:left-2.5 before:w-px before:bg-zinc-800">
+                      {dateSessions.map((session) => {
+                        const completedTasks = session.completed_tasks || [];
+                        const durationStr = formatMinutesToHours(session.duration_minutes);
+
+                        return (
+                          <div
+                            key={session.id}
+                            className="relative"
+                          >
+                            {/* Timeline Node Dot (Faded Slate/Violet) */}
+                            <div className="absolute -left-4 sm:-left-6 top-4 -translate-x-1/2 w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-zinc-700 border-2 border-zinc-950 shadow-sm" />
+
+                            <div className="bg-zinc-900/80 border border-zinc-800/90 hover:border-zinc-700 rounded-xl p-3 sm:p-4 shadow-sm transition-all space-y-2">
+                              {/* Top Line: Duration Pill + Time Interval */}
+                              <div className="flex flex-wrap items-center justify-between gap-1.5 sm:gap-2">
+                                <div className="flex items-center space-x-2 sm:space-x-2.5 min-w-0">
+                                  {/* Soft Faded Violet Duration Badge */}
+                                  <span className="px-2 py-0.5 sm:px-2.5 sm:py-0.5 rounded-lg bg-violet-500/10 border border-violet-500/25 text-violet-200 font-mono text-xs sm:text-sm font-black shadow-sm shrink-0">
+                                    {durationStr}
+                                  </span>
+
+                                  <div className="text-xs sm:text-sm text-zinc-300 font-mono flex items-center space-x-1.5 whitespace-nowrap truncate">
+                                    <Clock className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                                    <span>
+                                      {formatSessionTime(session.start_time)} → {formatSessionTime(session.end_time)}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Bottom Line: Completed Goal Chips */}
+                              {completedTasks.length > 0 && (
+                                <div className="pt-1.5 border-t border-zinc-800/70 flex flex-wrap gap-1.5 items-center">
+                                  <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-zinc-400 mr-1 flex items-center space-x-1 shrink-0">
+                                    <CheckCircle2 className="w-3 h-3 text-violet-400" />
+                                    <span>Goals:</span>
+                                  </span>
+                                  {completedTasks.map((t) => (
+                                    <span
+                                      key={t.id}
+                                      className="inline-flex items-center space-x-1 px-2 py-0.5 sm:px-2.5 sm:py-0.5 rounded-md bg-violet-500/10 border border-violet-500/20 text-violet-200 text-[11px] sm:text-xs font-medium max-w-full truncate shadow-sm"
+                                    >
+                                      <span className="text-violet-400 font-bold">✓</span>
+                                      <span className="truncate">{t.task}</span>
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
+                );
+              })
+            ) : pastWeekEntries.length > 0 ? (
+              <div className="p-4 rounded-2xl bg-zinc-900/40 border border-zinc-800/70 text-center space-y-1">
+                <p className="text-xs font-bold text-zinc-300">
+                  No study sessions recorded yet for this week
+                </p>
+                <p className="text-[11px] text-zinc-500">
+                  Start studying in the Live Room to begin your new weekly log.
+                </p>
+              </div>
+            ) : null}
+
+            {/* 2. Past Weeks Collapsible Archive (Ultra-compact space-saving banner) */}
+            {pastWeekEntries.length > 0 && (
+              <div ref={archiveTopRef} className="pt-2 border-t border-zinc-800/80 space-y-3">
+                <button
+                  type="button"
+                  onClick={() => setIsPastWeeksExpanded((prev) => !prev)}
+                  className="w-full flex items-center justify-between py-2 px-3 sm:py-2.5 sm:px-3.5 rounded-xl bg-zinc-900/50 hover:bg-zinc-900/90 border border-zinc-800/70 hover:border-zinc-700/80 transition-all text-left group shadow-sm select-none touch-manipulation min-h-[36px]"
+                  aria-expanded={isPastWeeksExpanded}
+                  title={isPastWeeksExpanded ? "Click to collapse older weeks" : "Click to view older weeks"}
+                >
+                  <div className="flex items-center space-x-2 min-w-0 flex-1">
+                    <Archive className="w-3.5 h-3.5 text-zinc-400 group-hover:text-violet-400 transition-colors shrink-0" />
+                    <span className="text-[11px] sm:text-xs font-bold text-zinc-300 group-hover:text-zinc-100 tracking-tight shrink-0">
+                      Earlier Weeks
+                    </span>
+                    <span className="text-zinc-600 text-[10px] select-none shrink-0">•</span>
+                    <span className="font-mono text-[10px] sm:text-[11px] text-zinc-400 truncate">
+                      {pastWeeksCount} {pastWeeksCount === 1 ? "sess" : "sess"} ({formatMinutesToHours(pastWeeksMinutes)})
                     </span>
                   </div>
 
-                  {/* Responsive Flexible Session Cards */}
-                  <div className="space-y-2.5 relative pl-4 sm:pl-6 before:absolute before:top-2 before:bottom-2 before:left-1.5 sm:before:left-2.5 before:w-px before:bg-zinc-800">
-                    {dateSessions.map((session) => {
-                      const completedTasks = session.completed_tasks || [];
-                      const durationStr = formatMinutesToHours(session.duration_minutes);
+                  <div className="flex items-center space-x-1 text-[10px] sm:text-[11px] font-semibold text-zinc-400 group-hover:text-zinc-200 shrink-0 ml-2">
+                    <span className="hidden xs:inline text-zinc-500 group-hover:text-zinc-300">
+                      {isPastWeeksExpanded ? "Collapse" : "Expand"}
+                    </span>
+                    <ChevronDown
+                      className={`w-3.5 h-3.5 text-zinc-400 group-hover:text-zinc-200 transition-transform duration-200 ${
+                        isPastWeeksExpanded ? "rotate-180" : ""
+                      }`}
+                    />
+                  </div>
+                </button>
+
+                {/* Collapsible Content */}
+                {isPastWeeksExpanded && (
+                  <div className="space-y-6 pt-1 animate-in fade-in slide-in-from-top-2 duration-200">
+                    {pastWeekEntries.map(([dateLabel, dateSessions]) => {
+                      const dayMinutes = dateSessions.reduce((acc, s) => acc + s.duration_minutes, 0);
 
                       return (
-                        <div
-                          key={session.id}
-                          className="relative"
-                        >
-                          {/* Timeline Node Dot (Faded Slate/Violet) */}
-                          <div className="absolute -left-4 sm:-left-6 top-4 -translate-x-1/2 w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-zinc-700 border-2 border-zinc-950 shadow-sm" />
-
-                          <div className="bg-zinc-900/80 border border-zinc-800/90 hover:border-zinc-700 rounded-xl p-3 sm:p-4 shadow-sm transition-all space-y-2">
-                            {/* Top Line: Duration Pill + Time Interval */}
-                            <div className="flex flex-wrap items-center justify-between gap-1.5 sm:gap-2">
-                              <div className="flex items-center space-x-2 sm:space-x-2.5 min-w-0">
-                                {/* Soft Faded Violet Duration Badge */}
-                                <span className="px-2 py-0.5 sm:px-2.5 sm:py-0.5 rounded-lg bg-violet-500/10 border border-violet-500/25 text-violet-200 font-mono text-xs sm:text-sm font-black shadow-sm shrink-0">
-                                  {durationStr}
-                                </span>
-
-                                <div className="text-xs sm:text-sm text-zinc-300 font-mono flex items-center space-x-1.5 whitespace-nowrap truncate">
-                                  <Clock className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
-                                  <span>
-                                    {formatSessionTime(session.start_time)} → {formatSessionTime(session.end_time)}
-                                  </span>
-                                </div>
-                              </div>
+                        <section key={dateLabel} className="space-y-3">
+                          {/* Date Section Header */}
+                          <div className="flex items-center justify-between px-1 text-xs sm:text-sm gap-2">
+                            <div className="flex items-center space-x-1.5 font-bold uppercase tracking-wider text-zinc-300 text-[11px] sm:text-xs truncate min-w-0">
+                              <Calendar className="w-3.5 h-3.5 text-violet-400 shrink-0" />
+                              <span className="truncate">{dateLabel}</span>
                             </div>
-
-                            {/* Bottom Line: Completed Goal Chips */}
-                            {completedTasks.length > 0 && (
-                              <div className="pt-1.5 border-t border-zinc-800/70 flex flex-wrap gap-1.5 items-center">
-                                <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-zinc-400 mr-1 flex items-center space-x-1 shrink-0">
-                                  <CheckCircle2 className="w-3 h-3 text-violet-400" />
-                                  <span>Goals:</span>
-                                </span>
-                                {completedTasks.map((t) => (
-                                  <span
-                                    key={t.id}
-                                    className="inline-flex items-center space-x-1 px-2 py-0.5 sm:px-2.5 sm:py-0.5 rounded-md bg-violet-500/10 border border-violet-500/20 text-violet-200 text-[11px] sm:text-xs font-medium max-w-full truncate shadow-sm"
-                                  >
-                                    <span className="text-violet-400 font-bold">✓</span>
-                                    <span className="truncate">{t.task}</span>
-                                  </span>
-                                ))}
-                              </div>
-                            )}
+                            <span className="font-mono text-[10px] sm:text-[11px] text-zinc-400 font-semibold whitespace-nowrap shrink-0">
+                              {dateSessions.length} {dateSessions.length === 1 ? "session" : "sessions"} • {formatMinutesToHours(dayMinutes)}
+                            </span>
                           </div>
-                        </div>
+
+                          {/* Responsive Flexible Session Cards */}
+                          <div className="space-y-2.5 relative pl-4 sm:pl-6 before:absolute before:top-2 before:bottom-2 before:left-1.5 sm:before:left-2.5 before:w-px before:bg-zinc-800">
+                            {dateSessions.map((session) => {
+                              const completedTasks = session.completed_tasks || [];
+                              const durationStr = formatMinutesToHours(session.duration_minutes);
+
+                              return (
+                                <div
+                                  key={session.id}
+                                  className="relative"
+                                >
+                                  {/* Timeline Node Dot (Faded Slate/Violet) */}
+                                  <div className="absolute -left-4 sm:-left-6 top-4 -translate-x-1/2 w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-zinc-700 border-2 border-zinc-950 shadow-sm" />
+
+                                  <div className="bg-zinc-900/80 border border-zinc-800/90 hover:border-zinc-700 rounded-xl p-3 sm:p-4 shadow-sm transition-all space-y-2">
+                                    {/* Top Line: Duration Pill + Time Interval */}
+                                    <div className="flex flex-wrap items-center justify-between gap-1.5 sm:gap-2">
+                                      <div className="flex items-center space-x-2 sm:space-x-2.5 min-w-0">
+                                        {/* Soft Faded Violet Duration Badge */}
+                                        <span className="px-2 py-0.5 sm:px-2.5 sm:py-0.5 rounded-lg bg-violet-500/10 border border-violet-500/25 text-violet-200 font-mono text-xs sm:text-sm font-black shadow-sm shrink-0">
+                                          {durationStr}
+                                        </span>
+
+                                        <div className="text-xs sm:text-sm text-zinc-300 font-mono flex items-center space-x-1.5 whitespace-nowrap truncate">
+                                          <Clock className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                                          <span>
+                                            {formatSessionTime(session.start_time)} → {formatSessionTime(session.end_time)}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    {/* Bottom Line: Completed Goal Chips */}
+                                    {completedTasks.length > 0 && (
+                                      <div className="pt-1.5 border-t border-zinc-800/70 flex flex-wrap gap-1.5 items-center">
+                                        <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-zinc-400 mr-1 flex items-center space-x-1 shrink-0">
+                                          <CheckCircle2 className="w-3 h-3 text-violet-400" />
+                                          <span>Goals:</span>
+                                        </span>
+                                        {completedTasks.map((t) => (
+                                          <span
+                                            key={t.id}
+                                            className="inline-flex items-center space-x-1 px-2 py-0.5 sm:px-2.5 sm:py-0.5 rounded-md bg-violet-500/10 border border-violet-500/20 text-violet-200 text-[11px] sm:text-xs font-medium max-w-full truncate shadow-sm"
+                                          >
+                                            <span className="text-violet-400 font-bold">✓</span>
+                                            <span className="truncate">{t.task}</span>
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </section>
                       );
                     })}
+
+                    {/* Bottom Quick-Collapse Affordance */}
+                    <div className="pt-2 flex justify-center">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsPastWeeksExpanded(false);
+                          archiveTopRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                        }}
+                        className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-zinc-900/80 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-zinc-200 text-[10px] sm:text-xs font-semibold transition-all touch-manipulation shadow-sm"
+                      >
+                        <ChevronUp className="w-3.5 h-3.5 text-zinc-400" />
+                        <span>Collapse Archive & Return to This Week</span>
+                      </button>
+                    </div>
                   </div>
-                </section>
-              );
-            })}
+                )}
+              </div>
+            )}
           </div>
         )}
       </main>

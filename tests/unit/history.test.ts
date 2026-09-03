@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { validateGoalTasks } from "@/lib/validation/schemas";
-import { formatMinutesToHours, formatSessionTime, formatSessionDate } from "@/lib/time/format";
+import { formatMinutesToHours, formatSessionTime, formatSessionDate, getWeekStartTimestamp } from "@/lib/time/format";
 import { GoalTask, StudySession } from "@/lib/supabase/types";
 
 describe("Goal Appending & Study History Logic", () => {
@@ -96,5 +96,67 @@ describe("Goal Appending & Study History Logic", () => {
 
     // Past session 2 days ago: Sep 1 at 2:00 PM IST
     expect(formatSessionDate("2026-09-01T08:30:00Z", mockNow, "Asia/Kolkata")).toBe("Tue, Sep 1");
+  });
+
+  it("partitions history sessions into current week vs past weeks across Monday boundary", () => {
+    // Reference now: Monday, Sep 7, 2026 at 10:00 AM IST
+    const mondayMorning = new Date("2026-09-07T04:30:00Z");
+    const weekStartMs = getWeekStartTimestamp(mondayMorning, "Asia/Kolkata");
+
+    const sampleSessions: StudySession[] = [
+      // Past Sunday (Sep 6, 2026 at 8:00 PM IST = 14:30 UTC): Before Monday weekStartMs
+      {
+        id: "sess-past-sunday",
+        user_id: "u1",
+        start_time: "2026-09-06T14:30:00Z",
+        end_time: "2026-09-06T15:30:00Z",
+        duration_minutes: 60,
+        focus_tag: "Physics",
+        completed_tasks: [],
+      },
+      // Past Friday (Sep 4, 2026 at 5:00 PM IST = 11:30 UTC): Before Monday weekStartMs
+      {
+        id: "sess-past-friday",
+        user_id: "u1",
+        start_time: "2026-09-04T11:30:00Z",
+        end_time: "2026-09-04T12:30:00Z",
+        duration_minutes: 60,
+        focus_tag: "Chemistry",
+        completed_tasks: [],
+      },
+      // New Monday (Sep 7, 2026 at 8:00 AM IST = 02:30 UTC): At/After Monday weekStartMs
+      {
+        id: "sess-new-monday",
+        user_id: "u1",
+        start_time: "2026-09-07T02:30:00Z",
+        end_time: "2026-09-07T03:30:00Z",
+        duration_minutes: 60,
+        focus_tag: "Math",
+        completed_tasks: [],
+      },
+    ];
+
+    const currentWeekSessions: StudySession[] = [];
+    const pastWeekSessions: StudySession[] = [];
+
+    for (const s of sampleSessions) {
+      const isCurrentWeek = new Date(s.start_time).getTime() >= weekStartMs;
+      if (isCurrentWeek) {
+        currentWeekSessions.push(s);
+      } else {
+        pastWeekSessions.push(s);
+      }
+    }
+
+    // Total 3-month sessions must remain 3 in the header
+    expect(sampleSessions.length).toBe(3);
+
+    // Current week occupying the screen should have only the 1 Monday session
+    expect(currentWeekSessions.length).toBe(1);
+    expect(currentWeekSessions[0].id).toBe("sess-new-monday");
+
+    // Past weeks should have the 2 older sessions ready to be collapsed
+    expect(pastWeekSessions.length).toBe(2);
+    expect(pastWeekSessions.map((s) => s.id)).toEqual(["sess-past-sunday", "sess-past-friday"]);
   });
 });
