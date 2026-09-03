@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { DailyGoal, GoalTask } from "@/lib/supabase/types";
 import { formatDurationSeconds } from "@/lib/time/format";
 import { CheckSquare, Square as UncheckedSquare, CheckCircle2, Clock, Play } from "lucide-react";
+import { triggerHapticFeedback } from "@/lib/utils/haptics";
 
 interface SessionLimitModalProps {
   isOpen: boolean;
@@ -34,6 +35,7 @@ export function SessionLimitModal({
 
   const toggleTask = (taskId: string, alreadyCompleted: boolean) => {
     if (alreadyCompleted || isBusy) return;
+    triggerHapticFeedback(10);
     setSelectedTaskIds((prev) =>
       prev.includes(taskId) ? prev.filter((id) => id !== taskId) : [...prev, taskId]
     );
@@ -42,6 +44,7 @@ export function SessionLimitModal({
   const handleSaveWithGoals = async () => {
     if (isBusy) return;
     setIsSubmitting(true);
+    triggerHapticFeedback(25);
     try {
       await onConfirmSaveGoals(selectedTaskIds);
       setSelectedTaskIds([]);
@@ -77,26 +80,38 @@ export function SessionLimitModal({
       subtitle="Study session reached the 2-hour maximum limit"
     >
       <div className="space-y-5">
-        <p className="text-xs text-zinc-400">
+        <p className="text-xs text-zinc-400 leading-relaxed">
           To ensure fair rankings and prevent unattended timers, study sessions are capped at 2 hours. Your study time has been saved. Please mark which goals you accomplished during this session.
         </p>
 
         {/* Saved Session Stats Banner */}
-        <div className="p-3.5 bg-zinc-900 border border-zinc-800 rounded-xl flex items-center justify-between text-xs">
-          <div className="flex items-center space-x-2">
-            <Clock className="w-4 h-4 text-fuchsia-400 shrink-0" />
-            <span className="text-zinc-300 font-medium">Session Study Time Credited</span>
+        <div className="p-3.5 bg-gradient-to-r from-fuchsia-950/40 via-zinc-900 to-violet-950/40 border border-fuchsia-500/30 rounded-xl flex items-center justify-between text-xs shadow-inner">
+          <div className="flex items-center space-x-2.5">
+            <div className="w-7 h-7 rounded-lg bg-fuchsia-500/20 border border-fuchsia-500/40 flex items-center justify-center text-fuchsia-400 shrink-0">
+              <Clock className="w-4 h-4" />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-zinc-200 font-bold">Session Study Time Credited</span>
+              <span className="text-[10px] text-zinc-400 font-medium">Fair play cap enforced</span>
+            </div>
           </div>
-          <span className="font-mono text-fuchsia-400 font-extrabold text-sm">
+          <span className="font-mono text-fuchsia-400 font-black text-sm sm:text-base tracking-tight drop-shadow-[0_0_8px_rgba(232,121,249,0.3)]">
             {formatDurationSeconds(savedStudySeconds)}
           </span>
         </div>
 
         {/* 24-Hour Goal Checklist */}
         <div className="space-y-2.5">
-          <label className="block text-sm sm:text-base font-extrabold text-zinc-100 tracking-tight">
-            How many Goals did you complete ?
-          </label>
+          <div className="flex items-center justify-between">
+            <label className="block text-sm sm:text-base font-extrabold text-zinc-100 tracking-tight">
+              How many Goals did you complete ?
+            </label>
+            {hasSelectedTasks && (
+              <span className="text-[10px] font-bold text-violet-400 bg-violet-950/40 border border-violet-500/30 px-2 py-0.5 rounded-full">
+                {selectedTaskIds.length} selected
+              </span>
+            )}
+          </div>
 
           {tasks.length > 0 ? (
             <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
