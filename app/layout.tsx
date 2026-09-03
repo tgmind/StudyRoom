@@ -3,6 +3,7 @@ import "./globals.css";
 import { OfflineBanner } from "@/components/ui/OfflineBanner";
 import { PwaInstallBanner } from "@/components/ui/PwaInstallBanner";
 import { PwaRegister } from "@/components/ui/PwaRegister";
+import { LaunchAnnouncementModal } from "@/components/ui/LaunchAnnouncementModal";
 
 export const metadata: Metadata = {
   title: "StudyRoom — Minimalist Live Group Study PWA",
@@ -42,6 +43,7 @@ export default function RootLayout({
         <PwaRegister />
         <OfflineBanner />
         <PwaInstallBanner />
+        <LaunchAnnouncementModal />
         <div className="flex-1 w-full flex flex-col">
           {children}
         </div>
