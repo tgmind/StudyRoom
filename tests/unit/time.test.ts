@@ -103,6 +103,27 @@ describe("Time Formatting & Active Study Calculation", () => {
     expect(calculateMemberElapsedStudySeconds(resumedMember, at22s)).toBe(11);
   });
 
+  it("uses start and break timestamp fallback if snapshot is 0 on break", () => {
+    const t0 = new Date("2026-09-01T10:00:00Z");
+    const tBreak = new Date("2026-09-01T10:25:00Z"); // 25 mins later
+    const tNow = new Date("2026-09-01T10:30:00Z"); // 30 mins later (5m on break)
+
+    const legacyBreakMember: UserProfile = {
+      id: "u-legacy",
+      display_name: "Legacy User",
+      avatar_url: null,
+      current_status: "break",
+      current_focus: null,
+      session_start_time: t0.toISOString(),
+      break_started_at: tBreak.toISOString(),
+      active_study_seconds_snapshot: 0,
+      has_achiever_badge: false,
+      created_at: t0.toISOString(),
+    };
+
+    expect(calculateMemberElapsedStudySeconds(legacyBreakMember, tNow)).toBe(25 * 60);
+  });
+
   it("formats seconds into human duration strings matching admin format (e.g. 2h 27m or 49m)", () => {
     expect(formatSecondsToHuman(0)).toBe("0m");
     expect(formatSecondsToHuman(59)).toBe("0m");

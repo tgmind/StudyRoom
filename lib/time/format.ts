@@ -72,6 +72,14 @@ export function calculateMemberElapsedStudySeconds(
 
   if (member.current_status === "break") {
     // Strictly frozen at the accrued snapshot
+    if (baseSeconds > 0) return baseSeconds;
+    if (member.break_started_at && member.session_start_time) {
+      const breakMs = new Date(member.break_started_at).getTime();
+      const startMs = new Date(member.session_start_time).getTime();
+      if (!isNaN(breakMs) && !isNaN(startMs) && breakMs >= startMs) {
+        return Math.floor((breakMs - startMs) / 1000);
+      }
+    }
     return baseSeconds;
   }
 

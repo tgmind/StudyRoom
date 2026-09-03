@@ -78,6 +78,7 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
   const finishSession = useCallback(
     async (completedTaskIds: string[] = []) => {
       if (actionLoadingRef.current) return;
+      actionLoadingRef.current = true;
       setActionLoading(true);
       setError(null);
 
@@ -95,11 +96,17 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
           error?: string;
         };
 
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.removeItem("studyroom_active_break");
+          } catch {}
+        }
+
         if (!res.success) {
           if (res.error?.toLowerCase().includes("no active session")) {
             setBlocks([]);
             setElapsedStudySeconds(0);
-            if (onStatusChange) onStatusChange();
+            if (onStatusChangeRef.current) onStatusChangeRef.current();
             return { ...res, success: true };
           }
           throw new Error(res.error || "Failed to finish session");
@@ -107,10 +114,16 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
 
         setBlocks([]);
         setElapsedStudySeconds(0);
-        if (onStatusChange) onStatusChange();
+        if (onStatusChangeRef.current) onStatusChangeRef.current();
 
         return res;
       } catch (err) {
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.removeItem("studyroom_active_break");
+          } catch {}
+        }
+
         const msg = err instanceof Error ? err.message : "Finish session failed";
         if (
           msg.toLowerCase().includes("no active session") ||
@@ -118,16 +131,17 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
         ) {
           setBlocks([]);
           setElapsedStudySeconds(0);
-          if (onStatusChange) onStatusChange();
+          if (onStatusChangeRef.current) onStatusChangeRef.current();
           return { success: true };
         }
         setError(msg);
         throw err;
       } finally {
+        actionLoadingRef.current = false;
         setActionLoading(false);
       }
     },
-    [supabase, onStatusChange]
+    [supabase]
   );
 
   // 1-Hour Break Inactivity Rule Monitor:
@@ -248,7 +262,8 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
   }, [currentStatus, profile, blocks]);
 
   const startSession = async (focusTag?: string | null) => {
-    if (actionLoading) return;
+    if (actionLoadingRef.current) return;
+    actionLoadingRef.current = true;
     setActionLoading(true);
     setError(null);
 
@@ -263,18 +278,20 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
       if (!res.success) throw new Error(res.error || "Failed to start session");
 
       await fetchSessionBlocks();
-      if (onStatusChange) onStatusChange();
+      if (onStatusChangeRef.current) onStatusChangeRef.current();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Start session failed";
       setError(msg);
       throw err;
     } finally {
+      actionLoadingRef.current = false;
       setActionLoading(false);
     }
   };
 
   const pauseSession = async () => {
-    if (actionLoading) return;
+    if (actionLoadingRef.current) return;
+    actionLoadingRef.current = true;
     setActionLoading(true);
     setError(null);
 
@@ -286,18 +303,20 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
       if (!res.success) throw new Error(res.error || "Failed to pause session");
 
       await fetchSessionBlocks();
-      if (onStatusChange) onStatusChange();
+      if (onStatusChangeRef.current) onStatusChangeRef.current();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Pause session failed";
       setError(msg);
       throw err;
     } finally {
+      actionLoadingRef.current = false;
       setActionLoading(false);
     }
   };
 
   const resumeSession = async () => {
-    if (actionLoading) return;
+    if (actionLoadingRef.current) return;
+    actionLoadingRef.current = true;
     setActionLoading(true);
     setError(null);
 
@@ -317,14 +336,14 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
           setSavedStudySecondsOnBreakExpiry(accruedSeconds);
           setIsBreakExpiredNoticeOpen(true);
           await fetchSessionBlocks();
-          if (onStatusChange) onStatusChange();
+          if (onStatusChangeRef.current) onStatusChangeRef.current();
           return;
         }
         throw new Error(res.error || res.message || "Failed to resume session");
       }
 
       await fetchSessionBlocks();
-      if (onStatusChange) onStatusChange();
+      if (onStatusChangeRef.current) onStatusChangeRef.current();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Resume session failed";
       if (
@@ -337,12 +356,13 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
         setSavedStudySecondsOnBreakExpiry(accruedSeconds);
         setIsBreakExpiredNoticeOpen(true);
         setError(null);
-        if (onStatusChange) onStatusChange();
+        if (onStatusChangeRef.current) onStatusChangeRef.current();
       } else {
         setError(msg);
         throw err;
       }
     } finally {
+      actionLoadingRef.current = false;
       setActionLoading(false);
     }
   };

@@ -173,7 +173,7 @@ export const MemberCard = memo(function MemberCard({
       </div>
 
       {/* Middle Stats Row: 24h Total Study Duration + Sessions Count */}
-      <div className="w-full flex items-center justify-center gap-1.5 xs:gap-2 text-[10px] text-zinc-400 mt-2 py-1 border-t border-zinc-800/40 min-w-0 select-none">
+      <div className="w-full flex items-center justify-center gap-1.5 sm:gap-2 text-[10px] text-zinc-400 mt-2 py-1 border-t border-zinc-800/40 min-w-0 select-none">
         <div
           className="flex items-center gap-1 min-w-0"
           title={`Total study duration in current 24 hours: ${formatSecondsToHuman(total24hStudySeconds)}`}
@@ -182,7 +182,7 @@ export const MemberCard = memo(function MemberCard({
           <span className="font-bold text-zinc-200 tabular-nums truncate text-[10px] sm:text-[11px]">
             {formatSecondsToHuman(total24hStudySeconds)}
           </span>
-          <span className="text-[9px] text-zinc-500 hidden xs:inline">24h</span>
+          <span className="text-[9px] text-zinc-500 hidden sm:inline">24h</span>
         </div>
 
         <span className="text-zinc-700 font-bold select-none">•</span>
@@ -221,7 +221,7 @@ export const MemberCard = memo(function MemberCard({
               <span>Break {formatDurationSeconds(liveBreakSeconds)}</span>
             </div>
             <div
-              className="h-3.5 mt-0.5 flex items-center justify-center gap-1 text-[10px] text-zinc-400 font-medium tabular-nums"
+              className="h-3.5 mt-0.5 flex items-center justify-center gap-1 text-[10px] text-zinc-400 font-medium tabular-nums whitespace-nowrap"
               title={`Active study session duration: ${formatDurationSeconds(elapsedSeconds)}`}
             >
               <span>Session:</span>
