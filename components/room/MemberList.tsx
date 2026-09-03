@@ -11,6 +11,8 @@ import React, {
 } from "react";
 import { UserProfile } from "@/lib/supabase/types";
 import { MemberCard } from "@/components/room/MemberCard";
+import { RivalryArena } from "./RivalryArena";
+import { detectLiveRivalry } from "@/lib/time/rivalry";
 import { Users, WifiOff, Flame, Coffee } from "lucide-react";
 import { calculateMemberElapsedStudySeconds } from "@/lib/time/format";
 import { getEffectiveMemberStatus } from "@/lib/time/break";
@@ -112,10 +114,38 @@ export const MemberList = memo(function MemberList({
     });
   }, [activeMembers, currentTimestamp, getMemberStudySeconds]);
 
+  // Real-time Rivalry Detection: triggers when 2 or 3 active members come within <= 1 hour in weekly study time
+  const rivalry = useMemo(() => {
+    return detectLiveRivalry(
+      activeMembers,
+      currentTimestamp,
+      currentUserId,
+      currentUserElapsedSeconds
+    );
+  }, [activeMembers, currentTimestamp, currentUserId, currentUserElapsedSeconds]);
+
+  const rivalMemberIds = useMemo(() => {
+    if (!rivalry) return new Set<string>();
+    return new Set(rivalry.rivalMembers.map((m) => m.id));
+  }, [rivalry]);
+
+  const nonRivalActiveMembers = useMemo(() => {
+    if (!rivalry) return sortedActiveMembers;
+    return sortedActiveMembers.filter((m) => !rivalMemberIds.has(m.id));
+  }, [sortedActiveMembers, rivalry, rivalMemberIds]);
+
   // Refs for tracking DOM card elements and their bounding rectangles across re-orders
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const prevRectsRef = useRef<Map<string, DOMRect>>(new Map());
   const prevOrderRef = useRef<string[]>([]);
+
+  const setCardRef = useCallback((id: string, el: HTMLDivElement | null) => {
+    if (el) {
+      cardRefs.current.set(id, el);
+    } else {
+      cardRefs.current.delete(id);
+    }
+  }, []);
 
   // Synchronous layout effect before paint to animate smooth position transitions (FLIP)
   useIsomorphicLayoutEffect(() => {
@@ -205,63 +235,75 @@ export const MemberList = memo(function MemberList({
 
   return (
     <div className="space-y-6">
-      {/* Active Studying & On Break Members Section */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between px-1">
-          <div className="flex items-center space-x-3">
-            <div className="flex items-center space-x-1.5">
-              <Flame className="w-4 h-4 text-fuchsia-400 fill-fuchsia-400" />
-              <h3 className="text-xs font-extrabold uppercase tracking-wider text-zinc-200">
-                Studying <span className="text-fuchsia-400 font-mono">({studyingMembers.length})</span>
-              </h3>
+      {/* 1. Live Rivalry Arena (renders below Study Timer whenever rivalry condition is met) */}
+      {rivalry && (
+        <div className="transition-all duration-400 ease-out">
+          <RivalryArena
+            rivalry={rivalry}
+            currentTimestamp={currentTimestamp}
+            currentUserId={currentUserId}
+            currentUserElapsedSeconds={currentUserElapsedSeconds}
+            setCardRef={setCardRef}
+          />
+        </div>
+      )}
+
+      {/* 2. Active Studying & On Break Members Section */}
+      {(nonRivalActiveMembers.length > 0 || !rivalry) && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between px-1">
+            <div className="flex items-center space-x-3">
+              <div className="flex items-center space-x-1.5">
+                <Flame className="w-4 h-4 text-fuchsia-400 fill-fuchsia-400" />
+                <h3 className="text-xs font-extrabold uppercase tracking-wider text-zinc-200">
+                  Studying{" "}
+                  <span className="text-fuchsia-400 font-mono">
+                    ({studyingMembers.length})
+                  </span>
+                </h3>
+              </div>
+
+              {breakMembers.length > 0 && (
+                <div className="flex items-center space-x-1 px-2 py-0.5 rounded-full bg-amber-950/40 border border-amber-500/30 text-[10px] font-bold text-amber-300">
+                  <Coffee className="w-3 h-3 text-amber-400" />
+                  <span>{breakMembers.length} on break</span>
+                </div>
+              )}
             </div>
 
-            {breakMembers.length > 0 && (
-              <div className="flex items-center space-x-1 px-2 py-0.5 rounded-full bg-amber-950/40 border border-amber-500/30 text-[10px] font-bold text-amber-300">
-                <Coffee className="w-3 h-3 text-amber-400" />
-                <span>{breakMembers.length} on break</span>
-              </div>
-            )}
+            <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-[10px] font-bold text-zinc-300 shadow-sm">
+              <span className="w-1.5 h-1.5 rounded-full bg-fuchsia-400" />
+              <span>Live Sync</span>
+            </div>
           </div>
 
-          <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-[10px] font-bold text-zinc-300 shadow-sm">
-            <span className="w-1.5 h-1.5 rounded-full bg-fuchsia-400 animate-ping" />
-            <span>Live Sync</span>
-          </div>
+          {nonRivalActiveMembers.length > 0 ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3.5">
+              {nonRivalActiveMembers.map((member) => (
+                <div
+                  key={member.id}
+                  ref={(el) => setCardRef(member.id, el)}
+                  className="will-change-transform h-full flex flex-col"
+                >
+                  <MemberCard
+                    member={member}
+                    isCurrentUser={member.id === currentUserId}
+                    customElapsedSeconds={
+                      member.id === currentUserId ? currentUserElapsedSeconds : undefined
+                    }
+                    currentTimestamp={currentTimestamp}
+                  />
+                </div>
+              ))}
+            </div>
+          ) : !rivalry ? (
+            <div className="p-5 rounded-2xl border border-dashed border-zinc-800/80 bg-zinc-950/40 text-center text-xs text-zinc-500 space-y-1">
+              <p className="font-semibold text-zinc-400">No members actively studying right now</p>
+              <p className="text-[11px]">Press <strong>Start Studying</strong> above to lead the session!</p>
+            </div>
+          ) : null}
         </div>
-
-        {sortedActiveMembers.length > 0 ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3.5">
-            {sortedActiveMembers.map((member) => (
-              <div
-                key={member.id}
-                ref={(el) => {
-                  if (el) {
-                    cardRefs.current.set(member.id, el);
-                  } else {
-                    cardRefs.current.delete(member.id);
-                  }
-                }}
-                className="will-change-transform h-full flex flex-col"
-              >
-                <MemberCard
-                  member={member}
-                  isCurrentUser={member.id === currentUserId}
-                  customElapsedSeconds={
-                    member.id === currentUserId ? currentUserElapsedSeconds : undefined
-                  }
-                  currentTimestamp={currentTimestamp}
-                />
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="p-5 rounded-2xl border border-dashed border-zinc-800/80 bg-zinc-950/40 text-center text-xs text-zinc-500 space-y-1">
-            <p className="font-semibold text-zinc-400">No members actively studying right now</p>
-            <p className="text-[11px]">Press <strong>Start Studying</strong> above to lead the session!</p>
-          </div>
-        )}
-      </div>
+      )}
 
       {/* Offline Group Members Section */}
       {offlineMembers.length > 0 && (
@@ -289,6 +331,7 @@ export const MemberList = memo(function MemberList({
           </div>
         </div>
       )}
+
     </div>
   );
 });

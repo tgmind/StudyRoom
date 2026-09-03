@@ -20,6 +20,7 @@ interface MemberCardProps {
   isCurrentUser?: boolean;
   customElapsedSeconds?: number;
   currentTimestamp?: Date;
+  compact?: boolean;
 }
 
 export const MemberCard = memo(function MemberCard({
@@ -27,6 +28,7 @@ export const MemberCard = memo(function MemberCard({
   isCurrentUser = false,
   customElapsedSeconds,
   currentTimestamp = getServerNow(),
+  compact = false,
 }: MemberCardProps) {
   const effectiveStatus = getEffectiveMemberStatus(member, currentTimestamp);
   const isStudying = effectiveStatus === "studying";
@@ -62,7 +64,9 @@ export const MemberCard = memo(function MemberCard({
 
   return (
     <div
-      className={`relative isolate flex flex-col items-center justify-between p-3.5 sm:p-4 rounded-2xl border transition-all duration-200 select-none h-full w-full ${
+      className={`relative isolate flex flex-col items-center justify-between ${
+        compact ? "p-2 sm:p-2.5 rounded-xl" : "p-3.5 sm:p-4 rounded-2xl"
+      } border transition-all duration-200 select-none h-full w-full ${
         isAchiever
           ? "bg-gradient-to-b from-amber-950/40 via-zinc-900/95 to-zinc-950 border-amber-400/60 ring-1 ring-amber-400/30 shadow-[0_4px_25px_rgba(251,191,36,0.18)]"
           : isStudying
@@ -75,49 +79,53 @@ export const MemberCard = memo(function MemberCard({
       {/* Floating Status Badge (Top-Left) */}
       {isAchiever ? (
         <span
-          className="absolute top-2.5 left-2.5 flex items-center space-x-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-400 via-amber-300 to-amber-500 text-zinc-950 text-[9px] font-black uppercase tracking-wider shadow-md"
+          className={`absolute ${compact ? "top-1.5 left-1.5 text-[8px] px-1.5 py-0.2" : "top-2.5 left-2.5 text-[9px] px-2 py-0.5"} flex items-center space-x-1 rounded-full bg-gradient-to-r from-amber-400 via-amber-300 to-amber-500 text-zinc-950 font-black uppercase tracking-wider shadow-md`}
           title="Weekly Achiever"
         >
-          <Crown className="w-2.5 h-2.5 fill-zinc-950" />
+          <Crown className={`${compact ? "w-2 h-2" : "w-2.5 h-2.5"} fill-zinc-950`} />
           <span>Achiever</span>
         </span>
       ) : isBreak ? (
         <span
-          className="absolute top-2.5 left-2.5 flex items-center space-x-1 px-2 py-0.5 rounded-full bg-amber-950/90 border border-amber-500/60 text-amber-300 text-[9px] font-extrabold uppercase tracking-wider shadow-sm animate-pulse"
+          className={`absolute ${compact ? "top-1.5 left-1.5 text-[8px] px-1.5 py-0.2" : "top-2.5 left-2.5 text-[9px] px-2 py-0.5"} flex items-center space-x-1 rounded-full bg-amber-950/90 border border-amber-500/60 text-amber-300 font-extrabold uppercase tracking-wider shadow-sm`}
           title="Member is currently on break"
         >
-          <Coffee className="w-2.5 h-2.5" />
+          <Coffee className={`${compact ? "w-2 h-2" : "w-2.5 h-2.5"}`} />
           <span>On Break</span>
         </span>
       ) : isStudying ? (
         <span
-          className="absolute top-2.5 left-2.5 flex items-center space-x-1 px-2 py-0.5 rounded-full bg-fuchsia-950/80 border border-fuchsia-500/40 text-fuchsia-300 text-[9px] font-extrabold uppercase tracking-wider shadow-sm"
+          className={`absolute ${compact ? "top-1.5 left-1.5 text-[8px] px-1.5 py-0.2" : "top-2.5 left-2.5 text-[9px] px-2 py-0.5"} flex items-center space-x-1 rounded-full bg-fuchsia-950/80 border border-fuchsia-500/40 text-fuchsia-300 font-extrabold uppercase tracking-wider shadow-sm`}
           title="Member is studying"
         >
-          <span className="w-1.5 h-1.5 rounded-full bg-fuchsia-400 animate-ping" />
+          <span className="w-1.5 h-1.5 rounded-full bg-fuchsia-400 shadow-[0_0_6px_rgba(217,70,239,0.8)]" />
           <span>Studying</span>
         </span>
       ) : null}
 
       {/* Floating "YOU" badge (Top-Right) */}
       {isCurrentUser && (
-        <span className="absolute top-2.5 right-2.5 text-[9px] uppercase font-black tracking-wider px-1.5 py-0.5 rounded-full bg-zinc-800 text-zinc-200 border border-zinc-700 shadow-sm">
+        <span className={`absolute ${compact ? "top-1.5 right-1.5 text-[8px] px-1 py-0.2" : "top-2.5 right-2.5 text-[9px] px-1.5 py-0.5"} uppercase font-black tracking-wider rounded-full bg-zinc-800 text-zinc-200 border border-zinc-700 shadow-sm`}>
           You
         </span>
       )}
 
       {/* Top: Avatar DP Container with Strict Geometric Constraints */}
-      <div className={`relative flex flex-col items-center ${isAchiever || isBreak || isStudying ? "mt-3" : "mt-1"}`}>
+      <div className={`relative flex flex-col items-center ${isAchiever || isBreak || isStudying ? (compact ? "mt-1.5" : "mt-3") : (compact ? "mt-0.5" : "mt-1")}`}>
         {/* Crown for Weekly Achiever */}
         {isAchiever && (
-          <div className="absolute -top-3 animate-bounce">
-            <Crown className="w-5 h-5 text-amber-400 fill-amber-400 filter drop-shadow-[0_0_8px_rgba(245,158,11,0.9)]" />
+          <div className={`absolute ${compact ? "-top-2.5" : "-top-3"} animate-bounce`}>
+            <Crown className={`${compact ? "w-4 h-4" : "w-5 h-5"} text-amber-400 fill-amber-400 filter drop-shadow-[0_0_8px_rgba(245,158,11,0.9)]`} />
           </div>
         )}
 
-        {/* Avatar DP (Guaranteed 56x56 px circle on all devices) */}
+        {/* Avatar DP */}
         <div
-          className={`relative w-14 h-14 min-w-[3.5rem] min-h-[3.5rem] max-w-[3.5rem] max-h-[3.5rem] rounded-full bg-zinc-800 border-2 overflow-hidden shrink-0 aspect-square flex items-center justify-center font-extrabold text-zinc-100 text-sm shadow-md ${
+          className={`relative rounded-full bg-zinc-800 border-2 overflow-hidden shrink-0 aspect-square flex items-center justify-center font-extrabold text-zinc-100 shadow-md ${
+            compact
+              ? "w-11 h-11 min-w-[2.75rem] min-h-[2.75rem] max-w-[2.75rem] max-h-[2.75rem] text-xs"
+              : "w-14 h-14 min-w-[3.5rem] min-h-[3.5rem] max-w-[3.5rem] max-h-[3.5rem] text-sm"
+          } ${
             isAchiever
               ? "border-amber-400 ring-2 ring-amber-400/50 shadow-[0_0_15px_rgba(251,191,36,0.3)]"
               : isStudying
@@ -151,10 +159,10 @@ export const MemberCard = memo(function MemberCard({
       </div>
 
       {/* Middle: User Name & Time of Day Badges */}
-      <div className="w-full text-center mt-2.5 space-y-0.5 min-w-0">
+      <div className={`w-full text-center ${compact ? "mt-1.5 space-y-0" : "mt-2.5 space-y-0.5"} min-w-0`}>
         <div className="flex items-center justify-center space-x-1 min-w-0 px-1">
           <h3
-            className={`text-xs sm:text-sm font-extrabold truncate ${
+            className={`${compact ? "text-xs" : "text-xs sm:text-sm"} font-extrabold truncate ${
               isAchiever ? "text-amber-200 drop-shadow-sm font-black" : "text-zinc-100"
             }`}
             title={member.display_name}
@@ -162,28 +170,28 @@ export const MemberCard = memo(function MemberCard({
             {member.display_name}
           </h3>
           {isAchiever && (
-            <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400 shrink-0" />
+            <Star className={`${compact ? "w-3 h-3" : "w-3.5 h-3.5"} text-amber-400 fill-amber-400 shrink-0`} />
           )}
         </div>
 
         {/* Fixed height container for badges to maintain identical card height */}
-        <div className="h-4 flex items-center justify-center space-x-1">
+        <div className={`${compact ? "h-3.5" : "h-4"} flex items-center justify-center space-x-1`}>
           {showDeepNight && <IndicatorTag type="night" />}
           {showEarlyBird && <IndicatorTag type="early" />}
         </div>
       </div>
 
       {/* Middle Stats Row: 24h Total Study Duration + Sessions Count */}
-      <div className="w-full flex items-center justify-center gap-1.5 sm:gap-2 text-[10px] text-zinc-400 mt-2 py-1 border-t border-zinc-800/40 min-w-0 select-none">
+      <div className={`w-full flex items-center justify-center gap-1.5 text-zinc-400 ${compact ? "mt-1 py-0.5 text-[9px]" : "mt-2 py-1 text-[10px] sm:gap-2"} border-t border-zinc-800/40 min-w-0 select-none`}>
         <div
           className="flex items-center gap-1 min-w-0"
           title={`Total study duration in current 24 hours: ${formatSecondsToHuman(total24hStudySeconds)}`}
         >
-          <Clock className="w-2.5 h-2.5 text-fuchsia-400/90 shrink-0" />
-          <span className="font-bold text-zinc-200 tabular-nums truncate text-[10px] sm:text-[11px]">
+          <Clock className={`${compact ? "w-2 h-2" : "w-2.5 h-2.5"} text-fuchsia-400/90 shrink-0`} />
+          <span className="font-bold text-zinc-200 tabular-nums truncate text-[10px]">
             {formatSecondsToHuman(total24hStudySeconds)}
           </span>
-          <span className="text-[9px] text-zinc-500 hidden sm:inline">24h</span>
+          <span className="text-[8px] text-zinc-500 hidden sm:inline">24h</span>
         </div>
 
         <span className="text-zinc-700 font-bold select-none">•</span>
@@ -192,37 +200,37 @@ export const MemberCard = memo(function MemberCard({
           className="flex items-center gap-1 min-w-0"
           title={`${sessionsCount} session${sessionsCount === 1 ? "" : "s"} (${isCurrentSessionActive ? "current session in progress" : "completed"})`}
         >
-          <BookOpen className="w-2.5 h-2.5 text-violet-400/90 shrink-0" />
-          <span className="font-bold text-zinc-200 tabular-nums text-[10px] sm:text-[11px]">
+          <BookOpen className={`${compact ? "w-2 h-2" : "w-2.5 h-2.5"} text-violet-400/90 shrink-0`} />
+          <span className="font-bold text-zinc-200 tabular-nums text-[10px]">
             {sessionsCount}
           </span>
-          <span className="text-[9px] text-zinc-500">
+          <span className="text-[8px] text-zinc-500">
             {sessionsCount === 1 ? "sess" : "sess"}
           </span>
         </div>
       </div>
 
       {/* Bottom: Live Digital Timer Readout Pill (Uniform Symmetrical Height Across All Cards) */}
-      <div className="w-full mt-2 pt-2 border-t border-zinc-800/60 flex flex-col justify-center items-center min-h-[50px]">
+      <div className={`w-full ${compact ? "mt-1 pt-1 min-h-[38px]" : "mt-2 pt-2 min-h-[50px]"} border-t border-zinc-800/60 flex flex-col justify-center items-center`}>
         {isStudying ? (
           <>
-            <div className="font-mono text-xs font-black tracking-tight px-3 py-1 rounded-full border shadow-inner flex items-center space-x-1.5 bg-fuchsia-950/40 text-fuchsia-300 border-fuchsia-500/30 tabular-nums">
-              <span className="w-1.5 h-1.5 rounded-full bg-fuchsia-400 animate-pulse" />
+            <div className={`font-mono ${compact ? "text-[11px] px-2.5 py-0.5" : "text-xs px-3 py-1"} font-black tracking-tight rounded-full border shadow-inner flex items-center space-x-1.5 bg-fuchsia-950/40 text-fuchsia-300 border-fuchsia-500/30 tabular-nums`}>
+              <span className="w-1.5 h-1.5 rounded-full bg-fuchsia-400 shadow-[0_0_6px_rgba(217,70,239,0.8)]" />
               <span>{formatDurationSeconds(elapsedSeconds)}</span>
             </div>
-            <div className="h-3.5 mt-0.5" aria-hidden="true" />
+            <div className={`${compact ? "h-2.5 mt-0.2" : "h-3.5 mt-0.5"}`} aria-hidden="true" />
           </>
         ) : isBreak ? (
           <>
             <div
-              className="font-mono text-xs font-black tracking-tight px-3 py-1 rounded-full border shadow-inner flex items-center space-x-1.5 bg-amber-950/60 text-amber-300 border-amber-500/50 tabular-nums animate-pulse"
+              className={`font-mono ${compact ? "text-[11px] px-2.5 py-0.5" : "text-xs px-3 py-1"} font-black tracking-tight rounded-full border shadow-inner flex items-center space-x-1.5 bg-amber-950/60 text-amber-300 border-amber-500/50 tabular-nums`}
               title={`Live Break: ${formatDurationSeconds(liveBreakSeconds)} | Session Study: ${formatDurationSeconds(elapsedSeconds)}`}
             >
-              <Coffee className="w-3 h-3 text-amber-400 shrink-0" />
+              <Coffee className="w-2.5 h-2.5 text-amber-400 shrink-0" />
               <span>Break {formatDurationSeconds(liveBreakSeconds)}</span>
             </div>
             <div
-              className="h-3.5 mt-0.5 flex items-center justify-center gap-1 text-[10px] text-zinc-400 font-medium tabular-nums whitespace-nowrap"
+              className={`${compact ? "h-2.5 mt-0.2 text-[9px]" : "h-3.5 mt-0.5 text-[10px]"} flex items-center justify-center gap-1 text-zinc-400 font-medium tabular-nums whitespace-nowrap`}
               title={`Active study session duration: ${formatDurationSeconds(elapsedSeconds)}`}
             >
               <span>Session:</span>
@@ -231,10 +239,10 @@ export const MemberCard = memo(function MemberCard({
           </>
         ) : (
           <>
-            <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider px-3 py-1 rounded-full bg-zinc-900/60 border border-zinc-800/80">
+            <span className={`${compact ? "text-[9px] px-2.5 py-0.5" : "text-[10px] px-3 py-1"} text-zinc-500 font-bold uppercase tracking-wider rounded-full bg-zinc-900/60 border border-zinc-800/80`}>
               Offline
             </span>
-            <div className="h-3.5 mt-0.5" aria-hidden="true" />
+            <div className={`${compact ? "h-2.5 mt-0.2" : "h-3.5 mt-0.5"}`} aria-hidden="true" />
           </>
         )}
       </div>

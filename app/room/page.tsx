@@ -12,6 +12,7 @@ import { MemberList } from "@/components/room/MemberList";
 import { BreakExpiredModal } from "@/components/session/BreakExpiredModal";
 import { BreakGoalUpdateModal } from "@/components/session/BreakGoalUpdateModal";
 import { CreateGoalModal } from "@/components/goals/CreateGoalModal";
+import { getServerNow } from "@/lib/time/clockSync";
 
 export default function RoomPage() {
   const { user, profile, refreshProfile } = useAuth();
@@ -82,42 +83,51 @@ export default function RoomPage() {
   const hasPendingGoals = Boolean(activeGoal?.tasks && activeGoal.tasks.some((t) => !t.completed));
 
   const handleStartSession = async (focusTag?: string | null) => {
+    const nowIso = getServerNow().toISOString();
     await startSession(focusTag ?? null);
     if (user) {
       broadcastStatusChange({
         id: user.id,
         current_status: "studying",
-        session_start_time: new Date().toISOString(),
+        session_start_time: nowIso,
+        last_resumed_at: nowIso,
         break_started_at: null,
+        active_study_seconds_snapshot: 0,
         current_focus: focusTag ?? null,
       });
     }
   };
 
   const handlePauseSession = async () => {
+    const accruedBeforePause = elapsedStudySeconds;
+    const nowIso = getServerNow().toISOString();
     await pauseSession();
     if (user) {
       broadcastStatusChange({
         id: user.id,
         current_status: "break",
-        break_started_at: new Date().toISOString(),
+        break_started_at: nowIso,
+        active_study_seconds_snapshot: accruedBeforePause,
       });
     }
   };
 
   const handleResumeSession = async () => {
     const res = await resumeSession();
+    const nowIso = getServerNow().toISOString();
     if (user && res?.success) {
       broadcastStatusChange({
         id: user.id,
         current_status: "studying",
         break_started_at: null,
+        last_resumed_at: nowIso,
       });
     } else if (user && res?.expired) {
       broadcastStatusChange({
         id: user.id,
         current_status: "offline",
         session_start_time: null,
+        last_resumed_at: null,
         break_started_at: null,
         current_focus: null,
       });
@@ -131,6 +141,7 @@ export default function RoomPage() {
         id: user.id,
         current_status: "offline",
         session_start_time: null,
+        last_resumed_at: null,
         break_started_at: null,
         current_focus: null,
       });

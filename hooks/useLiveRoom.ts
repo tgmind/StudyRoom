@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { UserProfile, UserStatus } from "@/lib/supabase/types";
 import { getAdminUserId, isAdminUserId } from "@/hooks/useAdmin";
-import { calculateMemberElapsedStudySeconds } from "@/lib/time/format";
+import { calculateMemberElapsedStudySeconds, getWeekStartTimestamp } from "@/lib/time/format";
 import { getEffectiveMemberStatus, isMemberBreakExpired } from "@/lib/time/break";
 import { getServerNow } from "@/lib/time/clockSync";
 
@@ -87,22 +87,28 @@ export function useLiveRoom(currentUserId?: string) {
         throw fetchErr;
       }
 
-      // Fetch study sessions to compute rolling 24-hour study duration and completed session counts
+      // Fetch study sessions to compute rolling 24-hour study duration, weekly study duration, and completed session counts
       const serverNow = getServerNow();
       const cutoffTime = serverNow.getTime() - 24 * 60 * 60 * 1000;
+      const weekStartTime = getWeekStartTimestamp(serverNow);
+
       const { data: sessionData } = await supabase
         .from("study_sessions")
-        .select("user_id, duration_minutes, end_time");
+        .select("user_id, duration_minutes, end_time, start_time");
 
-      type SessionRow = { user_id: string; duration_minutes: number; end_time: string };
+      type SessionRow = { user_id: string; duration_minutes: number; end_time: string; start_time?: string };
       const rawSessions = sessionData as unknown as SessionRow[] | null;
-      const statsMap = new Map<string, { past24hSeconds: number; totalSessions: number }>();
+      const statsMap = new Map<string, { past24hSeconds: number; weeklySeconds: number; totalSessions: number }>();
       if (rawSessions) {
         for (const s of rawSessions) {
-          const entry = statsMap.get(s.user_id) || { past24hSeconds: 0, totalSessions: 0 };
+          const entry = statsMap.get(s.user_id) || { past24hSeconds: 0, weeklySeconds: 0, totalSessions: 0 };
           entry.totalSessions += 1;
-          if (s.end_time && new Date(s.end_time).getTime() >= cutoffTime) {
+          const sessionTime = s.end_time ? new Date(s.end_time).getTime() : s.start_time ? new Date(s.start_time).getTime() : 0;
+          if (sessionTime >= cutoffTime) {
             entry.past24hSeconds += (s.duration_minutes || 0) * 60;
+          }
+          if (sessionTime >= weekStartTime) {
+            entry.weeklySeconds += (s.duration_minutes || 0) * 60;
           }
           statsMap.set(s.user_id, entry);
         }
@@ -143,10 +149,11 @@ export function useLiveRoom(currentUserId?: string) {
         }
 
         const enriched = (data as UserProfile[]).map((u) => {
-          const stat = statsMap.get(u.id) || { past24hSeconds: 0, totalSessions: 0 };
+          const stat = statsMap.get(u.id) || { past24hSeconds: 0, weeklySeconds: 0, totalSessions: 0 };
           return {
             ...u,
             past_24h_study_seconds: stat.past24hSeconds,
+            weekly_study_seconds: stat.weeklySeconds,
             total_sessions_count: stat.totalSessions,
           };
         });
@@ -182,6 +189,7 @@ export function useLiveRoom(currentUserId?: string) {
               ...m,
               ...updatedProfile,
               past_24h_study_seconds: updatedProfile.past_24h_study_seconds ?? m.past_24h_study_seconds ?? 0,
+              weekly_study_seconds: updatedProfile.weekly_study_seconds ?? m.weekly_study_seconds ?? 0,
               total_sessions_count: updatedProfile.total_sessions_count ?? m.total_sessions_count ?? 0,
             };
           }

@@ -143,3 +143,66 @@ export function calculateMemberLiveBreakSeconds(
   if (isNaN(breakMs)) return 0;
   return Math.max(0, Math.floor((now.getTime() - breakMs) / 1000));
 }
+
+/**
+ * Returns the exact UTC timestamp for Monday 00:00:00 of the current week in the specified timezone (default Asia/Kolkata).
+ * Matches PostgreSQL DATE_TRUNC('week', NOW() AT TIME ZONE 'Asia/Kolkata').
+ */
+export function getWeekStartTimestamp(
+  now: Date = getServerNow(),
+  timezone = process.env.NEXT_PUBLIC_APP_TIMEZONE || "Asia/Kolkata"
+): number {
+  try {
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      weekday: "short",
+      hour12: false,
+    });
+    const parts = formatter.formatToParts(now);
+    const getPart = (type: string) => parts.find((p) => p.type === type)?.value || "";
+
+    const year = parseInt(getPart("year"), 10);
+    const month = parseInt(getPart("month"), 10);
+    const day = parseInt(getPart("day"), 10);
+    const weekday = getPart("weekday"); // Mon, Tue, Wed, Thu, Fri, Sat, Sun
+
+    const dayMap: Record<string, number> = {
+      Mon: 0,
+      Tue: 1,
+      Wed: 2,
+      Thu: 3,
+      Fri: 4,
+      Sat: 5,
+      Sun: 6,
+    };
+    const daysSinceMonday = dayMap[weekday] ?? 0;
+
+    const mondayDate = new Date(Date.UTC(year, month - 1, day));
+    mondayDate.setUTCDate(mondayDate.getUTCDate() - daysSinceMonday);
+
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const mondayIso = `${mondayDate.getUTCFullYear()}-${pad(mondayDate.getUTCMonth() + 1)}-${pad(mondayDate.getUTCDate())}T00:00:00`;
+
+    // Compute timezone offset relative to UTC
+    let tzOffsetMs = 5.5 * 3600 * 1000; // Default Asia/Kolkata (+05:30)
+    try {
+      const utcDate = new Date(now.toLocaleString("en-US", { timeZone: "UTC" }));
+      const tzDate = new Date(now.toLocaleString("en-US", { timeZone: timezone }));
+      tzOffsetMs = tzDate.getTime() - utcDate.getTime();
+    } catch {}
+
+    return new Date(`${mondayIso}Z`).getTime() - tzOffsetMs;
+  } catch {
+    // Fallback using local clock Monday
+    const d = new Date(now);
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+    d.setDate(diff);
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+  }
+}
+

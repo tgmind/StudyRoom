@@ -19,6 +19,7 @@ export interface UserProfile {
   past_24h_study_seconds?: number;
   total_sessions_count?: number;
   last_break_expired_study_seconds?: number | null;
+  weekly_study_seconds?: number;
 }
 
 export interface GoalTask {
