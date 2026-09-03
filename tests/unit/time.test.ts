@@ -6,6 +6,7 @@ import {
   calculateActiveStudySeconds,
   calculateMemberElapsedStudySeconds,
   calculateMemberLiveBreakSeconds,
+  calculateMemberOfflineHours,
 } from "@/lib/time/format";
 import { SessionBlock, UserProfile } from "@/lib/supabase/types";
 
@@ -175,5 +176,64 @@ describe("Time Formatting & Active Study Calculation", () => {
     // 5 hours later (18,000s) -> strictly capped at 7200s (2 hours)
     const at5h = new Date(t0.getTime() + 5 * 3600 * 1000);
     expect(calculateMemberElapsedStudySeconds(studyingMember, at5h)).toBe(7200);
+  });
+
+  describe("calculateMemberOfflineHours", () => {
+    const baseNow = new Date("2026-09-03T20:00:00Z");
+
+    it("formats less than 1 hour offline as 'Offline <1h'", () => {
+      const member = {
+        last_offline_at: new Date(baseNow.getTime() - 25 * 60 * 1000).toISOString(), // 25 mins ago
+      };
+      const result = calculateMemberOfflineHours(member, baseNow);
+      expect(result.offlineHours).toBe(0);
+      expect(result.formattedPill).toBe("Offline <1h");
+      expect(result.formattedDetailed).toBe("Offline for 25 minutes");
+    });
+
+    it("formats 4 hours offline as 'Offline 4h'", () => {
+      const member = {
+        last_offline_at: new Date(baseNow.getTime() - 4 * 3600 * 1000).toISOString(),
+      };
+      const result = calculateMemberOfflineHours(member, baseNow);
+      expect(result.offlineHours).toBe(4);
+      expect(result.formattedPill).toBe("Offline 4h");
+      expect(result.formattedDetailed).toBe("Offline for 4 hours");
+    });
+
+    it("formats 24 hours offline as 'Offline 24h'", () => {
+      const member = {
+        last_offline_at: new Date(baseNow.getTime() - 24 * 3600 * 1000).toISOString(),
+      };
+      const result = calculateMemberOfflineHours(member, baseNow);
+      expect(result.offlineHours).toBe(24);
+      expect(result.formattedPill).toBe("Offline 24h");
+      expect(result.formattedDetailed).toBe("Offline for 24 hours (~1 day)");
+    });
+
+    it("formats 72 hours (3 days) offline as 'Offline 72h'", () => {
+      const member = {
+        last_offline_at: new Date(baseNow.getTime() - 72 * 3600 * 1000).toISOString(),
+      };
+      const result = calculateMemberOfflineHours(member, baseNow);
+      expect(result.offlineHours).toBe(72);
+      expect(result.formattedPill).toBe("Offline 72h");
+      expect(result.formattedDetailed).toBe("Offline for 72 hours (~3 days)");
+    });
+
+    it("falls back to created_at when last_offline_at is missing", () => {
+      const member = {
+        created_at: new Date(baseNow.getTime() - 10 * 3600 * 1000).toISOString(),
+      };
+      const result = calculateMemberOfflineHours(member, baseNow);
+      expect(result.offlineHours).toBe(10);
+      expect(result.formattedPill).toBe("Offline 10h");
+    });
+
+    it("returns safe default when no timestamps exist", () => {
+      const result = calculateMemberOfflineHours({}, baseNow);
+      expect(result.offlineHours).toBe(0);
+      expect(result.formattedPill).toBe("Offline");
+    });
   });
 });

@@ -34,6 +34,7 @@ ALTER TABLE public.users ADD COLUMN IF NOT EXISTS break_started_at TIMESTAMPTZ;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS active_study_seconds_snapshot INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_break_expired_study_seconds INTEGER DEFAULT NULL;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_offline_at TIMESTAMPTZ;
 
 -- Ensure full replica identity for realtime update payloads
 ALTER TABLE public.users REPLICA IDENTITY FULL;
@@ -601,7 +602,8 @@ BEGIN
       break_started_at = NULL,
       active_study_seconds_snapshot = 0,
       three_hour_prompt_sent_at = NULL,
-      break_warning_prompt_sent_at = NULL
+      break_warning_prompt_sent_at = NULL,
+      last_offline_at = v_now
   WHERE id = v_user_id;
 
   RETURN jsonb_build_object(
@@ -1400,7 +1402,8 @@ BEGIN
       active_study_seconds_snapshot = 0,
       three_hour_prompt_sent_at = NULL,
       break_warning_prompt_sent_at = NULL,
-      last_break_expired_study_seconds = CASE WHEN v_status = 'break' THEN v_total_study_seconds::INTEGER ELSE NULL END
+      last_break_expired_study_seconds = CASE WHEN v_status = 'break' THEN v_total_study_seconds::INTEGER ELSE NULL END,
+      last_offline_at = v_now
   WHERE id = p_user_id;
 
   RETURN jsonb_build_object(

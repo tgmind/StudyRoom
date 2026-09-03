@@ -1,18 +1,21 @@
 -- ============================================================
--- STUDYROOM — FULL FACTORY RESET SCRIPT
+-- STUDYROOM — FULL FACTORY RESET SCRIPT (100% ERASE)
 -- ============================================================
 -- File: supabase/reset.sql
--- Description: Completely deletes ALL data, user accounts, profiles,
---              daily goals, study sessions, and avatar files.
---              Resets the database to a 100% clean factory slate.
+-- Description:
+--   Completely deletes ALL data, user accounts, profiles,
+--   daily goals, study sessions, session blocks, push subscriptions,
+--   and prepares the storage bucket for avatar file purging.
+--   Resets the entire database to a 100% clean factory slate.
 -- Usage: Run this script directly in the Supabase SQL Editor.
 -- ============================================================
 
 BEGIN;
 
 -- ------------------------------------------------------------
--- 1. DELETE ALL APPLICATION DATA (SESSIONS, BLOCKS, GOALS)
+-- 1. DELETE ALL APPLICATION DATA (SESSIONS, BLOCKS, GOALS, PUSH)
 -- ------------------------------------------------------------
+DELETE FROM public.push_subscriptions;
 DELETE FROM public.session_blocks;
 DELETE FROM public.study_sessions;
 DELETE FROM public.daily_goals;
@@ -27,7 +30,9 @@ DELETE FROM public.users;
 -- ------------------------------------------------------------
 DELETE FROM auth.users;
 
--- 4. PURGE AVATAR FILES
+-- ------------------------------------------------------------
+-- 4. PURGE AVATAR FILES NOTICE
+-- ------------------------------------------------------------
 -- Supabase blocks direct SQL deletes on storage.objects.
 -- After running this script, go to Supabase Dashboard → Storage → avatars bucket
 -- and click "Empty bucket" to remove orphaned avatar files.
@@ -110,4 +115,5 @@ SELECT
   (SELECT COUNT(*) FROM public.users) AS public_profiles_count,
   (SELECT COUNT(*) FROM public.daily_goals) AS goals_count,
   (SELECT COUNT(*) FROM public.study_sessions) AS sessions_count,
-  (SELECT COUNT(*) FROM public.session_blocks) AS blocks_count;
+  (SELECT COUNT(*) FROM public.session_blocks) AS blocks_count,
+  (SELECT COUNT(*) FROM public.push_subscriptions) AS subscriptions_count;

@@ -22,11 +22,19 @@ describe("MemberCard Component", () => {
     active_study_seconds_snapshot: 1800, // 30 minutes
   };
 
-  it("renders offline status accurately without break or session subtext", () => {
-    render(<MemberCard member={{ ...baseMember, current_status: "offline" }} />);
+  it("renders offline status with offline duration in pill and no subtext", () => {
+    const now = new Date("2026-09-03T14:00:00Z");
+    const fourHoursAgo = new Date(now.getTime() - 4 * 3600 * 1000).toISOString();
+
+    render(
+      <MemberCard
+        member={{ ...baseMember, current_status: "offline", last_offline_at: fourHoursAgo }}
+        currentTimestamp={now}
+      />
+    );
 
     expect(screen.getByText("Subodh")).toBeInTheDocument();
-    expect(screen.getByText("Offline")).toBeInTheDocument();
+    expect(screen.getByText("Offline 4h")).toBeInTheDocument();
     expect(screen.queryByText(/Session:/i)).not.toBeInTheDocument();
   });
 
@@ -112,7 +120,7 @@ describe("MemberCard Component", () => {
       />
     );
 
-    expect(screen.getByText("Offline")).toBeInTheDocument();
+    expect(screen.getByText(/Offline/i)).toBeInTheDocument();
     expect(screen.queryByText("On Break")).not.toBeInTheDocument();
     expect(screen.queryByText(/Break 65:/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Session:/i)).not.toBeInTheDocument();

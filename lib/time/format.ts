@@ -275,3 +275,61 @@ export function formatSessionDate(
   }
 }
 
+/**
+ * Calculates the latest offline duration of a member in hours.
+ * Uses member.last_offline_at or falls back to member.created_at.
+ * Returns the numeric hours, compact formatted pill string (e.g. "Offline <1h", "Offline 4h"),
+ * and detailed hover tooltip string.
+ */
+export function calculateMemberOfflineHours(
+  member: Partial<UserProfile> | UserProfile,
+  now: Date = getServerNow()
+): {
+  offlineHours: number;
+  formattedPill: string;
+  formattedDetailed: string;
+} {
+  const offlineAtStr = member.last_offline_at || member.created_at;
+  if (!offlineAtStr) {
+    return {
+      offlineHours: 0,
+      formattedPill: "Offline",
+      formattedDetailed: "Offline",
+    };
+  }
+
+  const offlineMs = new Date(offlineAtStr).getTime();
+  if (isNaN(offlineMs)) {
+    return {
+      offlineHours: 0,
+      formattedPill: "Offline",
+      formattedDetailed: "Offline",
+    };
+  }
+
+  const elapsedMs = Math.max(0, now.getTime() - offlineMs);
+  const elapsedSeconds = Math.floor(elapsedMs / 1000);
+  const totalHours = Math.floor(elapsedSeconds / 3600);
+
+  if (totalHours < 1) {
+    const elapsedMinutes = Math.floor(elapsedSeconds / 60);
+    return {
+      offlineHours: 0,
+      formattedPill: "Offline <1h",
+      formattedDetailed: `Offline for ${elapsedMinutes} minute${elapsedMinutes === 1 ? "" : "s"}`,
+    };
+  }
+
+  const days = Math.floor(totalHours / 24);
+  const detailedText =
+    days >= 1
+      ? `Offline for ${totalHours} hours (~${days} day${days === 1 ? "" : "s"})`
+      : `Offline for ${totalHours} hour${totalHours === 1 ? "" : "s"}`;
+
+  return {
+    offlineHours: totalHours,
+    formattedPill: `Offline ${totalHours}h`,
+    formattedDetailed: detailedText,
+  };
+}
+

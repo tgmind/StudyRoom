@@ -9,6 +9,7 @@ import {
   calculateMemberElapsedStudySeconds,
   formatSecondsToHuman,
   calculateMemberLiveBreakSeconds,
+  calculateMemberOfflineHours,
 } from "@/lib/time/format";
 import { getServerNow } from "@/lib/time/clockSync";
 import { Crown, Star, Coffee, Clock, BookOpen } from "lucide-react";
@@ -39,6 +40,10 @@ export const MemberCard = memo(function MemberCard({
 
   const showDeepNight = isDeepNight(effectiveStatus, currentTimestamp);
   const showEarlyBird = isEarlyBird(effectiveStatus, currentTimestamp);
+
+  // Derive latest offline duration for offline pill
+  const { formattedPill: offlinePillText, formattedDetailed: offlineDetailedText } =
+    calculateMemberOfflineHours(member, currentTimestamp);
 
   // 1. Live Active Session Study Seconds (0 if offline)
   const elapsedSeconds =
@@ -243,8 +248,11 @@ export const MemberCard = memo(function MemberCard({
           </>
         ) : (
           <>
-            <span className={`${compact ? "text-[9px] px-2.5 py-0.5" : "text-[10px] px-3 py-1"} text-zinc-500 font-bold uppercase tracking-wider rounded-full bg-zinc-900/60 border border-zinc-800/80`}>
-              Offline
+            <span
+              className={`${compact ? "text-[9px] px-2.5 py-0.5" : "text-[10px] px-3 py-1"} text-zinc-500 font-bold uppercase tracking-wider rounded-full bg-zinc-900/60 border border-zinc-800/80 tabular-nums select-none transition-colors`}
+              title={offlineDetailedText}
+            >
+              {offlinePillText}
             </span>
             <div className={`${compact ? "h-2.5 mt-0.2" : "h-3.5 mt-0.5"}`} aria-hidden="true" />
           </>

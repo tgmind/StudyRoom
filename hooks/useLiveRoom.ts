@@ -118,10 +118,10 @@ export function useLiveRoom(currentUserId?: string) {
 
       type SessionRow = { user_id: string; duration_minutes: number; end_time: string; start_time?: string };
       const rawSessions = sessionData as unknown as SessionRow[] | null;
-      const statsMap = new Map<string, { past24hSeconds: number; weeklySeconds: number; totalSessions: number }>();
+      const statsMap = new Map<string, { past24hSeconds: number; weeklySeconds: number; totalSessions: number; latestSessionEndMs: number }>();
       if (rawSessions) {
         for (const s of rawSessions) {
-          const entry = statsMap.get(s.user_id) || { past24hSeconds: 0, weeklySeconds: 0, totalSessions: 0 };
+          const entry = statsMap.get(s.user_id) || { past24hSeconds: 0, weeklySeconds: 0, totalSessions: 0, latestSessionEndMs: 0 };
           entry.totalSessions += 1;
           const sessionTime = s.end_time ? new Date(s.end_time).getTime() : s.start_time ? new Date(s.start_time).getTime() : 0;
           if (sessionTime >= cutoffTime) {
@@ -129,6 +129,9 @@ export function useLiveRoom(currentUserId?: string) {
           }
           if (sessionTime >= weekStartTime) {
             entry.weeklySeconds += (s.duration_minutes || 0) * 60;
+          }
+          if (sessionTime > entry.latestSessionEndMs) {
+            entry.latestSessionEndMs = sessionTime;
           }
           statsMap.set(s.user_id, entry);
         }
@@ -175,9 +178,18 @@ export function useLiveRoom(currentUserId?: string) {
         }
 
         const enriched = (data as UserProfile[]).map((u) => {
-          const stat = statsMap.get(u.id) || { past24hSeconds: 0, weeklySeconds: 0, totalSessions: 0 };
+          const stat = statsMap.get(u.id) || { past24hSeconds: 0, weeklySeconds: 0, totalSessions: 0, latestSessionEndMs: 0 };
+          const resolvedOfflineMs = u.last_offline_at
+            ? new Date(u.last_offline_at).getTime()
+            : stat.latestSessionEndMs > 0
+            ? stat.latestSessionEndMs
+            : u.created_at
+            ? new Date(u.created_at).getTime()
+            : 0;
+
           return {
             ...u,
+            last_offline_at: resolvedOfflineMs > 0 ? new Date(resolvedOfflineMs).toISOString() : u.created_at,
             past_24h_study_seconds: stat.past24hSeconds,
             weekly_study_seconds: stat.weeklySeconds,
             total_sessions_count: stat.totalSessions,
@@ -211,9 +223,15 @@ export function useLiveRoom(currentUserId?: string) {
       if (exists) {
         next = prevMembers.map((m) => {
           if (m.id === updatedProfile.id) {
+            const isTransitioningToOffline =
+              updatedProfile.current_status === "offline" && m.current_status !== "offline";
+            const newOfflineAt = isTransitioningToOffline
+              ? getServerNow().toISOString()
+              : updatedProfile.last_offline_at ?? m.last_offline_at;
             return {
               ...m,
               ...updatedProfile,
+              last_offline_at: newOfflineAt,
               past_24h_study_seconds: updatedProfile.past_24h_study_seconds ?? m.past_24h_study_seconds ?? 0,
               weekly_study_seconds: updatedProfile.weekly_study_seconds ?? m.weekly_study_seconds ?? 0,
               total_sessions_count: updatedProfile.total_sessions_count ?? m.total_sessions_count ?? 0,
