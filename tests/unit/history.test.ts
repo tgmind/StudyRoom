@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { validateGoalTasks } from "@/lib/validation/schemas";
-import { formatMinutesToHours } from "@/lib/time/format";
+import { formatMinutesToHours, formatSessionTime, formatSessionDate } from "@/lib/time/format";
 import { GoalTask, StudySession } from "@/lib/supabase/types";
 
 describe("Goal Appending & Study History Logic", () => {
@@ -53,5 +53,48 @@ describe("Goal Appending & Study History Logic", () => {
     const totalMinutes = sampleHistory.reduce((acc, s) => acc + s.duration_minutes, 0);
     expect(totalMinutes).toBe(150);
     expect(formatMinutesToHours(totalMinutes)).toBe("2.5h");
+  });
+
+  it("formats session times accurately in 12-hour AM/PM for Gorakhpur, UP (Asia/Kolkata)", () => {
+    // UTC 07:39:00 -> 1:09 PM IST (07:39 + 05:30 = 13:09)
+    expect(formatSessionTime("2026-09-02T07:39:00Z", "Asia/Kolkata")).toBe("1:09 PM");
+
+    // UTC 08:58:00 -> 2:28 PM IST (08:58 + 05:30 = 14:28)
+    expect(formatSessionTime("2026-09-02T08:58:00Z", "Asia/Kolkata")).toBe("2:28 PM");
+
+    // UTC 09:33:00 -> 3:03 PM IST (09:33 + 05:30 = 15:03)
+    expect(formatSessionTime("2026-09-02T09:33:00Z", "Asia/Kolkata")).toBe("3:03 PM");
+
+    // UTC 10:33:00 -> 4:03 PM IST (10:33 + 05:30 = 16:03)
+    expect(formatSessionTime("2026-09-02T10:33:00Z", "Asia/Kolkata")).toBe("4:03 PM");
+
+    // Morning: UTC 03:45:00 -> 9:15 AM IST (03:45 + 05:30 = 09:15)
+    expect(formatSessionTime("2026-09-03T03:45:00Z", "Asia/Kolkata")).toBe("9:15 AM");
+
+    // Late Night: UTC 18:15:00 -> 11:45 PM IST (18:15 + 05:30 = 23:45)
+    expect(formatSessionTime("2026-09-02T18:15:00Z", "Asia/Kolkata")).toBe("11:45 PM");
+
+    // Post-Midnight: UTC 18:45:00 -> 12:15 AM IST (18:45 + 05:30 = 00:15 next day)
+    expect(formatSessionTime("2026-09-02T18:45:00Z", "Asia/Kolkata")).toBe("12:15 AM");
+  });
+
+  it("categorizes Today, Yesterday, and past dates accurately based on Gorakhpur, UP calendar boundaries", () => {
+    // Reference now: Sep 3, 2026 at 2:01 PM IST (08:31 UTC)
+    const mockNow = new Date("2026-09-03T08:31:32Z");
+
+    // Session yesterday afternoon: Sep 2 at 1:09 PM IST (07:39 UTC)
+    expect(formatSessionDate("2026-09-02T07:39:00Z", mockNow, "Asia/Kolkata")).toBe("Yesterday");
+
+    // Session yesterday late afternoon: Sep 2 at 3:03 PM IST (09:33 UTC)
+    expect(formatSessionDate("2026-09-02T09:33:00Z", mockNow, "Asia/Kolkata")).toBe("Yesterday");
+
+    // Session today morning: Sep 3 at 9:00 AM IST (03:30 UTC)
+    expect(formatSessionDate("2026-09-03T03:30:00Z", mockNow, "Asia/Kolkata")).toBe("Today");
+
+    // Session just after midnight Sep 3 in IST (Sep 2 18:45 UTC): must be Today in Gorakhpur
+    expect(formatSessionDate("2026-09-02T18:45:00Z", mockNow, "Asia/Kolkata")).toBe("Today");
+
+    // Past session 2 days ago: Sep 1 at 2:00 PM IST
+    expect(formatSessionDate("2026-09-01T08:30:00Z", mockNow, "Asia/Kolkata")).toBe("Tue, Sep 1");
   });
 });

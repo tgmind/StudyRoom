@@ -13,11 +13,8 @@ describe("SessionController Component", () => {
     activeGoal: null,
     countdown: {
       remainingSeconds: 0,
-      formattedTime: "00:00:00",
       formattedText: "Expired",
-      isWarnZone: false,
       isExpired: true,
-      totalSeconds: 0,
     },
   };
 
@@ -62,5 +59,38 @@ describe("SessionController Component", () => {
     expect(screen.getByText("Stop")).toBeInTheDocument();
     expect(screen.getByText("Break Countdown")).toBeInTheDocument();
     expect(screen.getByText(/55:00 left/i)).toBeInTheDocument();
+  });
+
+  it("calls onStartSession directly when Start Studying is clicked with active goal", async () => {
+    const onStartSessionMock = vi.fn().mockResolvedValue(undefined);
+    const mockGoal = {
+      id: "goal-123",
+      user_id: "user-123",
+      tasks: [{ id: "t1", task: "Math revision", completed: false }],
+      created_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 3600000).toISOString(),
+      is_locked: false,
+      archived_at: null,
+    };
+
+    render(
+      <SessionController
+        status="offline"
+        elapsedSeconds={0}
+        {...dummyProps}
+        onStartSession={onStartSessionMock}
+        activeGoal={mockGoal}
+        countdown={{
+          remainingSeconds: 3600,
+          formattedText: "01:00:00 remaining",
+          isExpired: false,
+        }}
+      />
+    );
+
+    const startBtn = screen.getByText("Start Studying");
+    startBtn.click();
+
+    expect(onStartSessionMock).toHaveBeenCalledWith(null);
   });
 });

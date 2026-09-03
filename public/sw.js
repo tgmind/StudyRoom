@@ -1,5 +1,5 @@
 // StudyRoom PWA Service Worker
-const CACHE_NAME = "studyroom-v3";
+const CACHE_NAME = "studyroom-v4";
 const OFFLINE_URL = "/offline.html";
 
 const PRECACHE_ASSETS = [
@@ -77,109 +77,6 @@ self.addEventListener("fetch", (event) => {
         if (cachedResponse) return cachedResponse;
         return caches.match(OFFLINE_URL);
       });
-    })
-  );
-});
-
-// ============================================================
-// Push Notification Handlers (Web Push & Action Buttons)
-// ============================================================
-
-// Push Event: Receive VAPID Web Push Payload
-self.addEventListener("push", (event) => {
-  if (!event.data) return;
-
-  let payload;
-  try {
-    payload = event.data.json();
-  } catch {
-    payload = { title: "StudyRoom", body: event.data.text() };
-  }
-
-  const title = payload.title || "StudyRoom";
-  const options = {
-    body: payload.body || "Live study notification",
-    icon: payload.icon || "/icons/icon-192x192.png",
-    badge: payload.badge || "/icons/icon-192x192.png",
-    vibrate: [100, 50, 100],
-    data: payload.data || {},
-    actions: payload.actions || [],
-    tag: payload.tag || "studyroom-notification",
-    renotify: true,
-    requireInteraction: payload.requireInteraction !== false,
-  };
-
-  event.waitUntil(self.registration.showNotification(title, options));
-});
-
-// Notification Click Event: Handle Interactive Action Buttons ([YES] / [NO] / [Resume] / Body Click)
-self.addEventListener("notificationclick", (event) => {
-  event.notification.close();
-
-  const action = event.action;
-  const data = event.notification.data || {};
-
-  // Action: "NO" -> Stop the live session authoritatively on server
-  if (action === "no") {
-    const userId = data.userId;
-    const actionToken = data.actionToken;
-    event.waitUntil(
-      fetch("/api/push/action", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ action: "stop_session", userId, actionToken }),
-      })
-        .then(() => {
-          // Provide instant visual confirmation to user on device
-          return self.registration.showNotification("StudyRoom", {
-            body: "Session ended. Your study time has been safely saved.",
-            icon: "/icons/icon-192x192.png",
-            badge: "/icons/icon-192x192.png",
-            tag: "studyroom-session-stopped",
-          });
-        })
-        .catch((err) => {
-          console.warn("[SW] Failed to stop session via push action:", err);
-        })
-    );
-    return;
-  }
-
-  // Action: "YES" -> Dismiss notification, session continues normally
-  if (action === "yes") {
-    return;
-  }
-
-  // Action: "resume" -> Focus /room and trigger auto-resume
-  if (action === "resume") {
-    event.waitUntil(
-      clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
-        for (const client of clientList) {
-          if (client.url && client.url.includes("/room") && "focus" in client) {
-            client.navigate("/room?action=resume");
-            return client.focus();
-          }
-        }
-        if (clients.openWindow) {
-          return clients.openWindow("/room?action=resume");
-        }
-      })
-    );
-    return;
-  }
-
-  // Default body click: Focus or open the StudyRoom Live Room
-  event.waitUntil(
-    clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
-      for (const client of clientList) {
-        if (client.url && client.url.includes("/room") && "focus" in client) {
-          return client.focus();
-        }
-      }
-      if (clients.openWindow) {
-        return clients.openWindow("/room");
-      }
     })
   );
 });

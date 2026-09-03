@@ -8,7 +8,7 @@ import { TopHeader } from "@/components/navigation/TopHeader";
 import { BottomNav } from "@/components/navigation/BottomNav";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
-import { formatMinutesToHours } from "@/lib/time/format";
+import { formatMinutesToHours, formatSessionTime, formatSessionDate } from "@/lib/time/format";
 import { StudySession } from "@/lib/supabase/types";
 import {
   History,
@@ -20,38 +20,6 @@ import {
   Sparkles,
   CheckCircle2,
 } from "lucide-react";
-
-function formatSessionTime(isoString: string): string {
-  try {
-    const d = new Date(isoString);
-    return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  } catch {
-    return "";
-  }
-}
-
-function formatSessionDate(isoString: string): string {
-  try {
-    const d = new Date(isoString);
-    const now = new Date();
-    const isToday = d.toDateString() === now.toDateString();
-
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const isYesterday = d.toDateString() === yesterday.toDateString();
-
-    if (isToday) return "Today";
-    if (isYesterday) return "Yesterday";
-
-    return d.toLocaleDateString([], {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-    });
-  } catch {
-    return "Past Sessions";
-  }
-}
 
 export default function HistoryPage() {
   const { user, profile } = useAuth();

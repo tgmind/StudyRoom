@@ -206,3 +206,67 @@ export function getWeekStartTimestamp(
   }
 }
 
+/**
+ * Formats an ISO timestamp into a 12-hour AM/PM time string strictly in the target timezone (default Asia/Kolkata).
+ * Example: "3:03 PM" or "1:09 PM"
+ */
+export function formatSessionTime(
+  isoString: string,
+  timezone: string = process.env.NEXT_PUBLIC_APP_TIMEZONE || "Asia/Kolkata"
+): string {
+  try {
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return "";
+    return d.toLocaleTimeString("en-US", {
+      timeZone: timezone,
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Formats an ISO timestamp into "Today", "Yesterday", or a formatted date string strictly in the target timezone (default Asia/Kolkata).
+ */
+export function formatSessionDate(
+  isoString: string,
+  now: Date = getServerNow(),
+  timezone: string = process.env.NEXT_PUBLIC_APP_TIMEZONE || "Asia/Kolkata"
+): string {
+  try {
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return "Past Sessions";
+
+    const getTzDateKey = (date: Date) => {
+      const formatter = new Intl.DateTimeFormat("en-CA", {
+        timeZone: timezone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      });
+      return formatter.format(date);
+    };
+
+    const sessionKey = getTzDateKey(d);
+    const todayKey = getTzDateKey(now);
+
+    const yesterdayDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const yesterdayKey = getTzDateKey(yesterdayDate);
+
+    if (sessionKey === todayKey) return "Today";
+    if (sessionKey === yesterdayKey) return "Yesterday";
+
+    return d.toLocaleDateString("en-US", {
+      timeZone: timezone,
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    });
+  } catch {
+    return "Past Sessions";
+  }
+}
+
