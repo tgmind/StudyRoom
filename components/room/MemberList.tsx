@@ -12,7 +12,7 @@ import React, {
 import { UserProfile } from "@/lib/supabase/types";
 import { MemberCard } from "@/components/room/MemberCard";
 import { RivalryArena } from "./RivalryArena";
-import { detectLiveRivalry } from "@/lib/time/rivalry";
+import { detectLiveRivalries } from "@/lib/time/rivalry";
 import { Users, WifiOff, Flame, Coffee } from "lucide-react";
 import { calculateMemberElapsedStudySeconds } from "@/lib/time/format";
 import { getEffectiveMemberStatus } from "@/lib/time/break";
@@ -114,9 +114,9 @@ export const MemberList = memo(function MemberList({
     });
   }, [activeMembers, currentTimestamp, getMemberStudySeconds]);
 
-  // Real-time Rivalry Detection: triggers when 2 or 3 active members come within <= 1 hour in weekly study time
-  const rivalry = useMemo(() => {
-    return detectLiveRivalry(
+  // Real-time Multi-Rivalry Detection: triggers when 2 or 3 active members come within <= 1 hour in weekly study time
+  const rivalries = useMemo(() => {
+    return detectLiveRivalries(
       activeMembers,
       currentTimestamp,
       currentUserId,
@@ -125,14 +125,15 @@ export const MemberList = memo(function MemberList({
   }, [activeMembers, currentTimestamp, currentUserId, currentUserElapsedSeconds]);
 
   const rivalMemberIds = useMemo(() => {
-    if (!rivalry) return new Set<string>();
-    return new Set(rivalry.rivalMembers.map((m) => m.id));
-  }, [rivalry]);
+    const set = new Set<string>();
+    rivalries.forEach((r) => r.rivalMembers.forEach((m) => set.add(m.id)));
+    return set;
+  }, [rivalries]);
 
   const nonRivalActiveMembers = useMemo(() => {
-    if (!rivalry) return sortedActiveMembers;
+    if (rivalries.length === 0) return sortedActiveMembers;
     return sortedActiveMembers.filter((m) => !rivalMemberIds.has(m.id));
-  }, [sortedActiveMembers, rivalry, rivalMemberIds]);
+  }, [sortedActiveMembers, rivalries, rivalMemberIds]);
 
   // Refs for tracking DOM card elements and their bounding rectangles across re-orders
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -235,21 +236,24 @@ export const MemberList = memo(function MemberList({
 
   return (
     <div className="space-y-6">
-      {/* 1. Live Rivalry Arena (renders below Study Timer whenever rivalry condition is met) */}
-      {rivalry && (
-        <div className="transition-all duration-400 ease-out">
-          <RivalryArena
-            rivalry={rivalry}
-            currentTimestamp={currentTimestamp}
-            currentUserId={currentUserId}
-            currentUserElapsedSeconds={currentUserElapsedSeconds}
-            setCardRef={setCardRef}
-          />
+      {/* 1. Live Rivalry Arenas (rendered below Study Timer in descending order of weekly study time) */}
+      {rivalries.length > 0 && (
+        <div className="space-y-3 transition-all duration-400 ease-out">
+          {rivalries.map((rivalry) => (
+            <RivalryArena
+              key={rivalry.id}
+              rivalry={rivalry}
+              currentTimestamp={currentTimestamp}
+              currentUserId={currentUserId}
+              currentUserElapsedSeconds={currentUserElapsedSeconds}
+              setCardRef={setCardRef}
+            />
+          ))}
         </div>
       )}
 
       {/* 2. Active Studying & On Break Members Section */}
-      {(nonRivalActiveMembers.length > 0 || !rivalry) && (
+      {(nonRivalActiveMembers.length > 0 || rivalries.length === 0) && (
         <div className="space-y-3">
           <div className="flex items-center justify-between px-1">
             <div className="flex items-center space-x-3">
@@ -296,7 +300,7 @@ export const MemberList = memo(function MemberList({
                 </div>
               ))}
             </div>
-          ) : !rivalry ? (
+          ) : rivalries.length === 0 ? (
             <div className="p-5 rounded-2xl border border-dashed border-zinc-800/80 bg-zinc-950/40 text-center text-xs text-zinc-500 space-y-1">
               <p className="font-semibold text-zinc-400">No members actively studying right now</p>
               <p className="text-[11px]">Press <strong>Start Studying</strong> above to lead the session!</p>

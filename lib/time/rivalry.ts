@@ -6,10 +6,12 @@ import { getServerNow } from "./clockSync";
 export const MAX_RIVALRY_GAP_SECONDS = 3600; // 1 hour threshold (3600 seconds)
 
 export interface RivalryState {
+  id: string;
   rivalMembers: UserProfile[];
   primaryGapSeconds: number;
   formattedGap: string;
   isTrio: boolean;
+  leaderWeeklySeconds: number;
 }
 
 /**
@@ -38,7 +40,7 @@ export function getLiveMemberWeeklySeconds(
 }
 
 /**
- * Format a rivalry gap into clean, eye-friendly duration string (e.g. "14m 20s" or "45s" or "Tied").
+ * Format a rivalry gap into clean, eye-friendly duration string (e.g. "14m 20s" or "45s" or "Tied (0s)").
  */
 export function formatRivalryGap(gapSeconds: number): string {
   const safeSeconds = Math.max(0, Math.floor(gapSeconds));
@@ -77,25 +79,25 @@ export function formatWeeklyHours(seconds: number): string {
 }
 
 /**
- * Real-time Rivalry Detection Engine
+ * Real-time Multi-Rivalry Detection Engine
  *
- * Checks if actively studying members come within <= 1 hour (3600s) of each other
- * in respect of their total weekly study time.
+ * Scans all active members (studying/break) and detects all valid non-overlapping rivalries.
+ * Ordered in descending order of the participating members' total weekly study time.
  *
  * Rules:
  * 1. Only active studying / break members qualify.
- * 2. Rivalry group is strictly 2 or 3 members maximum (never more than 3).
- * 3. As soon as any member exceeds the 1-hour gap (> 3600s), they are immediately removed.
- * 4. If a trio member falls behind > 1h, it drops to a 2-member duel.
- * 5. If the only rival in a pair exceeds 1h, returns null (rivalry dissolves immediately).
+ * 2. Rivalry groups are strictly 2 or 3 members maximum (never more than 3).
+ * 3. Mutual Exclusivity: If any member is already in an ongoing rivalry, they cannot join another.
+ * 4. Within a rivalry, all members must be within <= 1 hour (3600s) span of each other.
+ * 5. Multiple rivalries are ordered strictly descending by leader's weekly study time.
  */
-export function detectLiveRivalry(
+export function detectLiveRivalries(
   members: UserProfile[],
   now: Date = getServerNow(),
   currentUserId?: string,
   currentUserElapsedSeconds?: number
-): RivalryState | null {
-  if (!members || members.length < 2) return null;
+): RivalryState[] {
+  if (!members || members.length < 2) return [];
 
   // 1. Filter actively studying/active members only
   const activeMembers = members.filter((m) => {
@@ -103,7 +105,7 @@ export function detectLiveRivalry(
     return status === "studying" || status === "break";
   });
 
-  if (activeMembers.length < 2) return null;
+  if (activeMembers.length < 2) return [];
 
   // 2. Compute live weekly study seconds and sort descending
   const withWeekly = activeMembers.map((m) => ({
@@ -113,49 +115,83 @@ export function detectLiveRivalry(
 
   withWeekly.sort((a, b) => b.weeklySeconds - a.weeklySeconds);
 
-  // 3. Check for a qualified Trio (3 members all within 1 hour span: max - min <= 3600s)
-  for (let i = 0; i <= withWeekly.length - 3; i++) {
+  const rivalries: RivalryState[] = [];
+  const assignedIds = new Set<string>();
+
+  // 3. Scan through unassigned members in descending order of weekly study time
+  for (let i = 0; i < withWeekly.length; i++) {
     const top = withWeekly[i];
-    const third = withWeekly[i + 2];
-    const span = top.weeklySeconds - third.weeklySeconds;
+    if (assignedIds.has(top.member.id)) continue;
 
-    if (span <= MAX_RIVALRY_GAP_SECONDS) {
-      const second = withWeekly[i + 1];
-      const gap = top.weeklySeconds - second.weeklySeconds;
-
-      return {
-        rivalMembers: [top.member, second.member, third.member],
-        primaryGapSeconds: gap,
-        formattedGap: formatRivalryGap(gap),
-        isTrio: true,
-      };
-    }
-  }
-
-  // 4. Check for a qualified Pair (2 members within <= 1 hour: top - second <= 3600s)
-  let bestPair: { members: [UserProfile, UserProfile]; gap: number } | null = null;
-
-  for (let i = 0; i < withWeekly.length - 1; i++) {
-    const current = withWeekly[i];
-    const next = withWeekly[i + 1];
-    const gap = current.weeklySeconds - next.weeklySeconds;
-
-    if (gap <= MAX_RIVALRY_GAP_SECONDS) {
-      if (!bestPair || gap < bestPair.gap) {
-        bestPair = { members: [current.member, next.member], gap };
+    // Collect remaining unassigned members below `top`
+    const available = [];
+    for (let j = i + 1; j < withWeekly.length; j++) {
+      if (!assignedIds.has(withWeekly[j].member.id)) {
+        available.push(withWeekly[j]);
       }
     }
+
+    if (available.length === 0) break;
+
+    // Priority A: Check if a 3-member rivalry (Trio) can be formed
+    // Top + available[0] + available[1] all within 1 hour span (top.weeklySeconds - available[1].weeklySeconds <= 3600)
+    if (available.length >= 2) {
+      const second = available[0];
+      const third = available[1];
+      const span = top.weeklySeconds - third.weeklySeconds;
+
+      if (span <= MAX_RIVALRY_GAP_SECONDS) {
+        const gap = top.weeklySeconds - second.weeklySeconds;
+        rivalries.push({
+          id: `rivalry-${top.member.id}`,
+          rivalMembers: [top.member, second.member, third.member],
+          primaryGapSeconds: gap,
+          formattedGap: formatRivalryGap(gap),
+          isTrio: true,
+          leaderWeeklySeconds: top.weeklySeconds,
+        });
+
+        assignedIds.add(top.member.id);
+        assignedIds.add(second.member.id);
+        assignedIds.add(third.member.id);
+        continue;
+      }
+    }
+
+    // Priority B: Check if a 2-member rivalry (Pair) can be formed with the next available member
+    const second = available[0];
+    const gap = top.weeklySeconds - second.weeklySeconds;
+
+    if (gap <= MAX_RIVALRY_GAP_SECONDS) {
+      rivalries.push({
+        id: `rivalry-${top.member.id}`,
+        rivalMembers: [top.member, second.member],
+        primaryGapSeconds: gap,
+        formattedGap: formatRivalryGap(gap),
+        isTrio: false,
+        leaderWeeklySeconds: top.weeklySeconds,
+      });
+
+      assignedIds.add(top.member.id);
+      assignedIds.add(second.member.id);
+      continue;
+    }
+
+    // Otherwise, `top` cannot form a rivalry with anyone available. They remain unassigned.
   }
 
-  if (bestPair) {
-    return {
-      rivalMembers: bestPair.members,
-      primaryGapSeconds: bestPair.gap,
-      formattedGap: formatRivalryGap(bestPair.gap),
-      isTrio: false,
-    };
-  }
+  return rivalries;
+}
 
-  // No active members within 1 hour: rivalry dissolved / inactive
-  return null;
+/**
+ * Backward-compatible single rivalry detector (returns the highest-ranked rivalry if any).
+ */
+export function detectLiveRivalry(
+  members: UserProfile[],
+  now: Date = getServerNow(),
+  currentUserId?: string,
+  currentUserElapsedSeconds?: number
+): RivalryState | null {
+  const rivalries = detectLiveRivalries(members, now, currentUserId, currentUserElapsedSeconds);
+  return rivalries.length > 0 ? rivalries[0] : null;
 }
