@@ -5,8 +5,10 @@ import { createClient } from "@/lib/supabase/client";
 import { UserProfile, UserStatus } from "@/lib/supabase/types";
 import { getAdminUserId, isAdminUserId } from "@/hooks/useAdmin";
 import { calculateMemberElapsedStudySeconds, getWeekStartTimestamp } from "@/lib/time/format";
-import { getEffectiveMemberStatus, isMemberBreakExpired } from "@/lib/time/break";
+import { getEffectiveMemberStatus, isMemberBreakExpired, isMemberStudyExpired } from "@/lib/time/break";
 import { getServerNow } from "@/lib/time/clockSync";
+import { calculateExpectedPeakTraffic } from "@/lib/time/traffic";
+import { RivalryWinEvent } from "@/lib/time/rivalry";
 
 type RpcCaller = {
   rpc: (name: string, params?: Record<string, unknown>) => PromiseLike<{ data: unknown; error: { message: string } | null }>;
@@ -62,11 +64,29 @@ export function useLiveRoom(currentUserId?: string) {
   const [loading, setLoading] = useState(true);
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [expectedPeakHours, setExpectedPeakHours] = useState<string>("6 PM – 9 PM");
+  const [activeWinEvent, setActiveWinEvent] = useState<RivalryWinEvent | null>(null);
 
   const supabase = createClient();
   const currentUserIdRef = useRef(currentUserId);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const recentlyStoppedBreakUserIdsRef = useRef<Map<string, number>>(new Map());
+
+  // Restore active rivalry win banner from localStorage on mount
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const stored = localStorage.getItem("studyroom_active_rivalry_win");
+      if (stored) {
+        const parsed = JSON.parse(stored) as RivalryWinEvent;
+        if (parsed.timestamp && Date.now() - parsed.timestamp < 15 * 60 * 1000) {
+          setActiveWinEvent(parsed);
+        } else {
+          localStorage.removeItem("studyroom_active_rivalry_win");
+        }
+      }
+    } catch {}
+  }, []);
 
   useEffect(() => {
     currentUserIdRef.current = currentUserId;
@@ -114,19 +134,25 @@ export function useLiveRoom(currentUserId?: string) {
         }
       }
 
+      // Compute expected peak traffic range from past 3 days sessions
+      const peakHours = calculateExpectedPeakTraffic(rawSessions, serverNow);
+      setExpectedPeakHours(peakHours);
+
       if (data) {
         const now = getServerNow();
-        const expiredBreakUsers = (data as UserProfile[]).filter(
-          (u) => u.current_status === "break" && isMemberBreakExpired(u, now)
+        const expiredUsers = (data as UserProfile[]).filter(
+          (u) =>
+            (u.current_status === "break" && isMemberBreakExpired(u, now)) ||
+            (u.current_status === "studying" && isMemberStudyExpired(u, now))
         );
 
-        if (expiredBreakUsers.length > 0) {
+        if (expiredUsers.length > 0) {
           try {
             const nowMs = now.getTime();
             if (recentlyStoppedBreakUserIdsRef.current.size > 200) {
               recentlyStoppedBreakUserIdsRef.current.clear();
             }
-            expiredBreakUsers.forEach((expired) => {
+            expiredUsers.forEach((expired) => {
               const lastAttempt = recentlyStoppedBreakUserIdsRef.current.get(expired.id) || 0;
               if (nowMs - lastAttempt > 15000) {
                 recentlyStoppedBreakUserIdsRef.current.set(expired.id, nowMs);
@@ -135,16 +161,16 @@ export function useLiveRoom(currentUserId?: string) {
                 )
                   .then(({ error: rpcErr }) => {
                     if (rpcErr) {
-                      console.warn("[LiveRoom] Auto-stop expired break RPC error:", rpcErr);
+                      console.warn("[LiveRoom] Auto-stop expired session RPC error:", rpcErr);
                     }
                   })
                   .catch((err: unknown) => {
-                    console.warn("[LiveRoom] Auto-stop expired break failed:", err);
+                    console.warn("[LiveRoom] Auto-stop expired session failed:", err);
                   });
               }
             });
           } catch (autoStopErr) {
-            console.warn("[LiveRoom] Error initiating auto-stop for expired breaks:", autoStopErr);
+            console.warn("[LiveRoom] Error initiating auto-stop for expired sessions:", autoStopErr);
           }
         }
 
@@ -269,6 +295,22 @@ export function useLiveRoom(currentUserId?: string) {
         }
       )
       .on(
+        "broadcast",
+        { event: "rivalry_won" },
+        (msg) => {
+          if (msg.payload && (msg.payload as RivalryWinEvent).id) {
+            const win = msg.payload as RivalryWinEvent;
+            try {
+              if (localStorage.getItem(`studyroom_win_dismissed_${win.id}`)) {
+                return;
+              }
+              localStorage.setItem("studyroom_active_rivalry_win", JSON.stringify(win));
+            } catch {}
+            setActiveWinEvent(win);
+          }
+        }
+      )
+      .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "study_sessions" },
         () => {
@@ -314,11 +356,45 @@ export function useLiveRoom(currentUserId?: string) {
     };
   }, [supabase, fetchMembers, currentUserId, applyProfileUpdate]);
 
+  // Broadcast rivalry win announcement to all connected peers
+  const broadcastRivalryWin = useCallback(async (winEvent: RivalryWinEvent) => {
+    setActiveWinEvent(winEvent);
+    try {
+      localStorage.setItem("studyroom_active_rivalry_win", JSON.stringify(winEvent));
+    } catch {}
+
+    if (channelRef.current) {
+      try {
+        await channelRef.current.send({
+          type: "broadcast",
+          event: "rivalry_won",
+          payload: winEvent,
+        });
+      } catch (err) {
+        console.warn("Realtime broadcast rivalry_won send failed:", err);
+      }
+    }
+  }, []);
+
+  const dismissWinEvent = useCallback(() => {
+    if (activeWinEvent) {
+      try {
+        localStorage.setItem(`studyroom_win_dismissed_${activeWinEvent.id}`, "true");
+        localStorage.removeItem("studyroom_active_rivalry_win");
+      } catch {}
+    }
+    setActiveWinEvent(null);
+  }, [activeWinEvent]);
+
   return {
     members,
     loading,
     isRealtimeConnected,
     error,
+    expectedPeakHours,
+    activeWinEvent,
+    broadcastRivalryWin,
+    dismissWinEvent,
     refreshMembers: fetchMembers,
     broadcastStatusChange,
   };

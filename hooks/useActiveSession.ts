@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { UserProfile, SessionBlock, UserStatus } from "@/lib/supabase/types";
-import { calculateActiveStudySeconds, calculateMemberElapsedStudySeconds } from "@/lib/time/format";
+import { calculateActiveStudySeconds, calculateMemberElapsedStudySeconds, MAX_SESSION_STUDY_SECONDS } from "@/lib/time/format";
 import { calculateBreakStatus, BreakStatusResult, getEffectiveMemberStatus, isMemberBreakExpired } from "@/lib/time/break";
 import { getServerNow, calibrateWithServerTime } from "@/lib/time/clockSync";
 
@@ -21,6 +21,11 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
   const [isBreakExpiredNoticeOpen, setIsBreakExpiredNoticeOpen] = useState(false);
   const [savedStudySecondsOnBreakExpiry, setSavedStudySecondsOnBreakExpiry] = useState(0);
   const isAutoTerminatingRef = useRef(false);
+
+  // 2-Hour Maximum Session Limit State
+  const [isSessionLimitNoticeOpen, setIsSessionLimitNoticeOpen] = useState(false);
+  const [savedStudySecondsOnLimit, setSavedStudySecondsOnLimit] = useState(0);
+  const isAutoTerminatingLimitRef = useRef(false);
 
   const onStatusChangeRef = useRef(onStatusChange);
   useEffect(() => {
@@ -214,6 +219,62 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
     };
   }, [currentStatus, profile, blocks, finishSession]);
 
+  // 2-Hour Maximum Session Rule Monitor:
+  // Automatically terminates session when active study time reaches or exceeds 2 hours (7200s)
+  useEffect(() => {
+    if (currentStatus !== "studying" && currentStatus !== "break") {
+      isAutoTerminatingLimitRef.current = false;
+      return;
+    }
+
+    const checkSessionLimit = async () => {
+      if (isAutoTerminatingLimitRef.current) return;
+
+      const serverNow = getServerNow();
+      let currentAccrued = 0;
+      if (profile) {
+        currentAccrued = calculateMemberElapsedStudySeconds(profile, serverNow);
+      } else {
+        currentAccrued = calculateActiveStudySeconds(blocks, serverNow);
+      }
+
+      if (currentAccrued >= MAX_SESSION_STUDY_SECONDS) {
+        isAutoTerminatingLimitRef.current = true;
+        setSavedStudySecondsOnLimit(MAX_SESSION_STUDY_SECONDS);
+
+        try {
+          await finishSession([]);
+        } catch (terminateErr) {
+          console.warn("Auto-termination on 2-hour session limit:", terminateErr);
+        } finally {
+          setError(null);
+          setIsSessionLimitNoticeOpen(true);
+          if (onStatusChangeRef.current) onStatusChangeRef.current("offline");
+        }
+      }
+    };
+
+    // Check immediately
+    checkSessionLimit();
+
+    // Check every 2 seconds
+    const intervalId = setInterval(checkSessionLimit, 2000);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        checkSessionLimit();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("focus", handleVisibility);
+
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("focus", handleVisibility);
+    };
+  }, [currentStatus, profile, blocks, finishSession]);
+
   // Persist active break state to localStorage so background tab / phone sleep is trackable
   useEffect(() => {
     if (typeof window === "undefined" || !profile) return;
@@ -234,6 +295,20 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
     } else if (currentStatus === "studying") {
       try {
         localStorage.removeItem("studyroom_active_break");
+        localStorage.setItem(
+          "studyroom_active_study",
+          JSON.stringify({
+            userId: profile.id,
+            sessionStartTime: profile.session_start_time || new Date().toISOString(),
+            lastResumedAt: profile.last_resumed_at || new Date().toISOString(),
+            snapshotSeconds: profile.active_study_seconds_snapshot || 0,
+          })
+        );
+      } catch {}
+    } else if (currentStatus === "offline") {
+      try {
+        localStorage.removeItem("studyroom_active_break");
+        localStorage.removeItem("studyroom_active_study");
       } catch {}
     }
   }, [currentStatus, profile]);
@@ -270,6 +345,28 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
           }
         }
         localStorage.removeItem("studyroom_active_break");
+      }
+    } catch {
+      // storage error
+    }
+
+    // 3. Client Fallback for 2-hour study limit: Check if user was studying when app closed
+    try {
+      const storedStudy = localStorage.getItem("studyroom_active_study");
+      if (storedStudy) {
+        const data = JSON.parse(storedStudy);
+        if (data.userId === profile.id) {
+          const serverNow = getServerNow();
+          const startMs = new Date(data.lastResumedAt || data.sessionStartTime).getTime();
+          if (!isNaN(startMs)) {
+            const accrued = (data.snapshotSeconds || 0) + Math.floor(Math.max(0, serverNow.getTime() - startMs) / 1000);
+            if (accrued >= MAX_SESSION_STUDY_SECONDS) {
+              setSavedStudySecondsOnLimit(MAX_SESSION_STUDY_SECONDS);
+              setIsSessionLimitNoticeOpen(true);
+            }
+          }
+        }
+        localStorage.removeItem("studyroom_active_study");
       }
     } catch {
       // storage error
@@ -467,6 +564,10 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
     }
   };
 
+  const closeSessionLimitNotice = () => {
+    setIsSessionLimitNoticeOpen(false);
+  };
+
   const openBreakBlock = blocks.find((b) => b.block_type === "break" && !b.end_time);
   const breakStartedAt = profile?.break_started_at || openBreakBlock?.start_time || null;
 
@@ -481,6 +582,9 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
     isBreakExpiredNoticeOpen,
     savedStudySecondsOnBreakExpiry,
     closeBreakExpiredNotice,
+    isSessionLimitNoticeOpen,
+    savedStudySecondsOnLimit,
+    closeSessionLimitNotice,
     startSession,
     pauseSession,
     resumeSession,

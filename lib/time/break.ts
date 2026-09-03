@@ -1,4 +1,6 @@
 import { getServerNow } from "./clockSync";
+import { calculateMemberElapsedStudySeconds, MAX_SESSION_STUDY_SECONDS } from "./format";
+import { UserProfile, UserStatus } from "@/lib/supabase/types";
 
 /**
  * Break duration and 1-hour expiry constants & calculations.
@@ -87,14 +89,40 @@ export function isMemberBreakExpired(
 }
 
 /**
- * Returns the effective status of a member: if their break exceeded 1 hour,
- * their session is terminated and effective status is 'offline'.
+ * Checks if a member profile's active study session has reached the 2-hour limit (>= 7200 seconds).
+ */
+export function isMemberStudyExpired(
+  member: {
+    current_status: UserStatus | string;
+    session_start_time?: string | null;
+    last_resumed_at?: string | null;
+    active_study_seconds_snapshot?: number | null;
+  },
+  now: Date = getServerNow()
+): boolean {
+  if (member.current_status !== "studying") return false;
+  return calculateMemberElapsedStudySeconds(member as Partial<UserProfile>, now) >= MAX_SESSION_STUDY_SECONDS;
+}
+
+/**
+ * Returns the effective status of a member:
+ * - If their break exceeded 1 hour, status is 'offline'.
+ * - If their active study session reached 2 hours, status is 'offline'.
  */
 export function getEffectiveMemberStatus(
-  member: { current_status: string; break_started_at?: string | null },
+  member: {
+    current_status: string;
+    break_started_at?: string | null;
+    session_start_time?: string | null;
+    last_resumed_at?: string | null;
+    active_study_seconds_snapshot?: number | null;
+  },
   now: Date = getServerNow()
 ): "studying" | "break" | "offline" {
   if (member.current_status === "break" && isMemberBreakExpired(member, now)) {
+    return "offline";
+  }
+  if (member.current_status === "studying" && isMemberStudyExpired(member, now)) {
     return "offline";
   }
   if (member.current_status === "studying" || member.current_status === "break" || member.current_status === "offline") {

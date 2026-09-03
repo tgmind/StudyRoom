@@ -1,6 +1,8 @@
 import { SessionBlock, UserProfile } from "@/lib/supabase/types";
 import { getServerNow } from "./clockSync";
 
+export const MAX_SESSION_STUDY_SECONDS = 2 * 60 * 60; // 7200 seconds (2 hours)
+
 /**
  * Format total seconds into HH:MM:SS string.
  */
@@ -54,7 +56,7 @@ export function calculateActiveStudySeconds(
     }
   }
 
-  return Math.max(0, Math.floor(totalSeconds));
+  return Math.min(MAX_SESSION_STUDY_SECONDS, Math.max(0, Math.floor(totalSeconds)));
 }
 
 /**
@@ -62,57 +64,60 @@ export function calculateActiveStudySeconds(
  * - When offline: 0
  * - When on break: returns frozen active_study_seconds_snapshot (never increments)
  * - When studying: returns active_study_seconds_snapshot + (now - last_resumed_at)
+ * - Strictly capped at 2 hours (7200s) maximum per session.
  */
 export function calculateMemberElapsedStudySeconds(
-  member: UserProfile,
+  member: Partial<UserProfile> | UserProfile,
   now: Date = getServerNow()
 ): number {
   if (member.current_status === "offline") return 0;
 
   const baseSeconds = member.active_study_seconds_snapshot ?? 0;
+  let rawSeconds = 0;
 
   if (member.current_status === "break") {
     // Strictly frozen at the accrued snapshot
-    if (baseSeconds > 0) return baseSeconds;
-    if (member.break_started_at && member.session_start_time) {
+    if (baseSeconds > 0) {
+      rawSeconds = baseSeconds;
+    } else if (member.break_started_at && member.session_start_time) {
       const breakMs = new Date(member.break_started_at).getTime();
       const startMs = new Date(member.session_start_time).getTime();
       if (!isNaN(breakMs) && !isNaN(startMs) && breakMs >= startMs) {
-        return Math.floor((breakMs - startMs) / 1000);
+        rawSeconds = Math.floor((breakMs - startMs) / 1000);
       }
+    } else {
+      rawSeconds = baseSeconds;
     }
-    return baseSeconds;
-  }
-
-  if (member.current_status === "studying") {
+  } else if (member.current_status === "studying") {
     if (member.last_resumed_at) {
       const resumeMs = new Date(member.last_resumed_at).getTime();
       if (!isNaN(resumeMs)) {
         const addedSeconds = Math.max(0, Math.floor((now.getTime() - resumeMs) / 1000));
-        return baseSeconds + addedSeconds;
+        rawSeconds = baseSeconds + addedSeconds;
       }
     } else if (member.session_start_time) {
       // Fallback for sessions without resume timestamp
       const startMs = new Date(member.session_start_time).getTime();
       if (!isNaN(startMs)) {
-        return Math.max(0, Math.floor((now.getTime() - startMs) / 1000));
+        rawSeconds = Math.max(0, Math.floor((now.getTime() - startMs) / 1000));
       }
+    } else {
+      rawSeconds = baseSeconds;
     }
-    return baseSeconds;
   }
 
-  return 0;
+  return Math.min(MAX_SESSION_STUDY_SECONDS, Math.max(0, rawSeconds));
 }
 
 /**
- * Calculate active study minutes for database storage (floored integer minutes).
+ * Calculate active study minutes for database storage (floored integer minutes, max 120m).
  */
 export function calculateActiveStudyMinutes(
   blocks: SessionBlock[],
   now: Date = getServerNow()
 ): number {
   const seconds = calculateActiveStudySeconds(blocks, now);
-  return Math.floor(seconds / 60);
+  return Math.min(120, Math.floor(seconds / 60));
 }
 
 /**

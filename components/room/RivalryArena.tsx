@@ -44,7 +44,7 @@ export const RivalryArena = memo(function RivalryArena({
               {isTrio ? "Tri-Clash Arena" : "Rivalry Arena"}
             </h2>
             <span className="text-[8px] sm:text-[9px] font-black uppercase px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40">
-              {isTrio ? "3-Way" : "≤1h Clash"}
+              {isTrio ? "3-Way" : "≤10m Clash"}
             </span>
           </div>
         </div>

@@ -55,9 +55,26 @@ describe("Break Timer Calculations", () => {
       expect(getEffectiveMemberStatus(member, now)).toBe("offline");
     });
 
-    it("preserves studying and offline statuses without modification", () => {
+    it("preserves studying within 2 hours and expires studying >= 2 hours to 'offline'", () => {
       const now = new Date("2026-09-01T12:00:00Z");
-      expect(getEffectiveMemberStatus({ current_status: "studying" }, now)).toBe("studying");
+
+      // Studying for 1 hour: active!
+      const activeStudying = {
+        current_status: "studying" as const,
+        last_resumed_at: new Date("2026-09-01T11:00:00Z").toISOString(),
+        active_study_seconds_snapshot: 0,
+      };
+      expect(getEffectiveMemberStatus(activeStudying, now)).toBe("studying");
+
+      // Studying for 2 hours 10 minutes (7800s): expired to 'offline'!
+      const expiredStudying = {
+        current_status: "studying" as const,
+        last_resumed_at: new Date("2026-09-01T09:50:00Z").toISOString(),
+        active_study_seconds_snapshot: 0,
+      };
+      expect(getEffectiveMemberStatus(expiredStudying, now)).toBe("offline");
+
+      // Offline member remains offline
       expect(getEffectiveMemberStatus({ current_status: "offline" }, now)).toBe("offline");
     });
   });

@@ -12,7 +12,8 @@ import React, {
 import { UserProfile } from "@/lib/supabase/types";
 import { MemberCard } from "@/components/room/MemberCard";
 import { RivalryArena } from "./RivalryArena";
-import { detectLiveRivalries } from "@/lib/time/rivalry";
+import { detectLiveRivalries, RivalryState, RivalryWinEvent } from "@/lib/time/rivalry";
+import { RivalryWinCelebration } from "./RivalryWinCelebration";
 import { Users, WifiOff, Flame, Coffee } from "lucide-react";
 import { calculateMemberElapsedStudySeconds } from "@/lib/time/format";
 import { getEffectiveMemberStatus } from "@/lib/time/break";
@@ -25,6 +26,9 @@ interface MemberListProps {
   currentUserId?: string;
   currentUserElapsedSeconds?: number;
   isLoading?: boolean;
+  winEvent?: RivalryWinEvent | null;
+  onRivalryWin?: (event: RivalryWinEvent) => void;
+  onDismissWinEvent?: () => void;
 }
 
 export const MemberList = memo(function MemberList({
@@ -32,6 +36,9 @@ export const MemberList = memo(function MemberList({
   currentUserId,
   currentUserElapsedSeconds,
   isLoading = false,
+  winEvent,
+  onRivalryWin,
+  onDismissWinEvent,
 }: MemberListProps) {
   // Single shared master tick for all room member cards (calibrated to atomic server clock)
   const [currentTimestamp, setCurrentTimestamp] = useState(() => getServerNow());
@@ -134,6 +141,42 @@ export const MemberList = memo(function MemberList({
     if (rivalries.length === 0) return sortedActiveMembers;
     return sortedActiveMembers.filter((m) => !rivalMemberIds.has(m.id));
   }, [sortedActiveMembers, rivalries, rivalMemberIds]);
+
+  // Track resolved rivalries to trigger celebratory win announcements
+  const prevRivalriesRef = useRef<RivalryState[]>([]);
+  useEffect(() => {
+    const prevRivalries = prevRivalriesRef.current;
+    if (prevRivalries.length > 0) {
+      for (const prev of prevRivalries) {
+        const stillActive = rivalries.some((r) => r.id === prev.id);
+        if (!stillActive && prev.rivalMembers.length >= 2) {
+          const winner = prev.rivalMembers[0];
+          const loser = prev.rivalMembers[1];
+          // If they are still rivals in another group (e.g. trio to pair), don't declare victory yet
+          const stillRivalsTogether = rivalries.some(
+            (r) =>
+              r.rivalMembers.some((m) => m.id === winner.id) &&
+              r.rivalMembers.some((m) => m.id === loser.id)
+          );
+          if (stillRivalsTogether) continue;
+
+          if (winner?.display_name && loser?.display_name) {
+            const winMinute = Math.floor(Date.now() / 60000);
+            const winEvent: RivalryWinEvent = {
+              id: `win-${winner.id}-${loser.id}-${winMinute}`,
+              winnerName: winner.display_name,
+              loserName: loser.display_name,
+              timestamp: Date.now(),
+            };
+            if (onRivalryWin) {
+              onRivalryWin(winEvent);
+            }
+          }
+        }
+      }
+    }
+    prevRivalriesRef.current = rivalries;
+  }, [rivalries, onRivalryWin]);
 
   // Refs for tracking DOM card elements and their bounding rectangles across re-orders
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -251,6 +294,9 @@ export const MemberList = memo(function MemberList({
           ))}
         </div>
       )}
+
+      {/* Rivalry Winner Celebration (Overlapping popup & 15m persistent compact banner) */}
+      <RivalryWinCelebration winEvent={winEvent} onDismiss={onDismissWinEvent} />
 
       {/* 2. Active Studying & On Break Members Section */}
       {(nonRivalActiveMembers.length > 0 || rivalries.length === 0) && (

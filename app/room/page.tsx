@@ -11,6 +11,7 @@ import { SessionController } from "@/components/session/SessionController";
 import { MemberList } from "@/components/room/MemberList";
 import { BreakExpiredModal } from "@/components/session/BreakExpiredModal";
 import { BreakGoalUpdateModal } from "@/components/session/BreakGoalUpdateModal";
+import { SessionLimitModal } from "@/components/session/SessionLimitModal";
 import { CreateGoalModal } from "@/components/goals/CreateGoalModal";
 import { getServerNow } from "@/lib/time/clockSync";
 
@@ -20,6 +21,10 @@ export default function RoomPage() {
     members,
     loading: roomLoading,
     isRealtimeConnected,
+    expectedPeakHours,
+    activeWinEvent,
+    broadcastRivalryWin,
+    dismissWinEvent,
     refreshMembers,
     broadcastStatusChange,
   } = useLiveRoom(user?.id);
@@ -39,6 +44,9 @@ export default function RoomPage() {
     isBreakExpiredNoticeOpen,
     savedStudySecondsOnBreakExpiry,
     closeBreakExpiredNotice,
+    isSessionLimitNoticeOpen,
+    savedStudySecondsOnLimit,
+    closeSessionLimitNotice,
     startSession,
     pauseSession,
     resumeSession,
@@ -209,6 +217,7 @@ export default function RoomPage() {
         memberCount={members.length}
         isRealtimeConnected={isRealtimeConnected}
         profile={effectiveProfile}
+        expectedPeakHours={expectedPeakHours}
       />
 
       <main className="flex-1 w-full max-w-2xl sm:max-w-3xl px-3.5 sm:px-6 py-4 mx-auto space-y-4 sm:space-y-6">
@@ -237,9 +246,28 @@ export default function RoomPage() {
             currentUserId={user?.id}
             currentUserElapsedSeconds={elapsedStudySeconds}
             isLoading={roomLoading}
+            winEvent={activeWinEvent}
+            onRivalryWin={broadcastRivalryWin}
+            onDismissWinEvent={dismissWinEvent}
           />
         </section>
       </main>
+
+      {/* 2-Hour Maximum Session Limit Reached Modal */}
+      <SessionLimitModal
+        isOpen={isSessionLimitNoticeOpen}
+        onClose={closeSessionLimitNotice}
+        onConfirmSaveGoals={async (completedTaskIds) => {
+          closeSessionLimitNotice();
+          if (completedTaskIds.length > 0) {
+            await completeGoalTasks(completedTaskIds);
+            await Promise.allSettled([refreshGoals(), refreshProfile(), refreshMembers()]);
+          }
+        }}
+        activeGoal={activeGoal}
+        savedStudySeconds={savedStudySecondsOnLimit || 7200}
+        isLoading={goalActionLoading}
+      />
 
       {/* 1-Hour Break Inactivity Expiry Notice Modal */}
       <BreakExpiredModal

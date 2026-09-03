@@ -3,7 +3,8 @@ import { calculateMemberElapsedStudySeconds } from "./format";
 import { getEffectiveMemberStatus } from "./break";
 import { getServerNow } from "./clockSync";
 
-export const MAX_RIVALRY_GAP_SECONDS = 3600; // 1 hour threshold (3600 seconds)
+export const MAX_RIVALRY_GAP_SECONDS = 10 * 60; // 10 minutes threshold (600 seconds)
+export const MIN_RIVALRY_WEEKLY_SECONDS = 3 * 3600; // 3 hours threshold (10,800 seconds)
 
 export interface RivalryState {
   id: string;
@@ -12,6 +13,13 @@ export interface RivalryState {
   formattedGap: string;
   isTrio: boolean;
   leaderWeeklySeconds: number;
+}
+
+export interface RivalryWinEvent {
+  id: string;
+  winnerName: string;
+  loserName: string;
+  timestamp: number;
 }
 
 /**
@@ -99,21 +107,24 @@ export function detectLiveRivalries(
 ): RivalryState[] {
   if (!members || members.length < 2) return [];
 
-  // 1. Filter actively studying/active members only
-  const activeMembers = members.filter((m) => {
-    const status = getEffectiveMemberStatus(m, now);
-    return status === "studying" || status === "break";
-  });
+  // 1. Filter actively studying/active members with at least 3 hours (10,800s) of total weekly study time
+  const activeMembersWithWeekly = members
+    .filter((m) => {
+      const status = getEffectiveMemberStatus(m, now);
+      return status === "studying" || status === "break";
+    })
+    .map((m) => ({
+      member: m,
+      weeklySeconds: getLiveMemberWeeklySeconds(m, now, currentUserId, currentUserElapsedSeconds),
+    }))
+    .filter((m) => m.weeklySeconds >= MIN_RIVALRY_WEEKLY_SECONDS);
 
-  if (activeMembers.length < 2) return [];
+  if (activeMembersWithWeekly.length < 2) return [];
 
-  // 2. Compute live weekly study seconds and sort descending
-  const withWeekly = activeMembers.map((m) => ({
-    member: m,
-    weeklySeconds: getLiveMemberWeeklySeconds(m, now, currentUserId, currentUserElapsedSeconds),
-  }));
+  // 2. Sort descending by weekly study time
+  activeMembersWithWeekly.sort((a, b) => b.weeklySeconds - a.weeklySeconds);
 
-  withWeekly.sort((a, b) => b.weeklySeconds - a.weeklySeconds);
+  const withWeekly = activeMembersWithWeekly;
 
   const rivalries: RivalryState[] = [];
   const assignedIds = new Set<string>();

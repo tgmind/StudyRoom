@@ -156,4 +156,24 @@ describe("Time Formatting & Active Study Calculation", () => {
     };
     expect(calculateMemberLiveBreakSeconds(offlineUser, at5m)).toBe(0);
   });
+
+  it("strictly caps active study duration at 2 hours (7200 seconds)", () => {
+    const t0 = new Date("2026-09-01T10:00:00Z");
+    const studyingMember: UserProfile = {
+      id: "u-long",
+      display_name: "Long Study",
+      avatar_url: null,
+      current_status: "studying",
+      current_focus: "Physics",
+      session_start_time: t0.toISOString(),
+      last_resumed_at: t0.toISOString(),
+      active_study_seconds_snapshot: 0,
+      has_achiever_badge: false,
+      created_at: t0.toISOString(),
+    };
+
+    // 5 hours later (18,000s) -> strictly capped at 7200s (2 hours)
+    const at5h = new Date(t0.getTime() + 5 * 3600 * 1000);
+    expect(calculateMemberElapsedStudySeconds(studyingMember, at5h)).toBe(7200);
+  });
 });

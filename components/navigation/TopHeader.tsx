@@ -9,40 +9,50 @@ interface TopHeaderProps {
   memberCount?: number;
   isRealtimeConnected?: boolean;
   profile?: UserProfile | null;
+  expectedPeakHours?: string | null;
 }
 
 export const TopHeader = memo(function TopHeader({
   memberCount = 0,
   isRealtimeConnected = true,
   profile,
+  expectedPeakHours,
 }: TopHeaderProps) {
   const initials = profile?.display_name
     ? profile.display_name.substring(0, 2).toUpperCase()
     : "??";
 
   return (
-    <header className="sticky top-0 z-30 bg-zinc-950/90 backdrop-blur-xl border-b border-zinc-800/80 px-0 py-3 shadow-md">
+    <header className="sticky top-0 z-30 bg-zinc-950/90 backdrop-blur-xl border-b border-zinc-800/80 px-0 py-2.5 sm:py-3 shadow-md">
       <div className="max-w-2xl sm:max-w-3xl px-3.5 sm:px-6 mx-auto flex items-center justify-between">
-        {/* Brand & Member Counter */}
-        <div className="flex items-center space-x-3">
-          <Link
-            href="/room"
-            className="text-base font-extrabold tracking-tight text-zinc-100 hover:text-white transition-colors"
-          >
-            StudyRoom
-          </Link>
+        {/* Brand, Member Counter & Expected Peak Hours */}
+        <div className="flex flex-col min-w-0">
+          <div className="flex items-center space-x-2.5 sm:space-x-3">
+            <Link
+              href="/room"
+              className="text-base font-extrabold tracking-tight text-zinc-100 hover:text-white transition-colors"
+            >
+              StudyRoom
+            </Link>
 
-          {memberCount > 0 && (
-            <div className="flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full bg-zinc-900 border border-zinc-800 text-[11px] font-bold text-zinc-300">
-              <span
-                className={`w-2 h-2 rounded-full ${
-                  isRealtimeConnected ? "bg-fuchsia-500 animate-pulse" : "bg-zinc-600"
-                }`}
-              />
-              <span>
-                {memberCount} {memberCount === 1 ? "member" : "members"}
-              </span>
-            </div>
+            {memberCount > 0 && (
+              <div className="flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full bg-zinc-900 border border-zinc-800 text-[11px] font-bold text-zinc-300">
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    isRealtimeConnected ? "bg-fuchsia-500 animate-pulse" : "bg-zinc-600"
+                  }`}
+                />
+                <span>
+                  {memberCount} {memberCount === 1 ? "member" : "members"}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {expectedPeakHours && (
+            <span className="text-[10px] text-zinc-500 font-medium tracking-tight mt-0.5 select-none truncate">
+              Expected peak: {expectedPeakHours}
+            </span>
           )}
         </div>
 
