@@ -202,24 +202,39 @@ export const MemberCard = memo(function MemberCard({
       </div>
 
       {/* Bottom: Live Digital Timer Readout Pill (Uniform Symmetrical Height Across All Cards) */}
-      <div className="w-full mt-2 pt-2 border-t border-zinc-800/60 flex justify-center items-center min-h-[36px]">
+      <div className="w-full mt-2 pt-2 border-t border-zinc-800/60 flex flex-col justify-center items-center min-h-[50px]">
         {isStudying ? (
-          <div className="font-mono text-xs font-black tracking-tight px-3 py-1 rounded-full border shadow-inner flex items-center space-x-1.5 bg-fuchsia-950/40 text-fuchsia-300 border-fuchsia-500/30 tabular-nums">
-            <span className="w-1.5 h-1.5 rounded-full bg-fuchsia-400 animate-pulse" />
-            <span>{formatDurationSeconds(elapsedSeconds)}</span>
-          </div>
+          <>
+            <div className="font-mono text-xs font-black tracking-tight px-3 py-1 rounded-full border shadow-inner flex items-center space-x-1.5 bg-fuchsia-950/40 text-fuchsia-300 border-fuchsia-500/30 tabular-nums">
+              <span className="w-1.5 h-1.5 rounded-full bg-fuchsia-400 animate-pulse" />
+              <span>{formatDurationSeconds(elapsedSeconds)}</span>
+            </div>
+            <div className="h-3.5 mt-0.5" aria-hidden="true" />
+          </>
         ) : isBreak ? (
-          <div
-            className="font-mono text-xs font-black tracking-tight px-3 py-1 rounded-full border shadow-inner flex items-center space-x-1.5 bg-amber-950/60 text-amber-300 border-amber-500/50 tabular-nums animate-pulse"
-            title={`Live Break: ${formatDurationSeconds(liveBreakSeconds)} | Paused Study: ${formatDurationSeconds(elapsedSeconds)}`}
-          >
-            <Coffee className="w-3 h-3 text-amber-400 shrink-0" />
-            <span>Break {formatDurationSeconds(liveBreakSeconds)}</span>
-          </div>
+          <>
+            <div
+              className="font-mono text-xs font-black tracking-tight px-3 py-1 rounded-full border shadow-inner flex items-center space-x-1.5 bg-amber-950/60 text-amber-300 border-amber-500/50 tabular-nums animate-pulse"
+              title={`Live Break: ${formatDurationSeconds(liveBreakSeconds)} | Session Study: ${formatDurationSeconds(elapsedSeconds)}`}
+            >
+              <Coffee className="w-3 h-3 text-amber-400 shrink-0" />
+              <span>Break {formatDurationSeconds(liveBreakSeconds)}</span>
+            </div>
+            <div
+              className="h-3.5 mt-0.5 flex items-center justify-center gap-1 text-[10px] text-zinc-400 font-medium tabular-nums"
+              title={`Active study session duration: ${formatDurationSeconds(elapsedSeconds)}`}
+            >
+              <span>Session:</span>
+              <span className="font-mono font-bold text-zinc-200">{formatDurationSeconds(elapsedSeconds)}</span>
+            </div>
+          </>
         ) : (
-          <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider px-3 py-1 rounded-full bg-zinc-900/60 border border-zinc-800/80">
-            Offline
-          </span>
+          <>
+            <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider px-3 py-1 rounded-full bg-zinc-900/60 border border-zinc-800/80">
+              Offline
+            </span>
+            <div className="h-3.5 mt-0.5" aria-hidden="true" />
+          </>
         )}
       </div>
     </div>
