@@ -315,7 +315,7 @@ export function calculateMemberOfflineHours(
     const elapsedMinutes = Math.floor(elapsedSeconds / 60);
     return {
       offlineHours: 0,
-      formattedPill: "Offline <1h",
+      formattedPill: `Offline ${elapsedMinutes}m`,
       formattedDetailed: `Offline for ${elapsedMinutes} minute${elapsedMinutes === 1 ? "" : "s"}`,
     };
   }

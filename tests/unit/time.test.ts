@@ -181,14 +181,32 @@ describe("Time Formatting & Active Study Calculation", () => {
   describe("calculateMemberOfflineHours", () => {
     const baseNow = new Date("2026-09-03T20:00:00Z");
 
-    it("formats less than 1 hour offline as 'Offline <1h'", () => {
+    it("formats less than 1 hour offline as exact minutes like 'Offline 25m'", () => {
       const member = {
         last_offline_at: new Date(baseNow.getTime() - 25 * 60 * 1000).toISOString(), // 25 mins ago
       };
       const result = calculateMemberOfflineHours(member, baseNow);
       expect(result.offlineHours).toBe(0);
-      expect(result.formattedPill).toBe("Offline <1h");
+      expect(result.formattedPill).toBe("Offline 25m");
       expect(result.formattedDetailed).toBe("Offline for 25 minutes");
+    });
+
+    it("formats 0 minutes offline as 'Offline 0m'", () => {
+      const member = {
+        last_offline_at: new Date(baseNow.getTime() - 30 * 1000).toISOString(), // 30 secs ago
+      };
+      const result = calculateMemberOfflineHours(member, baseNow);
+      expect(result.offlineHours).toBe(0);
+      expect(result.formattedPill).toBe("Offline 0m");
+    });
+
+    it("formats 59 minutes offline as 'Offline 59m'", () => {
+      const member = {
+        last_offline_at: new Date(baseNow.getTime() - 59 * 60 * 1000).toISOString(), // 59 mins ago
+      };
+      const result = calculateMemberOfflineHours(member, baseNow);
+      expect(result.offlineHours).toBe(0);
+      expect(result.formattedPill).toBe("Offline 59m");
     });
 
     it("formats 4 hours offline as 'Offline 4h'", () => {

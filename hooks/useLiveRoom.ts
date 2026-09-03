@@ -179,10 +179,13 @@ export function useLiveRoom(currentUserId?: string) {
 
         const enriched = (data as UserProfile[]).map((u) => {
           const stat = statsMap.get(u.id) || { past24hSeconds: 0, weeklySeconds: 0, totalSessions: 0, latestSessionEndMs: 0 };
-          const resolvedOfflineMs = u.last_offline_at
-            ? new Date(u.last_offline_at).getTime()
-            : stat.latestSessionEndMs > 0
-            ? stat.latestSessionEndMs
+          const uLastOfflineMs = u.last_offline_at ? new Date(u.last_offline_at).getTime() : 0;
+          const bestOfflineMs = Math.max(
+            isNaN(uLastOfflineMs) ? 0 : uLastOfflineMs,
+            stat.latestSessionEndMs
+          );
+          const resolvedOfflineMs = bestOfflineMs > 0
+            ? bestOfflineMs
             : u.created_at
             ? new Date(u.created_at).getTime()
             : 0;

@@ -48,11 +48,11 @@ export const MemberList = memo(function MemberList({
   );
 
   useEffect(() => {
-    if (!hasAnyActiveOrBreak) return;
-
     const tick = () => setCurrentTimestamp(getServerNow());
     tick();
-    const intervalId = setInterval(tick, 1000);
+    // 1s interval when active/break members present; 5s interval when all are offline to update minute counters
+    const intervalMs = hasAnyActiveOrBreak ? 1000 : 5000;
+    const intervalId = setInterval(tick, intervalMs);
 
     const handleVisibility = () => {
       if (document.visibilityState === "visible") {
