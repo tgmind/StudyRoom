@@ -102,7 +102,7 @@ export function SessionLimitModal({
 
         {/* 24-Hour Goal Checklist */}
         <div className="space-y-2.5">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-1.5">
             <label className="block text-sm sm:text-base font-extrabold text-zinc-100 tracking-tight">
               How many Goals did you complete ?
             </label>
@@ -144,7 +144,7 @@ export function SessionLimitModal({
                         )}
                       </div>
                       <span
-                        className={`text-xs sm:text-sm truncate ${
+                        className={`text-xs sm:text-sm break-words line-clamp-2 leading-snug flex-1 ${
                           isCompleted
                             ? "line-through text-zinc-500"
                             : isSelected
@@ -176,7 +176,7 @@ export function SessionLimitModal({
         </div>
 
         {/* Modal Action Controls */}
-        <div className="pt-2 flex items-center justify-end space-x-2 sm:space-x-3">
+        <div className="pt-2 flex items-center justify-end flex-wrap gap-2 sm:gap-3">
           <Button
             type="button"
             variant="ghost"

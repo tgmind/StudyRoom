@@ -111,8 +111,8 @@ export const RivalryWinCelebration = memo(function RivalryWinCelebration({
     <>
       {/* 1. Full-Screen Overlapping Celebration Pop-up */}
       {isPopupVisible && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xl animate-in fade-in duration-300 pointer-events-auto">
-          <div className="relative w-full max-w-sm sm:max-w-md p-6 sm:p-7 rounded-3xl bg-gradient-to-b from-[#2b1606] via-[#1a0e07] to-[#0d0604] border-2 border-amber-500/70 shadow-[0_0_70px_rgba(245,158,11,0.45),_0_0_30px_rgba(225,29,72,0.25)] text-center space-y-4 overflow-hidden animate-in zoom-in-95 duration-400">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-xl animate-in fade-in duration-300 pointer-events-auto">
+          <div className="relative w-full max-w-sm sm:max-w-md max-h-[92vh] overflow-y-auto p-5 sm:p-7 rounded-2xl sm:rounded-3xl bg-gradient-to-b from-[#2b1606] via-[#1a0e07] to-[#0d0604] border-2 border-amber-500/70 shadow-[0_0_70px_rgba(245,158,11,0.45),_0_0_30px_rgba(225,29,72,0.25)] text-center space-y-3.5 sm:space-y-4 overflow-x-hidden animate-in zoom-in-95 duration-400">
             {/* Ambient gold-rose radial light beacon */}
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(245,158,11,0.3)_0%,_rgba(225,29,72,0.12)_50%,_transparent_75%)] pointer-events-none animate-pulse" />
             <div className="absolute top-0 left-1/4 right-1/4 h-[2px] bg-gradient-to-r from-transparent via-amber-400 to-transparent shadow-[0_0_20px_rgba(251,191,36,1)] pointer-events-none" />
@@ -129,7 +129,7 @@ export const RivalryWinCelebration = memo(function RivalryWinCelebration({
             {/* Floating Close Button */}
             <button
               onClick={handleDismiss}
-              className="absolute top-3.5 right-3.5 p-1.5 rounded-full bg-zinc-900/80 border border-zinc-700/70 text-zinc-400 hover:text-white hover:border-amber-500/50 transition-all hover:scale-110 active:scale-95 z-20"
+              className="absolute top-3.5 right-3.5 p-1.5 rounded-full bg-zinc-900/80 border border-zinc-700/70 text-zinc-400 hover:text-white hover:border-amber-500/50 transition-all hover:scale-110 active:scale-95 z-20 touch-manipulation"
               title="Close celebration"
               aria-label="Close celebration"
             >
@@ -137,10 +137,10 @@ export const RivalryWinCelebration = memo(function RivalryWinCelebration({
             </button>
 
             {/* Trophy & Crown Icon Badge */}
-            <div className="relative mx-auto w-20 h-20 rounded-3xl bg-gradient-to-tr from-amber-500 via-yellow-400 to-amber-300 flex items-center justify-center text-zinc-950 shadow-[0_0_35px_rgba(245,158,11,0.7),_0_0_15px_rgba(251,191,36,0.9)] animate-bounce">
-              <Trophy className="w-10 h-10 fill-current drop-shadow-md" />
-              <Crown className="w-5 h-5 text-amber-950 fill-amber-950 absolute -top-2 left-1/2 -translate-x-1/2 animate-pulse" />
-              <Sparkles className="w-5 h-5 text-white absolute -top-1.5 -right-1.5 animate-spin" style={{ animationDuration: "6s" }} />
+            <div className="relative mx-auto w-16 h-16 sm:w-20 sm:h-20 rounded-2xl sm:rounded-3xl bg-gradient-to-tr from-amber-500 via-yellow-400 to-amber-300 flex items-center justify-center text-zinc-950 shadow-[0_0_35px_rgba(245,158,11,0.7),_0_0_15px_rgba(251,191,36,0.9)] animate-bounce">
+              <Trophy className="w-8 h-8 sm:w-10 sm:h-10 fill-current drop-shadow-md" />
+              <Crown className="w-4 h-4 sm:w-5 sm:h-5 text-amber-950 fill-amber-950 absolute -top-1.5 sm:-top-2 left-1/2 -translate-x-1/2 animate-pulse" />
+              <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-white absolute -top-1 -right-1 sm:-top-1.5 sm:-right-1.5 animate-spin" style={{ animationDuration: "6s" }} />
             </div>
 
             {/* Headline */}
@@ -149,27 +149,27 @@ export const RivalryWinCelebration = memo(function RivalryWinCelebration({
                 <Swords className="w-3 h-3 text-amber-400" />
                 <span>Rivalry Victorious</span>
               </div>
-              <h2 className="text-2xl sm:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-yellow-100 to-amber-300 tracking-tight">
+              <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-yellow-100 to-amber-300 tracking-tight">
                 Victory Claimed!
               </h2>
             </div>
 
             {/* Victory Announcement Card */}
-            <div className="relative z-10 p-4 rounded-2xl bg-zinc-950/80 border border-amber-500/40 shadow-inner space-y-1">
-              <p className="text-sm sm:text-base font-extrabold text-zinc-100 leading-snug">
+            <div className="relative z-10 p-3.5 sm:p-4 rounded-xl sm:rounded-2xl bg-zinc-950/80 border border-amber-500/40 shadow-inner space-y-1">
+              <p className="text-xs sm:text-sm md:text-base font-extrabold text-zinc-100 leading-snug break-words">
                 <span className="text-amber-400 underline decoration-amber-500/60 decoration-2 font-black">
                   {winEvent.winnerName}
                 </span>{" "}
                 won the Rivalry against{" "}
                 <span className="text-rose-300 font-bold">{winEvent.loserName}</span> 🎉
               </p>
-              <div className="flex items-center justify-center gap-1.5 text-[11px] text-amber-300/90 font-semibold pt-1">
-                <Flame className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-                <span>Extended weekly study lead in Live Study!</span>
+              <div className="flex items-center justify-center gap-1.5 text-[10px] sm:text-[11px] text-amber-300/90 font-semibold pt-0.5 sm:pt-1">
+                <Flame className="w-3.5 h-3.5 text-amber-400 fill-amber-400 shrink-0" />
+                <span className="truncate">Extended weekly study lead in Live Study!</span>
               </div>
             </div>
 
-            <p className="relative z-10 text-[11px] text-zinc-400 font-medium">
+            <p className="relative z-10 text-[10px] sm:text-[11px] text-zinc-400 font-medium">
               This result stays pinned above Studying for 15 minutes.
             </p>
           </div>
@@ -177,31 +177,31 @@ export const RivalryWinCelebration = memo(function RivalryWinCelebration({
       )}
 
       {/* 2. Persistent Compact Banner Hooked Above 'Studying' Section */}
-      <div className="relative w-full mb-3 rounded-xl bg-gradient-to-r from-[#221006]/95 via-[#181119]/95 to-[#21090f]/95 border border-amber-500/40 shadow-[0_4px_25px_rgba(245,158,11,0.14),_0_0_12px_rgba(225,29,72,0.10)] backdrop-blur-xl flex items-center justify-between gap-2.5 p-2.5 sm:p-3 overflow-hidden transition-all duration-300 select-none animate-in fade-in slide-in-from-top-2">
+      <div className="relative w-full mb-3 rounded-xl bg-gradient-to-r from-[#221006]/95 via-[#181119]/95 to-[#21090f]/95 border border-amber-500/40 shadow-[0_4px_25px_rgba(245,158,11,0.14),_0_0_12px_rgba(225,29,72,0.10)] backdrop-blur-xl flex items-center justify-between gap-2 p-2 sm:p-3 overflow-hidden transition-all duration-300 select-none animate-in fade-in slide-in-from-top-2">
         {/* Subtle Ambient Radial Highlight */}
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_left,_rgba(245,158,11,0.15),_transparent_60%)] pointer-events-none" />
 
-        <div className="relative z-10 flex items-center gap-2.5 min-w-0">
+        <div className="relative z-10 flex items-center gap-2 sm:gap-2.5 min-w-0 flex-1">
           {/* Glowing Left Indicator Bar */}
           <div className="w-1 self-stretch rounded-full bg-gradient-to-b from-amber-400 via-yellow-300 to-rose-500 shrink-0 shadow-[0_0_8px_rgba(245,158,11,0.8)]" />
 
           {/* Trophy Icon */}
           <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-gradient-to-tr from-amber-500 to-yellow-400 flex items-center justify-center text-zinc-950 shadow-[0_0_12px_rgba(245,158,11,0.5)] shrink-0">
-            <Trophy className="w-4 h-4 sm:w-4.5 sm:h-4.5 fill-current" />
+            <Trophy className="w-3.5 h-3.5 sm:w-4.5 sm:h-4.5 fill-current" />
           </div>
 
-          <div className="flex flex-col min-w-0">
-            <div className="flex items-center gap-1.5">
-              <span className="text-[8px] sm:text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-gradient-to-r from-amber-500/20 to-yellow-500/20 text-amber-300 border border-amber-500/35">
+          <div className="flex flex-col min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[8px] sm:text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-gradient-to-r from-amber-500/20 to-yellow-500/20 text-amber-300 border border-amber-500/35 shrink-0">
                 Rivalry Victor
               </span>
-              <span className="text-[9px] text-zinc-400 font-mono font-medium">
-                • {remainingMinutes}m remaining
+              <span className="text-[9px] text-zinc-400 font-mono font-medium shrink-0">
+                • {remainingMinutes}m left
               </span>
             </div>
-            <p className="text-xs sm:text-sm font-extrabold text-zinc-100 truncate mt-0.5">
-              <span className="text-amber-300">{winEvent.winnerName}</span>{" "}
-              won the Rivalry against{" "}
+            <p className="text-xs sm:text-sm font-extrabold text-zinc-100 leading-tight mt-0.5 break-words line-clamp-2 sm:line-clamp-1">
+              <span className="text-amber-300 font-black">{winEvent.winnerName}</span>{" "}
+              won against{" "}
               <span className="text-rose-300 font-bold">{winEvent.loserName}</span> 🎉
             </p>
           </div>
@@ -210,7 +210,7 @@ export const RivalryWinCelebration = memo(function RivalryWinCelebration({
         {/* Dismiss Button (x) */}
         <button
           onClick={handleDismiss}
-          className="relative z-10 p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800/80 border border-transparent hover:border-amber-500/30 transition-all hover:scale-105 active:scale-95 shrink-0"
+          className="relative z-10 p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800/80 border border-transparent hover:border-amber-500/30 transition-all hover:scale-105 active:scale-95 shrink-0 touch-manipulation"
           title="Dismiss result notice"
           aria-label="Dismiss result notice"
         >

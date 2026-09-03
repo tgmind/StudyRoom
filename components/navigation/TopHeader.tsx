@@ -26,17 +26,17 @@ export const TopHeader = memo(function TopHeader({
     <header className="sticky top-0 z-30 bg-zinc-950/90 backdrop-blur-xl border-b border-zinc-800/80 px-0 py-2.5 sm:py-3 shadow-md">
       <div className="max-w-2xl sm:max-w-3xl px-3.5 sm:px-6 mx-auto flex items-center justify-between">
         {/* Brand, Member Counter & Expected Peak Hours */}
-        <div className="flex flex-col min-w-0">
+        <div className="flex flex-col min-w-0 flex-1 pr-2">
           <div className="flex items-center space-x-2.5 sm:space-x-3">
             <Link
               href="/room"
-              className="text-base font-extrabold tracking-tight text-zinc-100 hover:text-white transition-colors"
+              className="text-base font-extrabold tracking-tight text-zinc-100 hover:text-white transition-colors shrink-0"
             >
               StudyRoom
             </Link>
 
             {memberCount > 0 && (
-              <div className="flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full bg-zinc-900 border border-zinc-800 text-[11px] font-bold text-zinc-300">
+              <div className="flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full bg-zinc-900 border border-zinc-800 text-[11px] font-bold text-zinc-300 shrink-0">
                 <span
                   className={`w-2 h-2 rounded-full ${
                     isRealtimeConnected ? "bg-fuchsia-500 animate-pulse" : "bg-zinc-600"
@@ -50,9 +50,9 @@ export const TopHeader = memo(function TopHeader({
           </div>
 
           {expectedPeakHours && (
-            <div className="flex items-center space-x-1.5 mt-0.5 select-none text-[10px] text-zinc-400 font-medium tracking-tight">
+            <div className="flex items-center space-x-1.5 mt-0.5 select-none text-[10px] text-zinc-400 font-medium tracking-tight truncate">
               <span className="w-1 h-1 rounded-full bg-zinc-600 shrink-0" />
-              <span>
+              <span className="truncate">
                 Expected peak: <span className="text-zinc-300 font-bold">{expectedPeakHours}</span>
               </span>
             </div>
