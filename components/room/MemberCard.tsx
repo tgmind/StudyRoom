@@ -49,14 +49,18 @@ export const MemberCard = memo(function MemberCard({
   // 2. Live Break Timer (ticking by the second when on break, 0 otherwise)
   const liveBreakSeconds = isBreak ? calculateMemberLiveBreakSeconds(member, currentTimestamp) : 0;
 
-  // 3. Total Study Duration of Current 24 Hours (seamlessly preserves saved study time on expired break)
-  const total24hStudySeconds =
-    (member.past_24h_study_seconds ?? 0) +
-    (isStudying || isBreak ? elapsedSeconds : isBreakExpired ? (member.active_study_seconds_snapshot ?? 0) : 0);
+  // 3. Total Realtime Live Weekly Study Duration (past completed sessions of the week + live active session)
+  const isCurrentSessionActive = isStudying || isBreak;
+  const totalWeeklyStudySeconds =
+    (member.weekly_study_seconds ?? 0) +
+    (isCurrentSessionActive
+      ? elapsedSeconds
+      : isBreakExpired
+      ? (member.active_study_seconds_snapshot ?? 0)
+      : 0);
 
   // 4. Total Sessions Count (completed sessions + active in-progress session)
-  const isCurrentSessionActive = isStudying || isBreak || isBreakExpired;
-  const sessionsCount = (member.total_sessions_count ?? 0) + (isCurrentSessionActive ? 1 : 0);
+  const sessionsCount = (member.total_sessions_count ?? 0) + (isCurrentSessionActive || isBreakExpired ? 1 : 0);
 
   const initials = member.display_name
     ? member.display_name.substring(0, 2).toUpperCase()
@@ -181,17 +185,17 @@ export const MemberCard = memo(function MemberCard({
         </div>
       </div>
 
-      {/* Middle Stats Row: 24h Total Study Duration + Sessions Count */}
+      {/* Middle Stats Row: Realtime Live Weekly Total Study Duration + Sessions Count */}
       <div className={`w-full flex items-center justify-center gap-1.5 text-zinc-400 ${compact ? "mt-1 py-0.5 text-[9px]" : "mt-2 py-1 text-[10px] sm:gap-2"} border-t border-zinc-800/40 min-w-0 select-none`}>
         <div
           className="flex items-center gap-1 min-w-0"
-          title={`Total study duration in current 24 hours: ${formatSecondsToHuman(total24hStudySeconds)}`}
+          title={`Total weekly study duration: ${formatSecondsToHuman(totalWeeklyStudySeconds)}`}
         >
           <Clock className={`${compact ? "w-2 h-2" : "w-2.5 h-2.5"} text-fuchsia-400/90 shrink-0`} />
-          <span className="font-bold text-zinc-200 tabular-nums truncate text-[10px]">
-            {formatSecondsToHuman(total24hStudySeconds)}
+          <span className="font-bold text-zinc-200 tabular-nums truncate text-[10px] sm:text-[11px]">
+            {formatSecondsToHuman(totalWeeklyStudySeconds)}
           </span>
-          <span className="text-[8px] text-zinc-500 hidden sm:inline">24h</span>
+          <span className="text-[8px] text-zinc-500 hidden sm:inline">this week</span>
         </div>
 
         <span className="text-zinc-700 font-bold select-none">•</span>

@@ -17,6 +17,7 @@ describe("MemberCard Component", () => {
     has_achiever_badge: false,
     created_at: new Date().toISOString(),
     past_24h_study_seconds: 7200,
+    weekly_study_seconds: 36000, // 10 hours
     total_sessions_count: 5,
     active_study_seconds_snapshot: 1800, // 30 minutes
   };
@@ -115,5 +116,24 @@ describe("MemberCard Component", () => {
     expect(screen.queryByText("On Break")).not.toBeInTheDocument();
     expect(screen.queryByText(/Break 65:/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Session:/i)).not.toBeInTheDocument();
+  });
+
+  it("renders realtime live weekly study time beside the clock icon", () => {
+    render(
+      <MemberCard
+        member={{
+          ...baseMember,
+          weekly_study_seconds: 36000, // 10h past weekly
+          current_status: "studying",
+          session_start_time: new Date(Date.now() - 1800 * 1000).toISOString(),
+          last_resumed_at: new Date(Date.now() - 1800 * 1000).toISOString(),
+        }}
+        isCurrentUser={true}
+        customElapsedSeconds={1800} // 30m live
+      />
+    );
+
+    // 10h past weekly + 30m live = 10h 30m
+    expect(screen.getByText("10h 30m")).toBeInTheDocument();
   });
 });
