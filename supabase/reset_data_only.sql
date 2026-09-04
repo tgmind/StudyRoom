@@ -37,13 +37,25 @@ DELETE FROM public.study_sessions;
 DELETE FROM public.daily_goals;
 
 -- ------------------------------------------------------------
--- 3. RESET PUSH NOTIFICATION SUBSCRIPTIONS
+-- 3. RESET PUSH NOTIFICATION SUBSCRIPTIONS (IF TABLE EXISTS)
 -- ------------------------------------------------------------
-DELETE FROM public.push_subscriptions;
+DO $$
+BEGIN
+  IF to_regclass('public.push_subscriptions') IS NOT NULL THEN
+    EXECUTE 'DELETE FROM public.push_subscriptions';
+  END IF;
+END $$;
 
 -- ------------------------------------------------------------
 -- 4. RESET ALL MEMBER PROFILES TO CLEAN BASELINE OFFLINE STATE
 -- ------------------------------------------------------------
+-- Ensure optional tracking columns exist before resetting
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_offline_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_break_expired_study_seconds BIGINT DEFAULT NULL;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS break_warning_prompt_sent_at TIMESTAMPTZ DEFAULT NULL;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS three_hour_prompt_sent_at TIMESTAMPTZ DEFAULT NULL;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_offline_reminder_sent_at TIMESTAMPTZ DEFAULT NULL;
+
 -- Enable internal badge update flag for this transaction so trigger
 -- trg_prevent_badge_tampering allows resetting has_achiever_badge to false.
 DO $$
@@ -97,4 +109,6 @@ SELECT
   (SELECT COUNT(*) FROM public.daily_goals) AS goals_count_should_be_zero,
   (SELECT COUNT(*) FROM public.study_sessions) AS sessions_count_should_be_zero,
   (SELECT COUNT(*) FROM public.session_blocks) AS blocks_count_should_be_zero,
-  (SELECT COUNT(*) FROM public.push_subscriptions) AS subscriptions_should_be_zero;
+  (CASE WHEN to_regclass('public.push_subscriptions') IS NOT NULL 
+        THEN (SELECT COUNT(*) FROM public.push_subscriptions) 
+        ELSE 0 END) AS subscriptions_should_be_zero;
