@@ -15,7 +15,11 @@ import { RivalryArena } from "./RivalryArena";
 import { detectLiveRivalries, RivalryState, RivalryWinEvent } from "@/lib/time/rivalry";
 import { RivalryWinCelebration } from "./RivalryWinCelebration";
 import { Users, WifiOff, Flame, Coffee } from "lucide-react";
-import { calculateMemberElapsedStudySeconds, calculateMemberOfflineSeconds } from "@/lib/time/format";
+import {
+  calculateMemberElapsedStudySeconds,
+  calculateMemberOfflineSeconds,
+  calculateMemberOfflineTimestampMs,
+} from "@/lib/time/format";
 import { getEffectiveMemberStatus } from "@/lib/time/break";
 import { getServerNow } from "@/lib/time/clockSync";
 
@@ -43,6 +47,9 @@ export const MemberList = memo(function MemberList({
   // Single shared master tick for all room member cards (calibrated to atomic server clock)
   const [currentTimestamp, setCurrentTimestamp] = useState(() => getServerNow());
 
+  // Stable 10s tick specifically for offline member cards to update minute counters without blocking 1s active timer
+  const [offlineTimestamp, setOfflineTimestamp] = useState(() => getServerNow());
+
   const hasAnyActiveOrBreak = (members || []).some(
     (m) => m.current_status === "studying" || m.current_status === "break"
   );
@@ -57,6 +64,7 @@ export const MemberList = memo(function MemberList({
     const handleVisibility = () => {
       if (document.visibilityState === "visible") {
         tick();
+        setOfflineTimestamp(getServerNow());
       }
     };
     document.addEventListener("visibilitychange", handleVisibility);
@@ -68,6 +76,13 @@ export const MemberList = memo(function MemberList({
       window.removeEventListener("focus", handleVisibility);
     };
   }, [hasAnyActiveOrBreak]);
+
+  // Decoupled 10s timer for offline member cards to save CPU and main-thread ticks
+  useEffect(() => {
+    const offlineTick = () => setOfflineTimestamp(getServerNow());
+    const intervalId = setInterval(offlineTick, 10000);
+    return () => clearInterval(intervalId);
+  }, []);
 
   // Memoize filtered member groupings based on authoritative live effective status
   const studyingMembers = useMemo(
@@ -87,22 +102,39 @@ export const MemberList = memo(function MemberList({
     [members, currentTimestamp]
   );
 
+  // Cached ref for reference-stability to prevent unnecessary DOM reconciliation of offline cards
+  const prevSortedOfflineRef = useRef<UserProfile[]>([]);
+
   // Sorted in increasing order of offline duration in realtime (shortest offline time / most recently active first)
   const sortedOfflineMembers = useMemo(() => {
-    return [...offlineMembers].sort((a, b) => {
-      const offlineSecA = calculateMemberOfflineSeconds(a, currentTimestamp);
-      const offlineSecB = calculateMemberOfflineSeconds(b, currentTimestamp);
+    // Fast O(N) extraction of authoritative offline timestamps
+    const timestampMap = new Map<string, number>();
+    for (const m of offlineMembers) {
+      timestampMap.set(m.id, calculateMemberOfflineTimestampMs(m, currentTimestamp));
+    }
 
-      // 1. Increasing order of offline duration (smallest offline time first)
-      if (offlineSecA !== offlineSecB) {
-        return offlineSecA - offlineSecB;
-      }
+    const nextSorted = [...offlineMembers].sort((a, b) => {
+      // 1. Most recent offline timestamp first (smallest offline duration)
+      const diff = (timestampMap.get(b.id) ?? 0) - (timestampMap.get(a.id) ?? 0);
+      if (diff !== 0) return diff;
 
       // 2. Alphabetical tie-breaker (with ID tie-breaker for strict determinism)
       const nameCompare = (a.display_name || "").localeCompare(b.display_name || "");
       if (nameCompare !== 0) return nameCompare;
       return a.id.localeCompare(b.id);
     });
+
+    // Reference stability: keep previous array instance if order and elements are identical
+    const prev = prevSortedOfflineRef.current;
+    if (
+      prev.length === nextSorted.length &&
+      prev.every((m, idx) => m.id === nextSorted[idx].id && m === nextSorted[idx])
+    ) {
+      return prev;
+    }
+
+    prevSortedOfflineRef.current = nextSorted;
+    return nextSorted;
   }, [offlineMembers, currentTimestamp]);
 
   // Authoritative dynamic study duration for global ranking
@@ -392,7 +424,7 @@ export const MemberList = memo(function MemberList({
                   customElapsedSeconds={
                     member.id === currentUserId ? currentUserElapsedSeconds : undefined
                   }
-                  currentTimestamp={currentTimestamp}
+                  currentTimestamp={offlineTimestamp}
                 />
               </div>
             ))}

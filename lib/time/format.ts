@@ -276,12 +276,10 @@ export function formatSessionDate(
 }
 
 /**
- * Calculates the elapsed offline duration in seconds for a member.
- * Authoritative: checks effective offline transitions (break expiry, study limit),
- * last_offline_at, and fallback timestamps.
- * Returns the exact number of seconds elapsed since the member went offline.
+ * Calculates the exact epoch timestamp (in milliseconds) when the member transitioned to offline.
+ * Returns 0 if no valid timestamps exist (treating them as oldest possible).
  */
-export function calculateMemberOfflineSeconds(
+export function calculateMemberOfflineTimestampMs(
   member: Partial<UserProfile> | UserProfile,
   now: Date = getServerNow()
 ): number {
@@ -293,7 +291,7 @@ export function calculateMemberOfflineSeconds(
     if (!isNaN(breakStartMs)) {
       const expiredAtMs = breakStartMs + 3600 * 1000;
       if (nowMs >= expiredAtMs) {
-        return Math.max(0, Math.floor((nowMs - expiredAtMs) / 1000));
+        return expiredAtMs;
       }
     }
   }
@@ -308,37 +306,48 @@ export function calculateMemberOfflineSeconds(
         const remainingToCapSec = Math.max(0, MAX_SESSION_STUDY_SECONDS - snapshot);
         const expiredAtMs = resumedMs + remainingToCapSec * 1000;
         if (nowMs >= expiredAtMs) {
-          return Math.max(0, Math.floor((nowMs - expiredAtMs) / 1000));
+          return expiredAtMs;
         }
       }
     }
   }
 
   // 3. Standard offline timestamp (last_offline_at) with resilient fallbacks
-  let candidateOfflineMs = 0;
   if (member.last_offline_at) {
     const ms = new Date(member.last_offline_at).getTime();
-    if (!isNaN(ms)) candidateOfflineMs = ms;
+    if (!isNaN(ms)) return ms;
   }
 
   // Fallback if last_offline_at is missing: check latest activity or creation timestamp
-  if (!candidateOfflineMs) {
-    const altTimestamp =
-      member.break_started_at ||
-      member.last_resumed_at ||
-      member.session_start_time ||
-      member.created_at;
-    if (altTimestamp) {
-      const ms = new Date(altTimestamp).getTime();
-      if (!isNaN(ms)) candidateOfflineMs = ms;
-    }
+  const altTimestamp =
+    member.break_started_at ||
+    member.last_resumed_at ||
+    member.session_start_time ||
+    member.created_at;
+  if (altTimestamp) {
+    const ms = new Date(altTimestamp).getTime();
+    if (!isNaN(ms)) return ms;
   }
 
-  if (!candidateOfflineMs) {
+  return 0;
+}
+
+/**
+ * Calculates the elapsed offline duration in seconds for a member.
+ * Authoritative: checks effective offline transitions (break expiry, study limit),
+ * last_offline_at, and fallback timestamps.
+ * Returns the exact number of seconds elapsed since the member went offline.
+ */
+export function calculateMemberOfflineSeconds(
+  member: Partial<UserProfile> | UserProfile,
+  now: Date = getServerNow()
+): number {
+  const offlineMs = calculateMemberOfflineTimestampMs(member, now);
+  if (!offlineMs) {
     return Number.MAX_SAFE_INTEGER;
   }
 
-  return Math.max(0, Math.floor((nowMs - candidateOfflineMs) / 1000));
+  return Math.max(0, Math.floor((now.getTime() - offlineMs) / 1000));
 }
 
 /**
