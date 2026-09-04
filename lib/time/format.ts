@@ -276,9 +276,75 @@ export function formatSessionDate(
 }
 
 /**
+ * Calculates the elapsed offline duration in seconds for a member.
+ * Authoritative: checks effective offline transitions (break expiry, study limit),
+ * last_offline_at, and fallback timestamps.
+ * Returns the exact number of seconds elapsed since the member went offline.
+ */
+export function calculateMemberOfflineSeconds(
+  member: Partial<UserProfile> | UserProfile,
+  now: Date = getServerNow()
+): number {
+  const nowMs = now.getTime();
+
+  // 1. If currently in expired break, offline timestamp begins when the 1-hour break expired
+  if (member.current_status === "break" && member.break_started_at) {
+    const breakStartMs = new Date(member.break_started_at).getTime();
+    if (!isNaN(breakStartMs)) {
+      const expiredAtMs = breakStartMs + 3600 * 1000;
+      if (nowMs >= expiredAtMs) {
+        return Math.max(0, Math.floor((nowMs - expiredAtMs) / 1000));
+      }
+    }
+  }
+
+  // 2. If currently in expired study session (reached 3 hours / 10800s limit)
+  if (member.current_status === "studying") {
+    const resumedAtStr = member.last_resumed_at || member.session_start_time;
+    if (resumedAtStr) {
+      const resumedMs = new Date(resumedAtStr).getTime();
+      if (!isNaN(resumedMs)) {
+        const snapshot = member.active_study_seconds_snapshot ?? 0;
+        const remainingToCapSec = Math.max(0, MAX_SESSION_STUDY_SECONDS - snapshot);
+        const expiredAtMs = resumedMs + remainingToCapSec * 1000;
+        if (nowMs >= expiredAtMs) {
+          return Math.max(0, Math.floor((nowMs - expiredAtMs) / 1000));
+        }
+      }
+    }
+  }
+
+  // 3. Standard offline timestamp (last_offline_at) with resilient fallbacks
+  let candidateOfflineMs = 0;
+  if (member.last_offline_at) {
+    const ms = new Date(member.last_offline_at).getTime();
+    if (!isNaN(ms)) candidateOfflineMs = ms;
+  }
+
+  // Fallback if last_offline_at is missing: check latest activity or creation timestamp
+  if (!candidateOfflineMs) {
+    const altTimestamp =
+      member.break_started_at ||
+      member.last_resumed_at ||
+      member.session_start_time ||
+      member.created_at;
+    if (altTimestamp) {
+      const ms = new Date(altTimestamp).getTime();
+      if (!isNaN(ms)) candidateOfflineMs = ms;
+    }
+  }
+
+  if (!candidateOfflineMs) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+
+  return Math.max(0, Math.floor((nowMs - candidateOfflineMs) / 1000));
+}
+
+/**
  * Calculates the latest offline duration of a member in hours.
  * Uses member.last_offline_at or falls back to member.created_at.
- * Returns the numeric hours, compact formatted pill string (e.g. "Offline <1h", "Offline 4h"),
+ * Returns the numeric hours, compact formatted pill string (e.g. "Offline 25m", "Offline 4h"),
  * and detailed hover tooltip string.
  */
 export function calculateMemberOfflineHours(
@@ -289,8 +355,8 @@ export function calculateMemberOfflineHours(
   formattedPill: string;
   formattedDetailed: string;
 } {
-  const offlineAtStr = member.last_offline_at || member.created_at;
-  if (!offlineAtStr) {
+  const elapsedSeconds = calculateMemberOfflineSeconds(member, now);
+  if (elapsedSeconds === Number.MAX_SAFE_INTEGER) {
     return {
       offlineHours: 0,
       formattedPill: "Offline",
@@ -298,17 +364,6 @@ export function calculateMemberOfflineHours(
     };
   }
 
-  const offlineMs = new Date(offlineAtStr).getTime();
-  if (isNaN(offlineMs)) {
-    return {
-      offlineHours: 0,
-      formattedPill: "Offline",
-      formattedDetailed: "Offline",
-    };
-  }
-
-  const elapsedMs = Math.max(0, now.getTime() - offlineMs);
-  const elapsedSeconds = Math.floor(elapsedMs / 1000);
   const totalHours = Math.floor(elapsedSeconds / 3600);
 
   if (totalHours < 1) {

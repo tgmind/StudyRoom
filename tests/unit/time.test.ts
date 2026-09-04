@@ -7,6 +7,7 @@ import {
   calculateMemberElapsedStudySeconds,
   calculateMemberLiveBreakSeconds,
   calculateMemberOfflineHours,
+  calculateMemberOfflineSeconds,
 } from "@/lib/time/format";
 import { SessionBlock, UserProfile } from "@/lib/supabase/types";
 
@@ -252,6 +253,52 @@ describe("Time Formatting & Active Study Calculation", () => {
       const result = calculateMemberOfflineHours({}, baseNow);
       expect(result.offlineHours).toBe(0);
       expect(result.formattedPill).toBe("Offline");
+    });
+  });
+
+  describe("calculateMemberOfflineSeconds", () => {
+    const baseNow = new Date("2026-09-03T20:00:00Z");
+
+    it("calculates exact seconds elapsed since last_offline_at", () => {
+      const member = {
+        last_offline_at: new Date(baseNow.getTime() - 1500 * 1000).toISOString(), // 25 mins = 1500s
+      };
+      expect(calculateMemberOfflineSeconds(member, baseNow)).toBe(1500);
+    });
+
+    it("calculates seconds for expired breaks correctly", () => {
+      // Break started 70 minutes ago (4200s). Max break is 60 minutes (3600s).
+      // So member has been offline for 70 - 60 = 10 minutes = 600 seconds.
+      const breakStartedAt = new Date(baseNow.getTime() - 70 * 60 * 1000).toISOString();
+      const member = {
+        current_status: "break" as const,
+        break_started_at: breakStartedAt,
+      };
+      expect(calculateMemberOfflineSeconds(member, baseNow)).toBe(600);
+    });
+
+    it("calculates seconds for expired 3-hour study sessions correctly", () => {
+      // Started studying 185 mins ago (11100s). Max study is 180 mins (10800s).
+      // So member has been offline for 11100 - 10800 = 300 seconds (5 mins).
+      const startTime = new Date(baseNow.getTime() - 185 * 60 * 1000).toISOString();
+      const member = {
+        current_status: "studying" as const,
+        session_start_time: startTime,
+        last_resumed_at: startTime,
+        active_study_seconds_snapshot: 0,
+      };
+      expect(calculateMemberOfflineSeconds(member, baseNow)).toBe(300);
+    });
+
+    it("falls back to created_at when last_offline_at is missing", () => {
+      const member = {
+        created_at: new Date(baseNow.getTime() - 3600 * 1000).toISOString(), // 1 hour = 3600s
+      };
+      expect(calculateMemberOfflineSeconds(member, baseNow)).toBe(3600);
+    });
+
+    it("returns Number.MAX_SAFE_INTEGER when no timestamps exist", () => {
+      expect(calculateMemberOfflineSeconds({}, baseNow)).toBe(Number.MAX_SAFE_INTEGER);
     });
   });
 });

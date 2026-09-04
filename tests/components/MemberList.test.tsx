@@ -84,4 +84,48 @@ describe("MemberList Component & Live Global View", () => {
     const pulses = container.querySelectorAll(".animate-pulse");
     expect(pulses.length).toBeGreaterThanOrEqual(4);
   });
+
+  it("sorts offline members in increasing order of their offline time in realtime", () => {
+    const now = Date.now();
+    const tenMinsAgo = new Date(now - 10 * 60 * 1000).toISOString();
+    const oneHourAgo = new Date(now - 60 * 60 * 1000).toISOString();
+    const twelveHoursAgo = new Date(now - 12 * 3600 * 1000).toISOString();
+
+    const offlineAditya: UserProfile = {
+      ...memberC,
+      id: "aditya",
+      display_name: "Aditya",
+      last_offline_at: twelveHoursAgo, // 12h offline
+    };
+
+    const offlinePallavi: UserProfile = {
+      ...memberC,
+      id: "pallavi",
+      display_name: "Pallavi",
+      last_offline_at: oneHourAgo, // 1h offline
+    };
+
+    const offlineZoya: UserProfile = {
+      ...memberC,
+      id: "zoya",
+      display_name: "Zoya",
+      last_offline_at: tenMinsAgo, // 10m offline
+    };
+
+    // Pass in reverse/mixed order: Aditya (12h), Pallavi (1h), Zoya (10m)
+    const { container } = render(
+      <MemberList
+        members={[offlineAditya, offlinePallavi, offlineZoya]}
+      />
+    );
+
+    // Retrieve all offline member names in DOM render order
+    const names = Array.from(container.querySelectorAll("h3")).map((el) => el.textContent?.trim());
+
+    // Header has "Offline Members (3)", and member cards have names:
+    const memberCardNames = names.filter((n) => n === "Zoya" || n === "Pallavi" || n === "Aditya");
+
+    // Zoya (10m) -> Pallavi (1h) -> Aditya (12h)
+    expect(memberCardNames).toEqual(["Zoya", "Pallavi", "Aditya"]);
+  });
 });

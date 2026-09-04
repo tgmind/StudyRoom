@@ -15,7 +15,7 @@ import { RivalryArena } from "./RivalryArena";
 import { detectLiveRivalries, RivalryState, RivalryWinEvent } from "@/lib/time/rivalry";
 import { RivalryWinCelebration } from "./RivalryWinCelebration";
 import { Users, WifiOff, Flame, Coffee } from "lucide-react";
-import { calculateMemberElapsedStudySeconds } from "@/lib/time/format";
+import { calculateMemberElapsedStudySeconds, calculateMemberOfflineSeconds } from "@/lib/time/format";
 import { getEffectiveMemberStatus } from "@/lib/time/break";
 import { getServerNow } from "@/lib/time/clockSync";
 
@@ -86,6 +86,24 @@ export const MemberList = memo(function MemberList({
     () => (members || []).filter((m) => getEffectiveMemberStatus(m, currentTimestamp) === "offline"),
     [members, currentTimestamp]
   );
+
+  // Sorted in increasing order of offline duration in realtime (shortest offline time / most recently active first)
+  const sortedOfflineMembers = useMemo(() => {
+    return [...offlineMembers].sort((a, b) => {
+      const offlineSecA = calculateMemberOfflineSeconds(a, currentTimestamp);
+      const offlineSecB = calculateMemberOfflineSeconds(b, currentTimestamp);
+
+      // 1. Increasing order of offline duration (smallest offline time first)
+      if (offlineSecA !== offlineSecB) {
+        return offlineSecA - offlineSecB;
+      }
+
+      // 2. Alphabetical tie-breaker (with ID tie-breaker for strict determinism)
+      const nameCompare = (a.display_name || "").localeCompare(b.display_name || "");
+      if (nameCompare !== 0) return nameCompare;
+      return a.id.localeCompare(b.id);
+    });
+  }, [offlineMembers, currentTimestamp]);
 
   // Authoritative dynamic study duration for global ranking
   const getMemberStudySeconds = useCallback(
@@ -356,17 +374,17 @@ export const MemberList = memo(function MemberList({
       )}
 
       {/* Offline Group Members Section */}
-      {offlineMembers.length > 0 && (
+      {sortedOfflineMembers.length > 0 && (
         <div className="space-y-3 pt-3 border-t border-zinc-900">
           <div className="flex items-center space-x-2 text-zinc-500 px-1">
             <WifiOff className="w-3.5 h-3.5" />
             <h3 className="text-[11px] font-extrabold uppercase tracking-wider text-zinc-500">
-              Offline Members ({offlineMembers.length})
+              Offline Members ({sortedOfflineMembers.length})
             </h3>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3.5">
-            {offlineMembers.map((member) => (
+            {sortedOfflineMembers.map((member) => (
               <div key={member.id} className="h-full flex flex-col">
                 <MemberCard
                   member={member}

@@ -191,30 +191,32 @@ export const MemberCard = memo(function MemberCard({
       </div>
 
       {/* Middle Stats Row: Realtime Live Weekly Total Study Duration + Sessions Count */}
-      <div className={`w-full flex items-center justify-center gap-1.5 text-zinc-400 ${compact ? "mt-1 py-0.5 text-[9px]" : "mt-2 py-1 text-[10px] sm:gap-2"} border-t border-zinc-800/40 min-w-0 select-none`}>
+      <div className={`w-full flex items-center justify-center gap-1 sm:gap-1.5 text-zinc-400 ${compact ? "mt-1 py-0.5 text-[9px]" : "mt-2 py-1 text-[10px] sm:text-[11px]"} border-t border-zinc-800/40 min-w-0 select-none`}>
         <div
-          className="flex items-center gap-1 min-w-0"
-          title={`Total weekly study duration: ${formatSecondsToHuman(totalWeeklyStudySeconds)}`}
+          className="flex items-center gap-1 min-w-0 shrink-0"
+          title={`Total weekly study duration: ${formatSecondsToHuman(totalWeeklyStudySeconds)} this week`}
         >
           <Clock className={`${compact ? "w-2 h-2" : "w-2.5 h-2.5"} text-fuchsia-400/90 shrink-0`} />
-          <span className="font-bold text-zinc-200 tabular-nums truncate text-[10px] sm:text-[11px]">
+          <span className="font-bold text-zinc-200 tabular-nums whitespace-nowrap shrink-0 text-[10px] sm:text-[11px]">
             {formatSecondsToHuman(totalWeeklyStudySeconds)}
           </span>
-          <span className="text-[8px] text-zinc-500 hidden sm:inline">this week</span>
+          <span className="text-[8px] sm:text-[8.5px] text-zinc-500 font-medium whitespace-nowrap shrink-0">
+            /wk
+          </span>
         </div>
 
-        <span className="text-zinc-700 font-bold select-none">•</span>
+        <span className="text-zinc-700 font-bold select-none shrink-0">•</span>
 
         <div
-          className="flex items-center gap-1 min-w-0"
+          className="flex items-center gap-1 min-w-0 shrink-0"
           title={`${sessionsCount} session${sessionsCount === 1 ? "" : "s"} this week (${isCurrentSessionActive ? "current session in progress" : "completed"})`}
         >
           <BookOpen className={`${compact ? "w-2 h-2" : "w-2.5 h-2.5"} text-violet-400/90 shrink-0`} />
-          <span className="font-bold text-zinc-200 tabular-nums text-[10px]">
+          <span className="font-bold text-zinc-200 tabular-nums text-[10px] sm:text-[10.5px] whitespace-nowrap shrink-0">
             {sessionsCount}
           </span>
-          <span className="text-[8px] text-zinc-500">
-            {sessionsCount === 1 ? "sess" : "sess"}
+          <span className="text-[8px] sm:text-[8.5px] text-zinc-500 font-medium whitespace-nowrap shrink-0">
+            sess
           </span>
         </div>
       </div>
