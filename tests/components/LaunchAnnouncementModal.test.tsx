@@ -3,7 +3,7 @@ import React from "react";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { LaunchAnnouncementModal } from "@/components/ui/LaunchAnnouncementModal";
 
-describe("LaunchAnnouncementModal Component", () => {
+describe("StudyRoom UPDATE Modal Component", () => {
   let mockStorage: Record<string, string> = {};
 
   beforeEach(() => {
@@ -31,8 +31,8 @@ describe("LaunchAnnouncementModal Component", () => {
     vi.unstubAllGlobals();
   });
 
-  it("does not render when user has already acknowledged the launch notice", () => {
-    mockStorage["studyroom_launch_notice_seen_v1"] = "true";
+  it("does not render when user has already acknowledged the update notice", () => {
+    mockStorage["studyroom_update_3h_notice_v1"] = "true";
 
     render(<LaunchAnnouncementModal />);
 
@@ -40,22 +40,20 @@ describe("LaunchAnnouncementModal Component", () => {
       vi.advanceTimersByTime(1000);
     });
 
-    expect(screen.queryByText("StudyRoom Official Launch")).toBeNull();
+    expect(screen.queryByText("StudyRoom UPDATE")).toBeNull();
     expect(screen.queryByText("Understood")).toBeNull();
   });
 
-  it("renders when launched and closes saving state on clicking Understood", () => {
-    // Set time to post-launch (e.g. Sep 4, 2026 morning)
-    vi.setSystemTime(new Date("2026-09-04T02:00:00Z"));
-
+  it("renders update notice and closes saving state on clicking Understood", () => {
     render(<LaunchAnnouncementModal />);
 
     act(() => {
       vi.advanceTimersByTime(1000);
     });
 
-    expect(screen.getByText("StudyRoom Official Launch")).toBeDefined();
-    expect(screen.getByText("The Platform is Freshly Initialized!")).toBeDefined();
+    expect(screen.getAllByText("StudyRoom UPDATE").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Study Sessions Capped at 3 Hours")).toBeDefined();
+    expect(screen.getByText(/restricted to a maximum of 3 hours per session/i)).toBeDefined();
 
     const understoodBtn = screen.getByRole("button", { name: /understood/i });
     expect(understoodBtn).toBeDefined();
@@ -63,6 +61,6 @@ describe("LaunchAnnouncementModal Component", () => {
     fireEvent.click(understoodBtn);
 
     // Verify localStorage key is saved
-    expect(mockStorage["studyroom_launch_notice_seen_v1"]).toBe("true");
+    expect(mockStorage["studyroom_update_3h_notice_v1"]).toBe("true");
   });
 });

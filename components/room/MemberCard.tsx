@@ -260,4 +260,55 @@ export const MemberCard = memo(function MemberCard({
       </div>
     </div>
   );
-});
+}, areMemberCardsEqual);
+
+function areMemberCardsEqual(prev: MemberCardProps, next: MemberCardProps): boolean {
+  if (prev.isCurrentUser !== next.isCurrentUser) return false;
+  if (prev.compact !== next.compact) return false;
+  if (prev.customElapsedSeconds !== next.customElapsedSeconds) return false;
+
+  const mA = prev.member;
+  const mB = next.member;
+
+  if (mA.id !== mB.id) return false;
+  if (mA.current_status !== mB.current_status) return false;
+  if (mA.display_name !== mB.display_name) return false;
+  if (mA.avatar_url !== mB.avatar_url) return false;
+  if (mA.has_achiever_badge !== mB.has_achiever_badge) return false;
+  if (mA.weekly_study_seconds !== mB.weekly_study_seconds) return false;
+  if (mA.total_sessions_count !== mB.total_sessions_count) return false;
+  if (mA.session_start_time !== mB.session_start_time) return false;
+  if (mA.last_resumed_at !== mB.last_resumed_at) return false;
+  if (mA.break_started_at !== mB.break_started_at) return false;
+  if (mA.active_study_seconds_snapshot !== mB.active_study_seconds_snapshot) return false;
+  if (mA.last_offline_at !== mB.last_offline_at) return false;
+
+  const prevNow = prev.currentTimestamp || new Date();
+  const nextNow = next.currentTimestamp || new Date();
+
+  const statusA = getEffectiveMemberStatus(mA, prevNow);
+  const statusB = getEffectiveMemberStatus(mB, nextNow);
+  if (statusA !== statusB) return false;
+
+  // If member is actively studying or on break, timer ticks every second -> re-render
+  if (statusB === "studying" || statusB === "break") {
+    return false;
+  }
+
+  // Member is offline: only re-render if offline pill text or time-of-day indicators changed
+  const prevPill = calculateMemberOfflineHours(mA, prevNow).formattedPill;
+  const nextPill = calculateMemberOfflineHours(mB, nextNow).formattedPill;
+  if (prevPill !== nextPill) return false;
+
+  const prevNight = isDeepNight(statusA, prevNow);
+  const nextNight = isDeepNight(statusB, nextNow);
+  if (prevNight !== nextNight) return false;
+
+  const prevBird = isEarlyBird(statusA, prevNow);
+  const nextBird = isEarlyBird(statusB, nextNow);
+  if (prevBird !== nextBird) return false;
+
+  // Everything relevant for offline card is identical -> SKIP RE-RENDER!
+  return true;
+}
+

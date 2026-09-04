@@ -89,7 +89,7 @@ export function isMemberBreakExpired(
 }
 
 /**
- * Checks if a member profile's active study session has reached the 2-hour limit (>= 7200 seconds).
+ * Checks if a member profile's active study session has reached the 3-hour limit (>= 10800 seconds).
  */
 export function isMemberStudyExpired(
   member: {
@@ -107,7 +107,7 @@ export function isMemberStudyExpired(
 /**
  * Returns the effective status of a member:
  * - If their break exceeded 1 hour, status is 'offline'.
- * - If their active study session reached 2 hours, status is 'offline'.
+ * - If their active study session reached 3 hours, status is 'offline'.
  */
 export function getEffectiveMemberStatus(
   member: {

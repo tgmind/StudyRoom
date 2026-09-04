@@ -66,11 +66,13 @@ describe("useLiveRoom Hook", () => {
         };
       }
       if (table === "study_sessions") {
+        const queryBuilder = {
+          gte: vi.fn().mockReturnThis(),
+          then: (onfulfilled: (res: { data: unknown; error: null }) => unknown) =>
+            Promise.resolve({ data: [], error: null }).then(onfulfilled),
+        };
         return {
-          select: vi.fn().mockReturnValue({
-            then: (onfulfilled: (res: { data: unknown; error: null }) => unknown) =>
-              Promise.resolve({ data: [], error: null }).then(onfulfilled),
-          }),
+          select: vi.fn().mockReturnValue(queryBuilder),
         };
       }
       return {
@@ -127,11 +129,13 @@ describe("useLiveRoom Hook", () => {
         };
       }
       if (table === "study_sessions") {
+        const queryBuilder = {
+          gte: vi.fn().mockReturnThis(),
+          then: (onfulfilled: (res: { data: unknown; error: null }) => unknown) =>
+            Promise.resolve({ data: [], error: null }).then(onfulfilled),
+        };
         return {
-          select: vi.fn().mockReturnValue({
-            then: (onfulfilled: (res: { data: unknown; error: null }) => unknown) =>
-              Promise.resolve({ data: [], error: null }).then(onfulfilled),
-          }),
+          select: vi.fn().mockReturnValue(queryBuilder),
         };
       }
       return {
@@ -199,11 +203,13 @@ describe("useLiveRoom Hook", () => {
         };
       }
       if (table === "study_sessions") {
+        const queryBuilder = {
+          gte: vi.fn().mockReturnThis(),
+          then: (onfulfilled: (res: { data: unknown; error: null }) => unknown) =>
+            Promise.resolve({ data: [sessionThisWeek, sessionPastWeek], error: null }).then(onfulfilled),
+        };
         return {
-          select: vi.fn().mockReturnValue({
-            then: (onfulfilled: (res: { data: unknown; error: null }) => unknown) =>
-              Promise.resolve({ data: [sessionThisWeek, sessionPastWeek], error: null }).then(onfulfilled),
-          }),
+          select: vi.fn().mockReturnValue(queryBuilder),
         };
       }
       return {

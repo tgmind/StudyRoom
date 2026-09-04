@@ -158,7 +158,7 @@ describe("Time Formatting & Active Study Calculation", () => {
     expect(calculateMemberLiveBreakSeconds(offlineUser, at5m)).toBe(0);
   });
 
-  it("strictly caps active study duration at 2 hours (7200 seconds)", () => {
+  it("strictly caps active study duration at 3 hours (10800 seconds)", () => {
     const t0 = new Date("2026-09-01T10:00:00Z");
     const studyingMember: UserProfile = {
       id: "u-long",
@@ -173,9 +173,9 @@ describe("Time Formatting & Active Study Calculation", () => {
       created_at: t0.toISOString(),
     };
 
-    // 5 hours later (18,000s) -> strictly capped at 7200s (2 hours)
+    // 5 hours later (18,000s) -> strictly capped at 10800s (3 hours)
     const at5h = new Date(t0.getTime() + 5 * 3600 * 1000);
-    expect(calculateMemberElapsedStudySeconds(studyingMember, at5h)).toBe(7200);
+    expect(calculateMemberElapsedStudySeconds(studyingMember, at5h)).toBe(10800);
   });
 
   describe("calculateMemberOfflineHours", () => {

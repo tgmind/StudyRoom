@@ -23,7 +23,7 @@ export function SessionLimitModal({
   onClose,
   onConfirmSaveGoals,
   activeGoal,
-  savedStudySeconds = 7200,
+  savedStudySeconds = 10800,
   isStartingNewSession = false,
   isLoading = false,
 }: SessionLimitModalProps) {
@@ -76,12 +76,12 @@ export function SessionLimitModal({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="2-Hour Session Completed"
-      subtitle="Study session reached the 2-hour maximum limit"
+      title="3-Hour Session Completed"
+      subtitle="Study session reached the 3-hour maximum limit"
     >
       <div className="space-y-5">
         <p className="text-xs text-zinc-400 leading-relaxed">
-          To ensure fair rankings and prevent unattended timers, study sessions are capped at 2 hours. Your study time has been saved. Please mark which goals you accomplished during this session.
+          To ensure fair rankings and prevent unattended timers, study sessions are capped at 3 hours. Your study time has been saved. Please mark which goals you accomplished during this session.
         </p>
 
         {/* Saved Session Stats Banner */}

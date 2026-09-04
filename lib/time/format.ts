@@ -1,7 +1,7 @@
 import { SessionBlock, UserProfile } from "@/lib/supabase/types";
 import { getServerNow } from "./clockSync";
 
-export const MAX_SESSION_STUDY_SECONDS = 2 * 60 * 60; // 7200 seconds (2 hours)
+export const MAX_SESSION_STUDY_SECONDS = 3 * 60 * 60; // 10800 seconds (3 hours)
 
 /**
  * Format total seconds into HH:MM:SS string.
@@ -64,7 +64,7 @@ export function calculateActiveStudySeconds(
  * - When offline: 0
  * - When on break: returns frozen active_study_seconds_snapshot (never increments)
  * - When studying: returns active_study_seconds_snapshot + (now - last_resumed_at)
- * - Strictly capped at 2 hours (7200s) maximum per session.
+ * - Strictly capped at 3 hours (10800s) maximum per session.
  */
 export function calculateMemberElapsedStudySeconds(
   member: Partial<UserProfile> | UserProfile,
@@ -110,14 +110,14 @@ export function calculateMemberElapsedStudySeconds(
 }
 
 /**
- * Calculate active study minutes for database storage (floored integer minutes, max 120m).
+ * Calculate active study minutes for database storage (floored integer minutes, max 180m).
  */
 export function calculateActiveStudyMinutes(
   blocks: SessionBlock[],
   now: Date = getServerNow()
 ): number {
   const seconds = calculateActiveStudySeconds(blocks, now);
-  return Math.min(120, Math.floor(seconds / 60));
+  return Math.min(180, Math.floor(seconds / 60));
 }
 
 /**

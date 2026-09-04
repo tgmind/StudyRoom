@@ -55,24 +55,24 @@ describe("Break Timer Calculations", () => {
       expect(getEffectiveMemberStatus(member, now)).toBe("offline");
     });
 
-    it("preserves studying within 2 hours and expires studying >= 2 hours to 'offline'", () => {
+    it("preserves studying within 3 hours and expires studying >= 3 hours to 'offline'", () => {
       const now = new Date("2026-09-01T12:00:00Z");
 
-      // Studying for 1 hour: active!
-      const activeStudying = {
-        current_status: "studying" as const,
-        last_resumed_at: new Date("2026-09-01T11:00:00Z").toISOString(),
-        active_study_seconds_snapshot: 0,
-      };
-      expect(getEffectiveMemberStatus(activeStudying, now)).toBe("studying");
-
-      // Studying for 2 hours 10 minutes (7800s): expired to 'offline'!
-      const expiredStudying = {
+      // Studying for 2 hours 10 minutes (7800s): still active within 3-hour limit!
+      const activeStudying2h = {
         current_status: "studying" as const,
         last_resumed_at: new Date("2026-09-01T09:50:00Z").toISOString(),
         active_study_seconds_snapshot: 0,
       };
-      expect(getEffectiveMemberStatus(expiredStudying, now)).toBe("offline");
+      expect(getEffectiveMemberStatus(activeStudying2h, now)).toBe("studying");
+
+      // Studying for 3 hours 10 minutes (11400s): expired to 'offline'!
+      const expiredStudying3h = {
+        current_status: "studying" as const,
+        last_resumed_at: new Date("2026-09-01T08:50:00Z").toISOString(),
+        active_study_seconds_snapshot: 0,
+      };
+      expect(getEffectiveMemberStatus(expiredStudying3h, now)).toBe("offline");
 
       // Offline member remains offline
       expect(getEffectiveMemberStatus({ current_status: "offline" }, now)).toBe("offline");

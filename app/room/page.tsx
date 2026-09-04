@@ -253,7 +253,7 @@ export default function RoomPage() {
         </section>
       </main>
 
-      {/* 2-Hour Maximum Session Limit Reached Modal */}
+      {/* 3-Hour Maximum Session Limit Reached Modal */}
       <SessionLimitModal
         isOpen={isSessionLimitNoticeOpen}
         onClose={closeSessionLimitNotice}
@@ -265,7 +265,7 @@ export default function RoomPage() {
           }
         }}
         activeGoal={activeGoal}
-        savedStudySeconds={savedStudySecondsOnLimit || 7200}
+        savedStudySeconds={savedStudySecondsOnLimit || 10800}
         isLoading={goalActionLoading}
       />
 

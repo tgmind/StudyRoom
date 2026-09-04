@@ -536,7 +536,7 @@ BEGIN
     v_session_start := v_now;
   END IF;
 
-  -- Calculate total active study seconds from study blocks (EXCLUDING BREAKS, capped at 2 hours / 120 minutes)
+  -- Calculate total active study seconds from study blocks (EXCLUDING BREAKS, capped at 3 hours / 180 minutes)
   SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(end_time, v_now) - start_time))), 0)
   INTO v_total_study_seconds
   FROM public.session_blocks
@@ -544,7 +544,7 @@ BEGIN
     AND block_type = 'study'
     AND session_id IS NULL;
 
-  v_duration_minutes := LEAST(120, GREATEST(0, FLOOR(v_total_study_seconds / 60)::INTEGER));
+  v_duration_minutes := LEAST(180, GREATEST(0, FLOOR(v_total_study_seconds / 60)::INTEGER));
 
   -- Update Goal Task completions if active unexpired goal window exists
   SELECT id, tasks INTO v_active_goal_id, v_tasks
@@ -1383,7 +1383,7 @@ BEGIN
     AND block_type = 'study'
     AND session_id IS NULL;
 
-  v_duration_minutes := LEAST(120, GREATEST(0, FLOOR(v_total_study_seconds / 60)::INTEGER));
+  v_duration_minutes := LEAST(180, GREATEST(0, FLOOR(v_total_study_seconds / 60)::INTEGER));
 
   INSERT INTO public.study_sessions (user_id, start_time, end_time, duration_minutes, focus_tag, completed_tasks)
   VALUES (p_user_id, v_session_start, v_now, v_duration_minutes, v_focus, '[]'::JSONB)

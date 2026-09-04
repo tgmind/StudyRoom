@@ -22,7 +22,7 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
   const [savedStudySecondsOnBreakExpiry, setSavedStudySecondsOnBreakExpiry] = useState(0);
   const isAutoTerminatingRef = useRef(false);
 
-  // 2-Hour Maximum Session Limit State
+  // 3-Hour Maximum Session Limit State
   const [isSessionLimitNoticeOpen, setIsSessionLimitNoticeOpen] = useState(false);
   const [savedStudySecondsOnLimit, setSavedStudySecondsOnLimit] = useState(0);
   const isAutoTerminatingLimitRef = useRef(false);
@@ -219,8 +219,8 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
     };
   }, [currentStatus, profile, blocks, finishSession]);
 
-  // 2-Hour Maximum Session Rule Monitor:
-  // Automatically terminates session when active study time reaches or exceeds 2 hours (7200s)
+  // 3-Hour Maximum Session Rule Monitor:
+  // Automatically terminates session when active study time reaches or exceeds 3 hours (10800s)
   useEffect(() => {
     if (currentStatus !== "studying" && currentStatus !== "break") {
       isAutoTerminatingLimitRef.current = false;
@@ -245,7 +245,7 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
         try {
           await finishSession([]);
         } catch (terminateErr) {
-          console.warn("Auto-termination on 2-hour session limit:", terminateErr);
+          console.warn("Auto-termination on 3-hour session limit:", terminateErr);
         } finally {
           setError(null);
           setIsSessionLimitNoticeOpen(true);
@@ -350,7 +350,7 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
       // storage error
     }
 
-    // 3. Client Fallback for 2-hour study limit: Check if user was studying when app closed
+    // 3. Client Fallback for 3-hour study limit: Check if user was studying when app closed
     try {
       const storedStudy = localStorage.getItem("studyroom_active_study");
       if (storedStudy) {

@@ -111,10 +111,15 @@ export function useLiveRoom(currentUserId?: string) {
       const serverNow = getServerNow();
       const cutoffTime = serverNow.getTime() - 24 * 60 * 60 * 1000;
       const weekStartTime = getWeekStartTimestamp(serverNow);
+      // Bound query to oldest required timestamp (past 24h, current week, and 3-day peak traffic window with buffer)
+      const oldestRequiredTime = new Date(
+        Math.min(cutoffTime, weekStartTime, serverNow.getTime() - 4 * 86400000)
+      ).toISOString();
 
       const { data: sessionData } = await supabase
         .from("study_sessions")
-        .select("user_id, duration_minutes, end_time, start_time");
+        .select("user_id, duration_minutes, end_time, start_time")
+        .gte("start_time", oldestRequiredTime);
 
       type SessionRow = { user_id: string; duration_minutes: number; end_time: string; start_time?: string };
       const rawSessions = sessionData as unknown as SessionRow[] | null;

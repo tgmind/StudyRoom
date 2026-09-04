@@ -23,53 +23,73 @@ import {
   Archive,
   ChevronDown,
   ChevronUp,
+  Loader2,
 } from "lucide-react";
 
 export default function HistoryPage() {
   const { user, profile } = useAuth();
-  const { sessions, loading, actionLoading, clearHistory, error } = useStudyHistory(user?.id);
+  const {
+    currentWeekSessions: rawCurrentWeekSessions,
+    pastSessions: rawPastSessions,
+    totalSummary,
+    loading,
+    isPastLoading,
+    isPastLoaded,
+    fetchPastSessions,
+    clearHistory,
+    error,
+  } = useStudyHistory(user?.id);
   const [isClearModalOpen, setIsClearModalOpen] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
   const [isPastWeeksExpanded, setIsPastWeeksExpanded] = useState(false);
   const archiveTopRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
   const handleConfirmClear = async () => {
-    await clearHistory();
-    setIsClearModalOpen(false);
+    try {
+      setActionLoading(true);
+      await clearHistory();
+      setIsClearModalOpen(false);
+    } finally {
+      setActionLoading(false);
+    }
   };
 
-  // Group sessions by current week vs past weeks
-  const currentWeekStartMs = getWeekStartTimestamp(getServerNow());
-  const currentWeekSessions: { [dateLabel: string]: StudySession[] } = {};
-  const pastWeekSessions: { [dateLabel: string]: StudySession[] } = {};
-
-  let pastWeeksCount = 0;
-  let pastWeeksMinutes = 0;
-
-  for (const s of sessions) {
-    const sessionTime = new Date(s.start_time).getTime();
-    const isCurrentWeek = sessionTime >= currentWeekStartMs;
-    const label = formatSessionDate(s.start_time);
-
-    if (isCurrentWeek) {
-      if (!currentWeekSessions[label]) {
-        currentWeekSessions[label] = [];
-      }
-      currentWeekSessions[label].push(s);
-    } else {
-      if (!pastWeekSessions[label]) {
-        pastWeekSessions[label] = [];
-      }
-      pastWeekSessions[label].push(s);
-      pastWeeksCount += 1;
-      pastWeeksMinutes += s.duration_minutes || 0;
+  const handleTogglePastWeeks = async () => {
+    if (!isPastWeeksExpanded && !isPastLoaded) {
+      const ok = await fetchPastSessions();
+      if (!ok) return;
     }
+    setIsPastWeeksExpanded((prev) => !prev);
+  };
+
+  // Group current week sessions by date
+  const currentWeekSessions: { [dateLabel: string]: StudySession[] } = {};
+  for (const s of rawCurrentWeekSessions) {
+    const label = formatSessionDate(s.start_time);
+    if (!currentWeekSessions[label]) {
+      currentWeekSessions[label] = [];
+    }
+    currentWeekSessions[label].push(s);
+  }
+
+  // Group loaded past week sessions by date
+  const pastWeekSessions: { [dateLabel: string]: StudySession[] } = {};
+  for (const s of rawPastSessions) {
+    const label = formatSessionDate(s.start_time);
+    if (!pastWeekSessions[label]) {
+      pastWeekSessions[label] = [];
+    }
+    pastWeekSessions[label].push(s);
   }
 
   const currentWeekEntries = Object.entries(currentWeekSessions);
   const pastWeekEntries = Object.entries(pastWeekSessions);
 
-  const totalStudyMinutes = sessions.reduce((acc, s) => acc + s.duration_minutes, 0);
+  const pastWeeksCount = totalSummary.pastWeeksCount;
+  const pastWeeksMinutes = totalSummary.pastWeeksMinutes;
+  const totalStudyMinutes = totalSummary.totalMinutes;
+  const totalSessionsCount = totalSummary.totalSessions;
 
   return (
     <div className="flex-1 flex flex-col min-h-screen pb-24 bg-[#090a0f] text-zinc-100">
@@ -95,7 +115,7 @@ export default function HistoryPage() {
               </div>
             </div>
 
-            {sessions.length > 0 && (
+            {totalSessionsCount > 0 && (
               <button
                 type="button"
                 onClick={() => setIsClearModalOpen(true)}
@@ -143,10 +163,10 @@ export default function HistoryPage() {
                 </span>
                 <div className="flex items-baseline space-x-1 truncate">
                   <span className="font-mono font-extrabold text-violet-100 text-xs sm:text-base">
-                    {sessions.length}
+                    {totalSessionsCount}
                   </span>
                   <span className="text-[9px] sm:text-[10px] text-zinc-400 font-medium">
-                    {sessions.length === 1 ? "session" : "sessions"}
+                    {totalSessionsCount === 1 ? "session" : "sessions"}
                   </span>
                 </div>
               </div>
@@ -171,7 +191,7 @@ export default function HistoryPage() {
               />
             ))}
           </div>
-        ) : sessions.length === 0 ? (
+        ) : totalSessionsCount === 0 ? (
           <div className="text-center py-14 px-4 rounded-2xl border border-dashed border-zinc-800 bg-zinc-900/20 space-y-3.5">
             <History className="w-10 h-10 text-zinc-600 mx-auto" />
             <h3 className="text-sm font-semibold text-zinc-300">
@@ -270,7 +290,7 @@ export default function HistoryPage() {
                   </section>
                 );
               })
-            ) : pastWeekEntries.length > 0 ? (
+            ) : (pastWeeksCount > 0 || pastWeekEntries.length > 0) ? (
               <div className="p-4 rounded-2xl bg-zinc-900/40 border border-zinc-800/70 text-center space-y-1">
                 <p className="text-xs font-bold text-zinc-300">
                   No study sessions recorded yet for this week
@@ -282,17 +302,22 @@ export default function HistoryPage() {
             ) : null}
 
             {/* 2. Past Weeks Collapsible Archive (Ultra-compact space-saving banner) */}
-            {pastWeekEntries.length > 0 && (
+            {(pastWeeksCount > 0 || pastWeekEntries.length > 0) && (
               <div ref={archiveTopRef} className="pt-2 border-t border-zinc-800/80 space-y-3">
                 <button
                   type="button"
-                  onClick={() => setIsPastWeeksExpanded((prev) => !prev)}
+                  onClick={handleTogglePastWeeks}
+                  disabled={isPastLoading}
                   className="w-full flex items-center justify-between py-2 px-3 sm:py-2.5 sm:px-3.5 rounded-xl bg-zinc-900/50 hover:bg-zinc-900/90 border border-zinc-800/70 hover:border-zinc-700/80 transition-all text-left group shadow-sm select-none touch-manipulation min-h-[36px]"
                   aria-expanded={isPastWeeksExpanded}
                   title={isPastWeeksExpanded ? "Click to collapse older weeks" : "Click to view older weeks"}
                 >
                   <div className="flex items-center space-x-2 min-w-0 flex-1">
-                    <Archive className="w-3.5 h-3.5 text-zinc-400 group-hover:text-violet-400 transition-colors shrink-0" />
+                    {isPastLoading ? (
+                      <Loader2 className="w-3.5 h-3.5 text-violet-400 animate-spin shrink-0" />
+                    ) : (
+                      <Archive className="w-3.5 h-3.5 text-zinc-400 group-hover:text-violet-400 transition-colors shrink-0" />
+                    )}
                     <span className="text-[11px] sm:text-xs font-bold text-zinc-300 group-hover:text-zinc-100 tracking-tight shrink-0">
                       Earlier Weeks
                     </span>
@@ -304,7 +329,7 @@ export default function HistoryPage() {
 
                   <div className="flex items-center space-x-1 text-[10px] sm:text-[11px] font-semibold text-zinc-400 group-hover:text-zinc-200 shrink-0 ml-2">
                     <span className="hidden xs:inline text-zinc-500 group-hover:text-zinc-300">
-                      {isPastWeeksExpanded ? "Collapse" : "Expand"}
+                      {isPastLoading ? "Loading..." : isPastWeeksExpanded ? "Collapse" : "Expand"}
                     </span>
                     <ChevronDown
                       className={`w-3.5 h-3.5 text-zinc-400 group-hover:text-zinc-200 transition-transform duration-200 ${
@@ -315,7 +340,14 @@ export default function HistoryPage() {
                 </button>
 
                 {/* Collapsible Content */}
-                {isPastWeeksExpanded && (
+                {isPastLoading && !isPastLoaded && (
+                  <div className="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/60 text-center flex items-center justify-center space-x-2 text-xs text-zinc-400">
+                    <Loader2 className="w-4 h-4 text-violet-400 animate-spin" />
+                    <span>Loading previous study sessions...</span>
+                  </div>
+                )}
+
+                {isPastWeeksExpanded && isPastLoaded && (
                   <div className="space-y-6 pt-1 animate-in fade-in slide-in-from-top-2 duration-200">
                     {pastWeekEntries.map(([dateLabel, dateSessions]) => {
                       const dayMinutes = dateSessions.reduce((acc, s) => acc + s.duration_minutes, 0);

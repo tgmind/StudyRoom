@@ -1,5 +1,5 @@
 // StudyRoom PWA Service Worker
-const CACHE_NAME = "studyroom-v4";
+const CACHE_NAME = "studyroom-v5";
 const OFFLINE_URL = "/offline.html";
 
 const PRECACHE_ASSETS = [
@@ -47,8 +47,12 @@ self.addEventListener("fetch", (event) => {
   if (!url.protocol.startsWith("http")) return;
   if (url.pathname.startsWith("/_next/webpack-hmr")) return;
 
-  // Static Assets (icons, fonts, images, manifest): Cache-first
+  // Direct bypass for non-origin requests (e.g. Supabase API/Realtime) - do not intercept or delay
+  if (url.origin !== self.location.origin || url.hostname.includes("supabase.co")) return;
+
+  // Static Assets (Next.js static chunks, icons, fonts, images, manifest): Cache-first
   if (
+    url.pathname.startsWith("/_next/static/") ||
     url.pathname.startsWith("/icons/") ||
     url.pathname.startsWith("/fonts/") ||
     url.pathname.endsWith(".png") ||
