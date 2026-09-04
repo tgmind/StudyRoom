@@ -120,7 +120,4 @@ SELECT
   (SELECT COUNT(*) FROM public.users) AS public_profiles_count,
   (SELECT COUNT(*) FROM public.daily_goals) AS goals_count,
   (SELECT COUNT(*) FROM public.study_sessions) AS sessions_count,
-  (SELECT COUNT(*) FROM public.session_blocks) AS blocks_count,
-  (CASE WHEN to_regclass('public.push_subscriptions') IS NOT NULL 
-        THEN (SELECT COUNT(*) FROM public.push_subscriptions) 
-        ELSE 0 END) AS subscriptions_count;
+  (SELECT COUNT(*) FROM public.session_blocks) AS blocks_count;

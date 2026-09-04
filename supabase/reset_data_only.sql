@@ -108,7 +108,4 @@ SELECT
   (SELECT COUNT(*) FROM public.users WHERE current_status <> 'offline') AS active_members_should_be_zero,
   (SELECT COUNT(*) FROM public.daily_goals) AS goals_count_should_be_zero,
   (SELECT COUNT(*) FROM public.study_sessions) AS sessions_count_should_be_zero,
-  (SELECT COUNT(*) FROM public.session_blocks) AS blocks_count_should_be_zero,
-  (CASE WHEN to_regclass('public.push_subscriptions') IS NOT NULL 
-        THEN (SELECT COUNT(*) FROM public.push_subscriptions) 
-        ELSE 0 END) AS subscriptions_should_be_zero;
+  (SELECT COUNT(*) FROM public.session_blocks) AS blocks_count_should_be_zero;
