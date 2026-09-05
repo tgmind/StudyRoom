@@ -46,7 +46,7 @@ export const SessionController = memo(function SessionController({
 
   const isGoalMissingOrExpired = !activeGoal || countdown.isExpired;
 
-  // Direct Start Studying Flow - immediately starts or prompts for goal setup without any notification blockers
+  // Direct Start Studying Flow - immediately starts or prompts for goal setup
   const handleStartStudyingClick = async () => {
     try {
       if (isGoalMissingOrExpired) {

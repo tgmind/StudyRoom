@@ -65,16 +65,6 @@ export default function RoomPage() {
     refreshMembers();
   });
 
-  // Handle 1-tap notification resume action (?action=resume)
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      if (params.get("action") === "resume" && effectiveProfile?.current_status === "break") {
-        resumeSession();
-        window.history.replaceState({}, "", "/room");
-      }
-    }
-  }, [effectiveProfile?.current_status, resumeSession]);
 
   const {
     activeGoal,

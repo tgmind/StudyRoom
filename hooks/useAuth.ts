@@ -107,29 +107,6 @@ export function useAuth() {
   const signOut = async () => {
     try {
       setLoading(true);
-
-      // Clean up push subscription on logout so device does not receive notifications when signed out
-      if (
-        typeof window !== "undefined" &&
-        "serviceWorker" in navigator &&
-        "PushManager" in window
-      ) {
-        try {
-          const reg = await navigator.serviceWorker.getRegistration();
-          const sub = await reg?.pushManager.getSubscription();
-          if (sub) {
-            await fetch("/api/push/subscribe", {
-              method: "DELETE",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ endpoint: sub.endpoint }),
-            }).catch(() => {});
-            await sub.unsubscribe().catch(() => {});
-          }
-        } catch {
-          // non-blocking cleanup
-        }
-      }
-
       await supabase.auth.signOut();
     } catch (err) {
       console.error("Sign out error:", err);

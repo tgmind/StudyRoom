@@ -71,11 +71,19 @@ Run `supabase/schema.sql` against your Supabase PostgreSQL instance:
 3. Click **Run**.
 
 This automatically initializes:
-- All database tables (`users`, `daily_goals`, `study_sessions`, `session_blocks`, `push_subscriptions`)
+- All database tables (`users`, `daily_goals`, `study_sessions`, `session_blocks`)
 - Row Level Security (RLS) policies for user data privacy
 - RPC Functions (`rpc_start_session`, `rpc_pause_session`, `rpc_resume_session`, `rpc_finish_session`, `rpc_stop_user_session`, `rpc_acknowledge_break_expiry`, `rpc_cleanup_expired_breaks`, `rpc_create_daily_goal`, `rpc_get_leaderboard`, `rpc_calculate_weekly_achiever`)
 - Supabase Realtime publication configuration with `REPLICA IDENTITY FULL` for `public.users`, `public.study_sessions`, and `public.daily_goals`
 - **Supabase Storage Bucket `avatars`** (Public bucket with 2 MB file size limit and storage RLS policies)
+
+> **Note on Upgrading Existing Databases**: If you previously ran an older schema with push notification columns/tables, execute this one-line cleanup in SQL Editor:
+> ```sql
+> DROP TABLE IF EXISTS public.push_subscriptions CASCADE;
+> ALTER TABLE public.users DROP COLUMN IF EXISTS three_hour_prompt_sent_at;
+> ALTER TABLE public.users DROP COLUMN IF EXISTS last_offline_reminder_sent_at;
+> ALTER TABLE public.users DROP COLUMN IF EXISTS break_warning_prompt_sent_at;
+> ```
 
 ### 2. Manual Storage Bucket Verification (Dashboard UI Alternative)
 If you prefer configuring the `avatars` bucket manually in the Supabase Dashboard UI:

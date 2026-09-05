@@ -13,9 +13,6 @@ export interface UserProfile {
   has_achiever_badge: boolean;
   is_admin?: boolean;
   created_at: string;
-  three_hour_prompt_sent_at?: string | null;
-  last_offline_reminder_sent_at?: string | null;
-  break_warning_prompt_sent_at?: string | null;
   past_24h_study_seconds?: number;
   total_sessions_count?: number;
   weekly_sessions_count?: number;
@@ -135,36 +132,6 @@ export interface Database {
         Row: SessionBlock;
         Insert: Partial<SessionBlock> & { user_id: string; block_type: BlockType };
         Update: Partial<SessionBlock>;
-        Relationships: [];
-      };
-      push_subscriptions: {
-        Row: {
-          id: string;
-          user_id: string;
-          endpoint: string;
-          p256dh: string;
-          auth: string;
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          id?: string;
-          user_id: string;
-          endpoint: string;
-          p256dh: string;
-          auth: string;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: Partial<{
-          id: string;
-          user_id: string;
-          endpoint: string;
-          p256dh: string;
-          auth: string;
-          created_at: string;
-          updated_at: string;
-        }>;
         Relationships: [];
       };
     };

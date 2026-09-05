@@ -316,8 +316,6 @@ BEGIN
       last_resumed_at = NULL,
       break_started_at = NULL,
       active_study_seconds_snapshot = 0,
-      three_hour_prompt_sent_at = NULL,
-      break_warning_prompt_sent_at = NULL,
       last_break_expired_study_seconds = NULL,
       last_offline_at = v_now
   WHERE id = p_target_user_id;

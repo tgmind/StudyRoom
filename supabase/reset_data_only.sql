@@ -17,7 +17,6 @@
 --   ✗ public.session_blocks (all historical & active session blocks erased)
 --   ✗ public.study_sessions (all historical study sessions erased)
 --   ✗ public.daily_goals (all active and archived goals erased)
---   ✗ public.push_subscriptions (stale push endpoints cleared)
 --   ✗ public.users live state (status -> 'offline', timers -> NULL, snapshots -> 0, badges -> false)
 --
 -- Usage: Run this entire script in Supabase Dashboard → SQL Editor.
@@ -37,14 +36,9 @@ DELETE FROM public.study_sessions;
 DELETE FROM public.daily_goals;
 
 -- ------------------------------------------------------------
--- 3. RESET PUSH NOTIFICATION SUBSCRIPTIONS (IF TABLE EXISTS)
+-- 3. DROP PUSH NOTIFICATION SUBSCRIPTIONS (IF LEGACY TABLE EXISTS)
 -- ------------------------------------------------------------
-DO $$
-BEGIN
-  IF to_regclass('public.push_subscriptions') IS NOT NULL THEN
-    EXECUTE 'DELETE FROM public.push_subscriptions';
-  END IF;
-END $$;
+DROP TABLE IF EXISTS public.push_subscriptions CASCADE;
 
 -- ------------------------------------------------------------
 -- 4. RESET ALL MEMBER PROFILES TO CLEAN BASELINE OFFLINE STATE
@@ -52,9 +46,6 @@ END $$;
 -- Ensure optional tracking columns exist before resetting
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_offline_at TIMESTAMPTZ DEFAULT NOW();
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_break_expired_study_seconds INTEGER DEFAULT NULL;
-ALTER TABLE public.users ADD COLUMN IF NOT EXISTS break_warning_prompt_sent_at TIMESTAMPTZ DEFAULT NULL;
-ALTER TABLE public.users ADD COLUMN IF NOT EXISTS three_hour_prompt_sent_at TIMESTAMPTZ DEFAULT NULL;
-ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_offline_reminder_sent_at TIMESTAMPTZ DEFAULT NULL;
 
 -- Enable internal badge update flag for this transaction so trigger
 -- trg_prevent_badge_tampering allows resetting has_achiever_badge to false.
@@ -71,9 +62,6 @@ BEGIN
     break_started_at = NULL,
     active_study_seconds_snapshot = 0,
     has_achiever_badge = FALSE,
-    three_hour_prompt_sent_at = NULL,
-    last_offline_reminder_sent_at = NULL,
-    break_warning_prompt_sent_at = NULL,
     last_break_expired_study_seconds = NULL,
     last_offline_at = NOW();
 END $$;

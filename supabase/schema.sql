@@ -25,9 +25,6 @@ CREATE TABLE IF NOT EXISTS public.users (
   active_study_seconds_snapshot INTEGER NOT NULL DEFAULT 0,
   has_achiever_badge BOOLEAN NOT NULL DEFAULT FALSE,
   is_admin BOOLEAN NOT NULL DEFAULT FALSE,
-  three_hour_prompt_sent_at TIMESTAMPTZ,
-  last_offline_reminder_sent_at TIMESTAMPTZ,
-  break_warning_prompt_sent_at TIMESTAMPTZ,
   last_break_expired_study_seconds INTEGER DEFAULT NULL,
   last_offline_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -40,9 +37,6 @@ ALTER TABLE public.users ADD COLUMN IF NOT EXISTS active_study_seconds_snapshot 
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_break_expired_study_seconds INTEGER DEFAULT NULL;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_offline_at TIMESTAMPTZ;
-ALTER TABLE public.users ADD COLUMN IF NOT EXISTS three_hour_prompt_sent_at TIMESTAMPTZ;
-ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_offline_reminder_sent_at TIMESTAMPTZ;
-ALTER TABLE public.users ADD COLUMN IF NOT EXISTS break_warning_prompt_sent_at TIMESTAMPTZ;
 
 -- Ensure full replica identity for realtime update payloads
 ALTER TABLE public.users REPLICA IDENTITY FULL;
@@ -302,8 +296,6 @@ BEGIN
        last_resumed_at = v_now,
        break_started_at = NULL,
        active_study_seconds_snapshot = 0,
-       three_hour_prompt_sent_at = NULL,
-       break_warning_prompt_sent_at = NULL,
        last_break_expired_study_seconds = NULL
   WHERE id = v_user_id;
 
@@ -370,8 +362,7 @@ BEGIN
   SET current_status = 'break',
       last_resumed_at = NULL,
       break_started_at = v_now,
-      active_study_seconds_snapshot = v_total_study_seconds,
-      break_warning_prompt_sent_at = NULL
+      active_study_seconds_snapshot = v_total_study_seconds
   WHERE id = v_user_id;
 
   RETURN jsonb_build_object(
@@ -446,7 +437,6 @@ BEGIN
   SET current_status = 'studying',
       last_resumed_at = v_now,
       break_started_at = NULL,
-      break_warning_prompt_sent_at = NULL,
       last_break_expired_study_seconds = NULL
   WHERE id = v_user_id;
 
@@ -607,8 +597,6 @@ BEGIN
       last_resumed_at = NULL,
       break_started_at = NULL,
       active_study_seconds_snapshot = 0,
-      three_hour_prompt_sent_at = NULL,
-      break_warning_prompt_sent_at = NULL,
       last_offline_at = v_now
   WHERE id = v_user_id;
 
@@ -1284,8 +1272,6 @@ BEGIN
       last_resumed_at = NULL,
       break_started_at = NULL,
       active_study_seconds_snapshot = 0,
-      three_hour_prompt_sent_at = NULL,
-      break_warning_prompt_sent_at = NULL,
       last_break_expired_study_seconds = NULL,
       last_offline_at = v_now
   WHERE id = p_target_user_id;
@@ -1349,52 +1335,10 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- ------------------------------------------------------------
--- 13. WEB PUSH NOTIFICATIONS SCHEMA & POLICIES
+-- 13. BREAK EXPIRATION & AUTO-CLEANUP RPCS
 -- ------------------------------------------------------------
 
-CREATE TABLE IF NOT EXISTS public.push_subscriptions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-  endpoint TEXT NOT NULL UNIQUE,
-  p256dh TEXT NOT NULL,
-  auth TEXT NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user_id ON public.push_subscriptions(user_id);
-
-ALTER TABLE public.users ADD COLUMN IF NOT EXISTS three_hour_prompt_sent_at TIMESTAMPTZ;
-ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_offline_reminder_sent_at TIMESTAMPTZ;
-ALTER TABLE public.users ADD COLUMN IF NOT EXISTS break_warning_prompt_sent_at TIMESTAMPTZ;
-
-ALTER TABLE public.push_subscriptions ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "Users can insert own push subscriptions" ON public.push_subscriptions;
-CREATE POLICY "Users can insert own push subscriptions"
-  ON public.push_subscriptions FOR INSERT
-  TO authenticated
-  WITH CHECK (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Users can view own push subscriptions" ON public.push_subscriptions;
-CREATE POLICY "Users can view own push subscriptions"
-  ON public.push_subscriptions FOR SELECT
-  TO authenticated
-  USING (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Users can delete own push subscriptions" ON public.push_subscriptions;
-CREATE POLICY "Users can delete own push subscriptions"
-  ON public.push_subscriptions FOR DELETE
-  TO authenticated
-  USING (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Service role full access to push subscriptions" ON public.push_subscriptions;
-CREATE POLICY "Service role full access to push subscriptions"
-  ON public.push_subscriptions FOR ALL
-  TO service_role
-  USING (true);
-
--- RPC to stop user session on push notification action
+-- RPC to stop a user's session upon 1-hour break expiry or peer timeout detection
 CREATE OR REPLACE FUNCTION public.rpc_stop_user_session(p_user_id UUID)
 RETURNS JSONB AS $$
 DECLARE
@@ -1448,8 +1392,6 @@ BEGIN
       last_resumed_at = NULL,
       break_started_at = NULL,
       active_study_seconds_snapshot = 0,
-      three_hour_prompt_sent_at = NULL,
-      break_warning_prompt_sent_at = NULL,
       last_break_expired_study_seconds = CASE WHEN v_status = 'break' THEN v_total_study_seconds::INTEGER ELSE NULL END,
       last_offline_at = v_now
   WHERE id = p_user_id;

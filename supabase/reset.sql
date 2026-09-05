@@ -4,7 +4,7 @@
 -- File: supabase/reset.sql
 -- Description:
 --   Completely deletes ALL data, user accounts, profiles,
---   daily goals, study sessions, session blocks, push subscriptions,
+--   daily goals, study sessions, and session blocks,
 --   and prepares the storage bucket for avatar file purging.
 --   Resets the entire database to a 100% clean factory slate.
 -- Usage: Run this script directly in the Supabase SQL Editor.
@@ -13,14 +13,9 @@
 BEGIN;
 
 -- ------------------------------------------------------------
--- 1. DELETE ALL APPLICATION DATA (SESSIONS, BLOCKS, GOALS, PUSH)
+-- 1. DELETE ALL APPLICATION DATA (SESSIONS, BLOCKS, GOALS)
 -- ------------------------------------------------------------
-DO $$
-BEGIN
-  IF to_regclass('public.push_subscriptions') IS NOT NULL THEN
-    EXECUTE 'DELETE FROM public.push_subscriptions';
-  END IF;
-END $$;
+DROP TABLE IF EXISTS public.push_subscriptions CASCADE;
 DELETE FROM public.session_blocks;
 DELETE FROM public.study_sessions;
 DELETE FROM public.daily_goals;
