@@ -257,10 +257,13 @@ export default function RoomPage() {
         isOpen={isSessionLimitNoticeOpen}
         onClose={closeSessionLimitNotice}
         onConfirmSaveGoals={async (completedTaskIds) => {
-          closeSessionLimitNotice();
-          if (completedTaskIds.length > 0) {
-            await completeGoalTasks(completedTaskIds);
-            await Promise.allSettled([refreshGoals(), refreshProfile(), refreshMembers()]);
+          try {
+            if (completedTaskIds.length > 0) {
+              await completeGoalTasks(completedTaskIds);
+              await Promise.allSettled([refreshGoals(), refreshProfile(), refreshMembers()]);
+            }
+          } finally {
+            closeSessionLimitNotice();
           }
         }}
         activeGoal={activeGoal}

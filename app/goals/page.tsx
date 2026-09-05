@@ -14,6 +14,9 @@ import { GoalsGuideModal } from "@/components/goals/GoalsGuideModal";
 
 export default function GoalsPage() {
   const { user, profile } = useAuth();
+  const isSessionActive = profile?.current_status === "studying" || profile?.current_status === "break";
+  const sessionStartTime = profile?.session_start_time || null;
+
   const {
     activeGoal,
     countdown,
@@ -21,7 +24,7 @@ export default function GoalsPage() {
     actionLoading,
     createGoal,
     addTasksToGoal,
-  } = useDailyGoals(user?.id);
+  } = useDailyGoals(user?.id, sessionStartTime, isSessionActive);
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
