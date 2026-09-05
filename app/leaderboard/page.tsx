@@ -8,7 +8,7 @@ import { TopHeader } from "@/components/navigation/TopHeader";
 import { BottomNav } from "@/components/navigation/BottomNav";
 import { LeaderboardCard } from "@/components/leaderboard/LeaderboardCard";
 import { ScoringBreakdown } from "@/components/leaderboard/ScoringBreakdown";
-import { Trophy, HelpCircle, Star, Sparkles, Clock, Target, Flame } from "lucide-react";
+import { Trophy, HelpCircle, Star, Sparkles, Clock, Target, Flame, ChevronRight } from "lucide-react";
 import { getAdminUserId, isAdminUserId } from "@/hooks/useAdmin";
 
 type RpcCaller = {
@@ -95,31 +95,82 @@ export default function LeaderboardPage() {
             </button>
           </div>
 
+          {/* Minimalist Formula Update Notice */}
+          <button
+            type="button"
+            onClick={() => setIsModalOpen(true)}
+            className="w-full group text-left px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl bg-gradient-to-r from-violet-950/40 via-zinc-900/70 to-fuchsia-950/30 border border-violet-500/20 hover:border-violet-400/40 transition-all flex items-center justify-between gap-2 touch-manipulation focus:outline-none focus:ring-1 focus:ring-violet-500/50"
+            title="Learn how the new Dual-Pillar Goal Index works"
+          >
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <span className="flex h-2 w-2 relative shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] sm:text-[11px] font-bold text-violet-200 tracking-tight">
+                    Scoring Upgraded
+                  </span>
+                  <span className="text-[8.5px] sm:text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-violet-500/20 border border-violet-500/30 text-violet-300 tracking-wider">
+                    Dual-Pillar
+                  </span>
+                </div>
+                <p className="text-[9px] sm:text-[10px] text-zinc-400 leading-snug mt-0.5">
+                  <span>Volume (60%) + Discipline (40%) index.</span>
+                  <span className="hidden min-[400px]:inline text-zinc-500"> More completed goals = higher rank.</span>
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-0.5 text-[10px] sm:text-xs font-semibold text-violet-300 group-hover:text-violet-200 shrink-0">
+              <span className="hidden min-[380px]:inline">Rules</span>
+              <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform shrink-0" />
+            </div>
+          </button>
+
           {/* Transparent Metric Formula Chips */}
-          <div className="grid grid-cols-3 gap-1 sm:gap-2.5 pt-2 border-t border-zinc-800/80 text-[9px] min-[360px]:text-[10px] sm:text-xs">
-            <div className="p-1.5 sm:p-2 rounded-xl bg-zinc-950/60 border border-violet-500/15 text-center min-w-0">
+          <div className="grid grid-cols-3 gap-1.5 sm:gap-2.5 pt-2 border-t border-zinc-800/80 text-[9px] min-[360px]:text-[10px] sm:text-xs">
+            <button
+              type="button"
+              onClick={() => setIsModalOpen(true)}
+              className="p-1.5 sm:p-2 rounded-xl bg-zinc-950/60 hover:bg-zinc-900/90 border border-violet-500/15 hover:border-violet-500/40 text-center min-w-0 transition-all group touch-manipulation"
+              title="Active Study Duration (50% weight) - Click for methodology"
+            >
               <div className="flex items-center justify-center space-x-1 text-violet-300 font-bold mb-0.5 flex-wrap">
                 <Clock className="w-3 h-3 shrink-0" />
                 <span className="whitespace-nowrap">50% Hours</span>
               </div>
-              <span className="text-[8.5px] sm:text-[10px] text-zinc-500 block leading-tight">Study Duration</span>
-            </div>
+              <span className="text-[8.5px] sm:text-[10px] text-zinc-500 group-hover:text-zinc-400 block leading-tight">Study Duration</span>
+            </button>
 
-            <div className="p-1.5 sm:p-2 rounded-xl bg-zinc-950/60 border border-fuchsia-500/15 text-center min-w-0">
+            <button
+              type="button"
+              onClick={() => setIsModalOpen(true)}
+              className="relative p-1.5 sm:p-2 rounded-xl bg-zinc-950/70 hover:bg-zinc-900/90 border border-fuchsia-500/30 hover:border-fuchsia-400/60 text-center min-w-0 transition-all group touch-manipulation shadow-sm"
+              title="Dual-Pillar Goal Index (30% weight: 60% Volume + 40% Discipline) - Click for methodology"
+            >
+              <span className="absolute -top-1.5 -right-1 px-1 py-0.2 rounded text-[7.5px] font-black uppercase tracking-wider bg-gradient-to-r from-fuchsia-600 to-violet-600 text-white shadow-sm border border-fuchsia-400/40">
+                New
+              </span>
               <div className="flex items-center justify-center space-x-1 text-fuchsia-300 font-bold mb-0.5 flex-wrap">
                 <Target className="w-3 h-3 shrink-0" />
                 <span className="whitespace-nowrap">30% Goals</span>
               </div>
-              <span className="text-[8.5px] sm:text-[10px] text-zinc-500 block leading-tight">Dual-Pillar Index</span>
-            </div>
+              <span className="text-[8.5px] sm:text-[10px] text-fuchsia-300/90 group-hover:text-fuchsia-200 block leading-tight font-medium">Dual-Pillar Index</span>
+            </button>
 
-            <div className="p-1.5 sm:p-2 rounded-xl bg-zinc-950/60 border border-amber-500/15 text-center min-w-0">
+            <button
+              type="button"
+              onClick={() => setIsModalOpen(true)}
+              className="p-1.5 sm:p-2 rounded-xl bg-zinc-950/60 hover:bg-zinc-900/90 border border-amber-500/15 hover:border-amber-500/40 text-center min-w-0 transition-all group touch-manipulation"
+              title="Consistency Streak (20% weight: ≥30m daily) - Click for methodology"
+            >
               <div className="flex items-center justify-center space-x-1 text-amber-300 font-bold mb-0.5 flex-wrap">
                 <Flame className="w-3 h-3 shrink-0" />
                 <span className="whitespace-nowrap">20% Streak</span>
               </div>
-              <span className="text-[8.5px] sm:text-[10px] text-zinc-500 block leading-tight">≥30m Daily</span>
-            </div>
+              <span className="text-[8.5px] sm:text-[10px] text-zinc-500 group-hover:text-zinc-400 block leading-tight">≥30m Daily</span>
+            </button>
           </div>
         </div>
 
@@ -138,6 +189,11 @@ export default function LeaderboardPage() {
                   ({userEntry.score.toFixed(1)} / 100 pts)
                 </span>
               </div>
+              {userEntry.total_tasks !== undefined && userEntry.completed_tasks !== undefined && userEntry.total_tasks > 0 && (
+                <p className="text-[10px] sm:text-[11px] text-zinc-400 mt-1 leading-tight">
+                  {userEntry.completed_tasks}/{userEntry.total_tasks} goals completed ({userEntry.goal_completion_pct}% discipline)
+                </p>
+              )}
             </div>
 
             {userRank === 1 ? (

@@ -97,19 +97,31 @@ export const LeaderboardCard = memo(function LeaderboardCard({
                 </span>
               )}
             </div>
-            <p className="text-[10px] sm:text-[11px] text-zinc-400 font-medium break-words leading-tight mt-0.5">
+            <p
+              className="text-[10px] sm:text-[11px] text-zinc-400 font-medium break-words leading-tight mt-0.5"
+              title={
+                entry.total_tasks && entry.total_tasks > 0
+                  ? `${entry.completed_tasks ?? 0} of ${entry.total_tasks} tasks completed (${entry.goal_completion_pct}% discipline rate)`
+                  : "No goals locked this week"
+              }
+            >
               {entry.streak_days}d streak •{" "}
               {entry.total_tasks !== undefined &&
               entry.completed_tasks !== undefined &&
               entry.total_tasks > 0
                 ? `${entry.completed_tasks}/${entry.total_tasks} goals (${entry.goal_completion_pct}%)`
+                : entry.total_tasks === 0
+                ? "0 goals set"
                 : `${entry.goal_completion_pct}% goals`}
             </p>
           </div>
         </div>
 
         {/* Right Side: Score & Study Duration Pill */}
-        <div className="text-right shrink-0">
+        <div
+          className="text-right shrink-0"
+          title={`${entry.display_name}: ${entry.score.toFixed(1)} pts (${hours}h study • ${entry.completed_tasks ?? 0}/${entry.total_tasks ?? 0} goals • ${entry.streak_days}d streak)`}
+        >
           <div className="font-mono text-sm sm:text-base font-black text-zinc-100 whitespace-nowrap">
             {entry.score.toFixed(1)} <span className="text-[10px] font-normal text-zinc-500">pts</span>
           </div>
