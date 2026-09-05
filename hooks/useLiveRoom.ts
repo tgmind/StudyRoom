@@ -220,6 +220,39 @@ export function useLiveRoom(currentUserId?: string) {
         });
         setMembers(sortMembers(filterAdmin(enriched), currentUserIdRef.current));
       }
+
+      // 5. Authoritative sync of global active rivalry win announcements across all devices
+      try {
+        const fifteenMinsAgoIso = new Date(serverNow.getTime() - 15 * 60 * 1000).toISOString();
+        const { data: winData, error: winErr } = await (supabase.from("rivalry_events") as any)
+          .select("id, winner_name, loser_name, created_at")
+          .gte("created_at", fifteenMinsAgoIso)
+          .order("created_at", { ascending: false })
+          .limit(1);
+
+        if (!winErr && winData && winData.length > 0) {
+          const latest = winData[0] as { id: string; winner_name: string; loser_name: string; created_at: string };
+          let isDismissed = false;
+          try {
+            isDismissed = Boolean(localStorage.getItem(`studyroom_win_dismissed_${latest.id}`));
+          } catch {}
+
+          if (!isDismissed) {
+            const winEvent: RivalryWinEvent = {
+              id: latest.id,
+              winnerName: latest.winner_name,
+              loserName: latest.loser_name,
+              timestamp: new Date(latest.created_at).getTime(),
+            };
+            setActiveWinEvent(winEvent);
+            try {
+              localStorage.setItem("studyroom_active_rivalry_win", JSON.stringify(winEvent));
+            } catch {}
+          }
+        }
+      } catch {
+        // Non-blocking if rivalry_events table is not yet created
+      }
     } catch (err) {
       console.error("Failed to fetch group members:", err);
       setError(err instanceof Error ? err.message : "Failed to load group members");
@@ -359,6 +392,31 @@ export function useLiveRoom(currentUserId?: string) {
           fetchMembers();
         }
       )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "rivalry_events" },
+        (payload) => {
+          const row = payload.new as { id?: string; winner_name?: string; loser_name?: string; created_at?: string };
+          if (row && row.id && row.winner_name && row.loser_name) {
+            let isDismissed = false;
+            try {
+              isDismissed = Boolean(localStorage.getItem(`studyroom_win_dismissed_${row.id}`));
+            } catch {}
+            if (!isDismissed) {
+              const win: RivalryWinEvent = {
+                id: row.id,
+                winnerName: row.winner_name,
+                loserName: row.loser_name,
+                timestamp: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
+              };
+              try {
+                localStorage.setItem("studyroom_active_rivalry_win", JSON.stringify(win));
+              } catch {}
+              setActiveWinEvent(win);
+            }
+          }
+        }
+      )
       .subscribe((status) => {
         if (status === "SUBSCRIBED") {
           setIsRealtimeConnected(true);
@@ -401,13 +459,14 @@ export function useLiveRoom(currentUserId?: string) {
     };
   }, [supabase, fetchMembers, currentUserId, applyProfileUpdate]);
 
-  // Broadcast rivalry win announcement to all connected peers
+  // Broadcast and persist rivalry win announcement to all connected peers and devices
   const broadcastRivalryWin = useCallback(async (winEvent: RivalryWinEvent) => {
     setActiveWinEvent(winEvent);
     try {
       localStorage.setItem("studyroom_active_rivalry_win", JSON.stringify(winEvent));
     } catch {}
 
+    // 1. Fast broadcast over active realtime channel for zero-latency in-memory push
     if (channelRef.current) {
       try {
         await channelRef.current.send({
@@ -419,7 +478,19 @@ export function useLiveRoom(currentUserId?: string) {
         console.warn("Realtime broadcast rivalry_won send failed:", err);
       }
     }
-  }, []);
+
+    // 2. Persist to public.rivalry_events for global multi-device sync (e.g. tablet, late connections)
+    try {
+      await (supabase.from("rivalry_events") as any).insert({
+        id: winEvent.id,
+        winner_name: winEvent.winnerName,
+        loser_name: winEvent.loserName,
+        created_at: new Date(winEvent.timestamp).toISOString(),
+      });
+    } catch (dbErr) {
+      console.warn("Failed to persist rivalry event to database:", dbErr);
+    }
+  }, [supabase]);
 
   const dismissWinEvent = useCallback(() => {
     if (activeWinEvent) {

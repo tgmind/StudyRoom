@@ -17,11 +17,28 @@ export interface HistorySummary {
   pastWeeksMinutes: number;
 }
 
+// Module-level SWR memory cache to make History tab switching instantaneous (0ms)
+let cachedHistoryUserId = "";
+let cachedCurrentWeekSessions: StudySession[] = [];
+let cachedPastSummary = { count: 0, minutes: 0 };
+
 export function useStudyHistory(userId?: string) {
-  const [currentWeekSessions, setCurrentWeekSessions] = useState<StudySession[]>([]);
+  const hasCachedData = Boolean(
+    userId &&
+    cachedHistoryUserId === userId &&
+    cachedCurrentWeekSessions.length > 0
+  );
+
+  const [currentWeekSessions, setCurrentWeekSessions] = useState<StudySession[]>(() => {
+    if (userId && cachedHistoryUserId === userId) return cachedCurrentWeekSessions;
+    return [];
+  });
   const [pastSessions, setPastSessions] = useState<StudySession[]>([]);
-  const [pastSummary, setPastSummary] = useState<{ count: number; minutes: number }>({ count: 0, minutes: 0 });
-  const [loading, setLoading] = useState(true);
+  const [pastSummary, setPastSummary] = useState<{ count: number; minutes: number }>(() => {
+    if (userId && cachedHistoryUserId === userId) return cachedPastSummary;
+    return { count: 0, minutes: 0 };
+  });
+  const [loading, setLoading] = useState(!hasCachedData);
   const [isPastLoading, setIsPastLoading] = useState(false);
   const [isPastLoaded, setIsPastLoaded] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
@@ -87,7 +104,15 @@ export function useStudyHistory(userId?: string) {
         const rows = summaryRes.data as Array<{ duration_minutes: number }>;
         const count = rows.length;
         const minutes = rows.reduce((acc, r) => acc + (r.duration_minutes || 0), 0);
-        setPastSummary({ count, minutes });
+        const nextSummary = { count, minutes };
+        setPastSummary(nextSummary);
+
+        cachedHistoryUserId = userId;
+        cachedCurrentWeekSessions = (currentRes.data || []) as StudySession[];
+        cachedPastSummary = nextSummary;
+      } else {
+        cachedHistoryUserId = userId;
+        cachedCurrentWeekSessions = (currentRes.data || []) as StudySession[];
       }
     } catch (err) {
       console.error("Failed to fetch study history:", err);

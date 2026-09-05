@@ -14,10 +14,27 @@ import {
 import { getWeekStartTimestamp } from "@/lib/time/format";
 import { getServerNow } from "@/lib/time/clockSync";
 
+// Module-level SWR memory cache to make Streaks tab switching instantaneous (0ms)
+let cachedStreakUserId = "";
+let cachedWeekSessions: StudySession[] = [];
+let cachedPastSummaries: DailyStudySummary[] = [];
+
 export function useUserStreak(userId?: string, liveActiveMinutes = 0) {
-  const [weekSessions, setWeekSessions] = useState<StudySession[]>([]);
-  const [pastSummaries, setPastSummaries] = useState<DailyStudySummary[]>([]);
-  const [loading, setLoading] = useState(true);
+  const hasCachedData = Boolean(
+    userId &&
+    cachedStreakUserId === userId &&
+    (cachedWeekSessions.length > 0 || cachedPastSummaries.length > 0)
+  );
+
+  const [weekSessions, setWeekSessions] = useState<StudySession[]>(() => {
+    if (userId && cachedStreakUserId === userId) return cachedWeekSessions;
+    return [];
+  });
+  const [pastSummaries, setPastSummaries] = useState<DailyStudySummary[]>(() => {
+    if (userId && cachedStreakUserId === userId) return cachedPastSummaries;
+    return [];
+  });
+  const [loading, setLoading] = useState(!hasCachedData);
   const [error, setError] = useState<string | null>(null);
   const [selectedDay, setSelectedDay] = useState<HeatmapDay | null>(null);
   const [minuteTick, setMinuteTick] = useState(0);
@@ -81,6 +98,11 @@ export function useUserStreak(userId?: string, liveActiveMinutes = 0) {
         dateISO,
         activeStudyMinutes,
       }));
+
+      // Update module-level cache for instant SWR renders
+      cachedStreakUserId = userId;
+      cachedWeekSessions = fetchedWeekSessions;
+      cachedPastSummaries = summaryList;
 
       setPastSummaries(summaryList);
     } catch (err) {

@@ -1500,6 +1500,42 @@ BEGIN
   );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+-- ------------------------------------------------------------
+-- 14. RIVALRY WIN ANNOUNCEMENTS & GLOBAL EVENT SYNC
+-- ------------------------------------------------------------
 
+CREATE TABLE IF NOT EXISTS public.rivalry_events (
+  id TEXT PRIMARY KEY,
+  winner_name TEXT NOT NULL,
+  loser_name TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
+-- Full replica identity for realtime subscription payloads
+ALTER TABLE public.rivalry_events REPLICA IDENTITY FULL;
+ALTER TABLE public.rivalry_events ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Public select rivalry_events" ON public.rivalry_events;
+CREATE POLICY "Public select rivalry_events"
+  ON public.rivalry_events FOR SELECT
+  TO authenticated, anon
+  USING (true);
+
+DROP POLICY IF EXISTS "Public insert rivalry_events" ON public.rivalry_events;
+CREATE POLICY "Public insert rivalry_events"
+  ON public.rivalry_events FOR INSERT
+  TO authenticated, anon
+  WITH CHECK (true);
+
+-- Include in supabase_realtime publication for instant cross-device delivery
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime' AND tablename = 'rivalry_events' AND schemaname = 'public'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.rivalry_events;
+  END IF;
+EXCEPTION
+  WHEN OTHERS THEN NULL;
+END $$;

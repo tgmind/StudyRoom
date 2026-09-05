@@ -134,6 +134,27 @@ export interface Database {
         Update: Partial<SessionBlock>;
         Relationships: [];
       };
+      rivalry_events: {
+        Row: {
+          id: string;
+          winner_name: string;
+          loser_name: string;
+          created_at: string;
+        };
+        Insert: {
+          id: string;
+          winner_name: string;
+          loser_name: string;
+          created_at?: string;
+        };
+        Update: Partial<{
+          id: string;
+          winner_name: string;
+          loser_name: string;
+          created_at: string;
+        }>;
+        Relationships: [];
+      };
     };
     Views: {
       [_ in never]: never;

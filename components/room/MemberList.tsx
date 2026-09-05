@@ -149,8 +149,9 @@ export const MemberList = memo(function MemberList({
   );
 
   // Sorted in decreasing order of active study session time in Global view
+  const prevSortedActiveRef = useRef<UserProfile[]>([]);
   const sortedActiveMembers = useMemo(() => {
-    return [...activeMembers].sort((a, b) => {
+    const nextSorted = [...activeMembers].sort((a, b) => {
       const elapsedA = getMemberStudySeconds(a, currentTimestamp);
       const elapsedB = getMemberStudySeconds(b, currentTimestamp);
 
@@ -169,16 +170,49 @@ export const MemberList = memo(function MemberList({
       // 3. Alphabetical tie-breaker
       return (a.display_name || "").localeCompare(b.display_name || "");
     });
+
+    const prev = prevSortedActiveRef.current;
+    if (
+      prev.length === nextSorted.length &&
+      prev.every((m, idx) => m.id === nextSorted[idx].id && m === nextSorted[idx])
+    ) {
+      return prev;
+    }
+
+    prevSortedActiveRef.current = nextSorted;
+    return nextSorted;
   }, [activeMembers, currentTimestamp, getMemberStudySeconds]);
 
-  // Real-time Multi-Rivalry Detection: triggers when 2 or 3 active members come within <= 1 hour in weekly study time
+  // Real-time Multi-Rivalry Detection: triggers when 2 or 3 active members come within <= 10m in weekly study time
+  const prevStableRivalriesRef = useRef<RivalryState[]>([]);
   const rivalries = useMemo(() => {
-    return detectLiveRivalries(
+    const rawRivalries = detectLiveRivalries(
       activeMembers,
       currentTimestamp,
       currentUserId,
       currentUserElapsedSeconds
     );
+
+    const prev = prevStableRivalriesRef.current;
+    if (prev.length === rawRivalries.length) {
+      const isIdentical = prev.every((p, idx) => {
+        const next = rawRivalries[idx];
+        return (
+          p.id === next.id &&
+          p.isTrio === next.isTrio &&
+          p.primaryGapSeconds === next.primaryGapSeconds &&
+          p.formattedGap === next.formattedGap &&
+          p.rivalMembers.length === next.rivalMembers.length &&
+          p.rivalMembers.every((pm, mIdx) => pm.id === next.rivalMembers[mIdx].id)
+        );
+      });
+      if (isIdentical) {
+        return prev;
+      }
+    }
+
+    prevStableRivalriesRef.current = rawRivalries;
+    return rawRivalries;
   }, [activeMembers, currentTimestamp, currentUserId, currentUserElapsedSeconds]);
 
   const rivalMemberIds = useMemo(() => {

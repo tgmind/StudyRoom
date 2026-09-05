@@ -1,8 +1,14 @@
 // StudyRoom PWA Service Worker
-const CACHE_NAME = "studyroom-v7";
+const CACHE_NAME = "studyroom-v8";
 const OFFLINE_URL = "/offline.html";
 
 const PRECACHE_ASSETS = [
+  "/room",
+  "/leaderboard",
+  "/streak",
+  "/goals",
+  "/history",
+  "/settings",
   "/offline.html",
   "/manifest.json",
   "/icons/icon-192x192.png",
@@ -10,11 +16,13 @@ const PRECACHE_ASSETS = [
   "/icons/icon-maskable.png",
 ];
 
-// Install Event: Cache Static App Shell & Offline Page
+// Install Event: Precache Static App Shell & Offline Page
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(PRECACHE_ASSETS);
+      return cache.addAll(PRECACHE_ASSETS).catch((err) => {
+        console.warn("[SW] Precache non-critical asset fetch error:", err);
+      });
     })
   );
   self.skipWaiting();
@@ -36,7 +44,7 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
-// Fetch Event: Serve cached static assets, network-first for pages, offline fallback for failures
+// Fetch Event: Serve cached static assets, SWR for app shell navigation, offline fallback for failures
 self.addEventListener("fetch", (event) => {
   // Only handle GET requests
   if (event.request.method !== "GET") return;
@@ -74,13 +82,26 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // HTML / App Navigation Routes: Network-first, fallback to cache, fallback to offline page
-  event.respondWith(
-    fetch(event.request).catch(() => {
-      return caches.match(event.request).then((cachedResponse) => {
-        if (cachedResponse) return cachedResponse;
-        return caches.match(OFFLINE_URL);
-      });
-    })
-  );
+  // HTML / App Navigation Routes: Stale-While-Revalidate for instantaneous splash screen exit
+  if (event.request.mode === "navigate" || event.request.headers.get("accept")?.includes("text/html")) {
+    event.respondWith(
+      caches.match(event.request).then((cachedResponse) => {
+        const fetchPromise = fetch(event.request)
+          .then((networkResponse) => {
+            if (networkResponse && networkResponse.status === 200) {
+              const responseToCache = networkResponse.clone();
+              caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
+            }
+            return networkResponse;
+          })
+          .catch(() => {
+            return cachedResponse || caches.match(OFFLINE_URL);
+          });
+
+        // Instant startup: return cached app shell immediately (< 50ms) if present, revalidating in background
+        return cachedResponse || fetchPromise;
+      })
+    );
+    return;
+  }
 });

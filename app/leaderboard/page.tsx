@@ -16,10 +16,13 @@ type RpcCaller = {
   rpc: (name: string, params?: Record<string, unknown>) => Promise<{ data: unknown; error: Error | null }>;
 };
 
+// Module-level SWR memory cache to make Rankings tab switching instantaneous (0ms)
+let cachedLeaderboardEntries: LeaderboardEntry[] = [];
+
 export default function LeaderboardPage() {
   const { user, profile } = useAuth();
-  const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [entries, setEntries] = useState<LeaderboardEntry[]>(cachedLeaderboardEntries);
+  const [loading, setLoading] = useState(cachedLeaderboardEntries.length === 0);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -78,6 +81,7 @@ export default function LeaderboardPage() {
           return a.display_name.localeCompare(b.display_name);
         });
 
+        cachedLeaderboardEntries = recalculatedEntries;
         setEntries(recalculatedEntries);
       } catch (err) {
         console.error("Failed to fetch leaderboard:", err);
@@ -94,8 +98,8 @@ export default function LeaderboardPage() {
   );
 
   useEffect(() => {
-    // Initial fetch
-    fetchLeaderboard(false);
+    // Initial fetch: if cached entries exist, fetch in background without showing spinner
+    fetchLeaderboard(cachedLeaderboardEntries.length > 0);
 
     // Debounced background refresh to honor the lag-free realtime promise
     const scheduleRefresh = () => {
