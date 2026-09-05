@@ -946,6 +946,20 @@ BEGIN
   ) THEN
     ALTER PUBLICATION supabase_realtime ADD TABLE public.users;
   END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' AND tablename = 'study_sessions' AND schemaname = 'public'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.study_sessions;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' AND tablename = 'daily_goals' AND schemaname = 'public'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.daily_goals;
+  END IF;
 EXCEPTION
   WHEN OTHERS THEN NULL;
 END $$;
