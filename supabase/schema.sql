@@ -38,6 +38,12 @@ ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFA
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_break_expired_study_seconds INTEGER DEFAULT NULL;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_offline_at TIMESTAMPTZ;
 
+-- Clean up legacy push notification artifacts if upgrading an existing database
+ALTER TABLE public.users DROP COLUMN IF EXISTS three_hour_prompt_sent_at;
+ALTER TABLE public.users DROP COLUMN IF EXISTS last_offline_reminder_sent_at;
+ALTER TABLE public.users DROP COLUMN IF EXISTS break_warning_prompt_sent_at;
+DROP TABLE IF EXISTS public.push_subscriptions CASCADE;
+
 -- Ensure full replica identity for realtime update payloads
 ALTER TABLE public.users REPLICA IDENTITY FULL;
 
