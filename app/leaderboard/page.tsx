@@ -8,7 +8,7 @@ import { TopHeader } from "@/components/navigation/TopHeader";
 import { BottomNav } from "@/components/navigation/BottomNav";
 import { LeaderboardCard } from "@/components/leaderboard/LeaderboardCard";
 import { ScoringBreakdown } from "@/components/leaderboard/ScoringBreakdown";
-import { Trophy, HelpCircle, Star, Sparkles, Clock, Target, Flame, ChevronRight } from "lucide-react";
+import { Trophy, HelpCircle, Star, Sparkles, Clock, Target, Flame } from "lucide-react";
 import { getAdminUserId, isAdminUserId } from "@/hooks/useAdmin";
 
 type RpcCaller = {
@@ -86,47 +86,18 @@ export default function LeaderboardPage() {
             <button
               type="button"
               onClick={() => setIsModalOpen(true)}
-              className="flex items-center space-x-1 px-2.5 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 hover:text-zinc-100 text-xs font-bold transition-all shrink-0 touch-manipulation"
-              title="View scoring methodology"
-              aria-label="View scoring methodology"
+              className="relative flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 border border-amber-500/30 hover:border-amber-500/60 text-zinc-200 hover:text-white text-xs font-bold transition-all shrink-0 touch-manipulation focus:outline-none shadow-sm group"
+              title="View scoring methodology & updated Dual-Pillar rules"
+              aria-label="View scoring methodology and updated Dual-Pillar rules"
             >
-              <HelpCircle className="w-3.5 h-3.5 text-amber-400" />
-              <span className="hidden sm:inline">Rules</span>
+              <span className="relative flex h-2 w-2 shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-400"></span>
+              </span>
+              <HelpCircle className="w-3.5 h-3.5 text-amber-400 group-hover:rotate-12 transition-transform" />
+              <span className="hidden min-[360px]:inline">Rules</span>
             </button>
           </div>
-
-          {/* Minimalist Formula Update Notice */}
-          <button
-            type="button"
-            onClick={() => setIsModalOpen(true)}
-            className="w-full group text-left px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl bg-gradient-to-r from-violet-950/40 via-zinc-900/70 to-fuchsia-950/30 border border-violet-500/20 hover:border-violet-400/40 transition-all flex items-center justify-between gap-2 touch-manipulation focus:outline-none focus:ring-1 focus:ring-violet-500/50"
-            title="Learn how the new Dual-Pillar Goal Index works"
-          >
-            <div className="flex items-center gap-2 min-w-0 flex-1">
-              <span className="flex h-2 w-2 relative shrink-0">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-[10px] sm:text-[11px] font-bold text-violet-200 tracking-tight">
-                    Scoring Upgraded
-                  </span>
-                  <span className="text-[8.5px] sm:text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-violet-500/20 border border-violet-500/30 text-violet-300 tracking-wider">
-                    Dual-Pillar
-                  </span>
-                </div>
-                <p className="text-[9px] sm:text-[10px] text-zinc-400 leading-snug mt-0.5">
-                  <span>Volume (60%) + Discipline (40%) index.</span>
-                  <span className="hidden min-[400px]:inline text-zinc-500"> More completed goals = higher rank.</span>
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-0.5 text-[10px] sm:text-xs font-semibold text-violet-300 group-hover:text-violet-200 shrink-0">
-              <span className="hidden min-[380px]:inline">Rules</span>
-              <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform shrink-0" />
-            </div>
-          </button>
 
           {/* Transparent Metric Formula Chips */}
           <div className="grid grid-cols-3 gap-1.5 sm:gap-2.5 pt-2 border-t border-zinc-800/80 text-[9px] min-[360px]:text-[10px] sm:text-xs">
