@@ -418,7 +418,8 @@ BEGIN
   END IF;
   v_week_end := v_week_start + INTERVAL '7 days';
 
-  CREATE TEMP TABLE IF NOT EXISTS temp_user_stats ON COMMIT DROP AS
+  DROP TABLE IF EXISTS temp_user_stats;
+  CREATE TEMP TABLE temp_user_stats ON COMMIT DROP AS
   WITH weekly_study AS (
     SELECT s.user_id, COALESCE(SUM(s.duration_minutes), 0)::INTEGER AS study_mins
     FROM public.study_sessions s

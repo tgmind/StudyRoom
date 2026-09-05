@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { createClient } from "@/lib/supabase/client";
 import { LeaderboardEntry } from "@/lib/supabase/types";
@@ -10,6 +10,7 @@ import { LeaderboardCard } from "@/components/leaderboard/LeaderboardCard";
 import { ScoringBreakdown } from "@/components/leaderboard/ScoringBreakdown";
 import { Trophy, HelpCircle, Star, Sparkles, Clock, Target, Flame } from "lucide-react";
 import { getAdminUserId, isAdminUserId } from "@/hooks/useAdmin";
+import { calculateLeaderboardScore } from "@/lib/scoring/engine";
 
 type RpcCaller = {
   rpc: (name: string, params?: Record<string, unknown>) => Promise<{ data: unknown; error: Error | null }>;
@@ -23,38 +24,116 @@ export default function LeaderboardPage() {
   const [error, setError] = useState<string | null>(null);
 
   const supabase = createClient();
+  const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  const fetchLeaderboard = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
+  const fetchLeaderboard = useCallback(
+    async (isBackground = false) => {
+      try {
+        if (!isBackground) {
+          setLoading(true);
+        }
+        setError(null);
 
-      const timezone = process.env.NEXT_PUBLIC_APP_TIMEZONE || "Asia/Kolkata";
-      const { data, error: rpcErr } = await (supabase as unknown as RpcCaller).rpc("rpc_get_leaderboard", {
-        p_timezone: timezone,
-      });
+        const timezone = process.env.NEXT_PUBLIC_APP_TIMEZONE || "Asia/Kolkata";
+        const { data, error: rpcErr } = await (supabase as unknown as RpcCaller).rpc("rpc_get_leaderboard", {
+          p_timezone: timezone,
+        });
 
-      if (rpcErr) throw rpcErr;
+        if (rpcErr) throw rpcErr;
 
-      const rawEntries = (data as unknown as LeaderboardEntry[]) || [];
-      const filtered = rawEntries.filter((e) => {
-        if (isAdminUserId(e.user_id)) return false;
-        if ((e as unknown as { is_admin?: boolean }).is_admin === true) return false;
-        return true;
-      });
+        const rawEntries = (data as unknown as LeaderboardEntry[]) || [];
+        const filtered = rawEntries.filter((e) => {
+          if (isAdminUserId(e.user_id)) return false;
+          if ((e as unknown as { is_admin?: boolean }).is_admin === true) return false;
+          return true;
+        });
 
-      setEntries(filtered);
-    } catch (err) {
-      console.error("Failed to fetch leaderboard:", err);
-      setError(err instanceof Error ? err.message : "Failed to load leaderboard");
-    } finally {
-      setLoading(false);
-    }
-  }, [supabase]);
+        // Identify weekly benchmarks across active group competitors
+        const maxGroupStudyMinutes = Math.max(1, ...filtered.map((e) => e.total_study_minutes || 0));
+        const maxGroupCompletedTasks = Math.max(1, ...filtered.map((e) => e.completed_tasks || 0));
+
+        // Authoritatively recalculate scores using the Dual-Pillar Goal Index engine
+        const recalculatedEntries: LeaderboardEntry[] = filtered.map((entry) => {
+          const completed = entry.completed_tasks ?? (entry.goal_completion_pct > 0 ? 1 : 0);
+          const total = entry.total_tasks ?? (entry.goal_completion_pct > 0 ? 1 : 0);
+          const { composite_score } = calculateLeaderboardScore(
+            entry.total_study_minutes || 0,
+            maxGroupStudyMinutes,
+            completed,
+            total,
+            entry.streak_days || 0,
+            maxGroupCompletedTasks
+          );
+
+          return {
+            ...entry,
+            score: composite_score,
+          };
+        });
+
+        // Sort by: score DESC, total_study_minutes DESC, display_name ASC
+        recalculatedEntries.sort((a, b) => {
+          if (b.score !== a.score) return b.score - a.score;
+          if (b.total_study_minutes !== a.total_study_minutes) return b.total_study_minutes - a.total_study_minutes;
+          return a.display_name.localeCompare(b.display_name);
+        });
+
+        setEntries(recalculatedEntries);
+      } catch (err) {
+        console.error("Failed to fetch leaderboard:", err);
+        if (!isBackground) {
+          setError(err instanceof Error ? err.message : "Failed to load leaderboard");
+        }
+      } finally {
+        if (!isBackground) {
+          setLoading(false);
+        }
+      }
+    },
+    [supabase]
+  );
 
   useEffect(() => {
-    fetchLeaderboard();
-  }, [fetchLeaderboard]);
+    // Initial fetch
+    fetchLeaderboard(false);
+
+    // Debounced background refresh to honor the lag-free realtime promise
+    const scheduleRefresh = () => {
+      if (refreshTimerRef.current) {
+        clearTimeout(refreshTimerRef.current);
+      }
+      refreshTimerRef.current = setTimeout(() => {
+        fetchLeaderboard(true);
+      }, 300);
+    };
+
+    // Listen to real-time events on study_sessions, daily_goals, and users
+    const channel = supabase
+      .channel("studyroom:leaderboard:realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "study_sessions" },
+        scheduleRefresh
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "daily_goals" },
+        scheduleRefresh
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "users" },
+        scheduleRefresh
+      )
+      .subscribe();
+
+    return () => {
+      if (refreshTimerRef.current) {
+        clearTimeout(refreshTimerRef.current);
+      }
+      supabase.removeChannel(channel);
+    };
+  }, [fetchLeaderboard, supabase]);
 
   const userRankIndex = entries.findIndex((e) => e.user_id === user?.id);
   const userEntry = userRankIndex !== -1 ? entries[userRankIndex] : null;
@@ -117,17 +196,14 @@ export default function LeaderboardPage() {
             <button
               type="button"
               onClick={() => setIsModalOpen(true)}
-              className="relative p-1.5 sm:p-2 rounded-xl bg-zinc-950/70 hover:bg-zinc-900/90 border border-fuchsia-500/30 hover:border-fuchsia-400/60 text-center min-w-0 transition-all group touch-manipulation shadow-sm"
+              className="p-1.5 sm:p-2 rounded-xl bg-zinc-950/60 hover:bg-zinc-900/90 border border-fuchsia-500/15 hover:border-fuchsia-500/40 text-center min-w-0 transition-all group touch-manipulation"
               title="Dual-Pillar Goal Index (30% weight: 60% Volume + 40% Discipline) - Click for methodology"
             >
-              <span className="absolute -top-1.5 -right-1 px-1 py-0.2 rounded text-[7.5px] font-black uppercase tracking-wider bg-gradient-to-r from-fuchsia-600 to-violet-600 text-white shadow-sm border border-fuchsia-400/40">
-                New
-              </span>
               <div className="flex items-center justify-center space-x-1 text-fuchsia-300 font-bold mb-0.5 flex-wrap">
                 <Target className="w-3 h-3 shrink-0" />
                 <span className="whitespace-nowrap">30% Goals</span>
               </div>
-              <span className="text-[8.5px] sm:text-[10px] text-fuchsia-300/90 group-hover:text-fuchsia-200 block leading-tight font-medium">Dual-Pillar Index</span>
+              <span className="text-[8.5px] sm:text-[10px] text-zinc-500 group-hover:text-zinc-400 block leading-tight">Dual-Pillar Index</span>
             </button>
 
             <button
