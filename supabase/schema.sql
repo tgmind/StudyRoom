@@ -588,9 +588,15 @@ BEGIN
   v_duration_minutes := LEAST(180, GREATEST(0, FLOOR(v_total_study_seconds / 60)::INTEGER));
 
   -- Update Goal Task completions if active unexpired goal window exists
+  -- OR if goal was active when this session started / within session grace window
   SELECT id, tasks INTO v_active_goal_id, v_tasks
   FROM public.daily_goals
-  WHERE user_id = v_user_id AND expires_at > v_now
+  WHERE user_id = v_user_id
+    AND (
+      expires_at > v_now
+      OR (v_session_start IS NOT NULL AND expires_at >= v_session_start)
+      OR expires_at >= (v_now - INTERVAL '4 hours')
+    )
   ORDER BY created_at DESC
   LIMIT 1
   FOR UPDATE;

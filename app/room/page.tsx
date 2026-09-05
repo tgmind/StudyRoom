@@ -66,6 +66,18 @@ export default function RoomPage() {
   });
 
 
+  const [isGoalSetupModalOpen, setIsGoalSetupModalOpen] = useState(false);
+  const [isBreakGoalModalOpen, setIsBreakGoalModalOpen] = useState(false);
+  const [isPendingStartNewAfterBreak, setIsPendingStartNewAfterBreak] = useState(false);
+
+  // Mid-Session Goal Grace: Preserve active goals while user is studying, on break, or viewing completion notices
+  const isSessionActive =
+    status !== "offline" ||
+    isBreakExpiredNoticeOpen ||
+    isBreakGoalModalOpen ||
+    isSessionLimitNoticeOpen;
+  const sessionStartTime = effectiveProfile?.session_start_time || null;
+
   const {
     activeGoal,
     countdown,
@@ -73,10 +85,7 @@ export default function RoomPage() {
     completeGoalTasks,
     refreshGoals,
     actionLoading: goalActionLoading,
-  } = useDailyGoals(user?.id);
-  const [isGoalSetupModalOpen, setIsGoalSetupModalOpen] = useState(false);
-  const [isBreakGoalModalOpen, setIsBreakGoalModalOpen] = useState(false);
-  const [isPendingStartNewAfterBreak, setIsPendingStartNewAfterBreak] = useState(false);
+  } = useDailyGoals(user?.id, sessionStartTime, isSessionActive);
 
   const hasPendingGoals = Boolean(activeGoal?.tasks && activeGoal.tasks.some((t) => !t.completed));
 

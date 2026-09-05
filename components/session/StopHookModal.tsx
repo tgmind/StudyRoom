@@ -67,9 +67,16 @@ export function StopHookModal({
 
         {/* 24-Hour Goal Checklist */}
         <div className="space-y-2.5">
-          <label className="block text-sm sm:text-base font-extrabold text-zinc-100 tracking-tight">
-            How many Goals did you complete ?
-          </label>
+          <div className="flex items-center justify-between gap-2">
+            <label className="block text-sm sm:text-base font-extrabold text-zinc-100 tracking-tight">
+              How many Goals did you complete ?
+            </label>
+            {activeGoal && new Date(activeGoal.expires_at).getTime() <= Date.now() && (
+              <span className="text-[10px] uppercase font-bold text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800/60 shrink-0">
+                Window ended mid-session
+              </span>
+            )}
+          </div>
 
           {tasks.length === 0 ? (
             <div className="p-4 bg-zinc-900/40 border border-zinc-800 rounded-xl text-center text-xs text-zinc-500">

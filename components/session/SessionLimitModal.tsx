@@ -106,11 +106,18 @@ export function SessionLimitModal({
             <label className="block text-sm sm:text-base font-extrabold text-zinc-100 tracking-tight">
               How many Goals did you complete ?
             </label>
-            {hasSelectedTasks && (
-              <span className="text-[10px] font-bold text-violet-400 bg-violet-950/40 border border-violet-500/30 px-2 py-0.5 rounded-full">
-                {selectedTaskIds.length} selected
-              </span>
-            )}
+            <div className="flex items-center space-x-1.5">
+              {activeGoal && new Date(activeGoal.expires_at).getTime() <= Date.now() && (
+                <span className="text-[10px] uppercase font-bold text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800/60 shrink-0">
+                  Window ended mid-session
+                </span>
+              )}
+              {hasSelectedTasks && (
+                <span className="text-[10px] font-bold text-violet-400 bg-violet-950/40 border border-violet-500/30 px-2 py-0.5 rounded-full">
+                  {selectedTaskIds.length} selected
+                </span>
+              )}
+            </div>
           </div>
 
           {tasks.length > 0 ? (

@@ -11,7 +11,11 @@ type RpcCaller = {
   rpc: (name: string, params?: Record<string, unknown>) => Promise<{ data: unknown; error: Error | null }>;
 };
 
-export function useDailyGoals(userId?: string) {
+export function useDailyGoals(
+  userId?: string,
+  sessionStartTime?: string | null,
+  isSessionActive = false
+) {
   const [activeGoal, setActiveGoal] = useState<DailyGoal | null>(null);
   const [countdown, setCountdown] = useState<GoalCountdownResult>({
     remainingSeconds: 0,
@@ -33,13 +37,13 @@ export function useDailyGoals(userId?: string) {
 
     try {
       setError(null);
-      const now = getServerNow().toISOString();
+      const serverNow = getServerNow();
 
+      // Fetch user's latest goal window
       const { data, error: fetchErr } = await supabase
         .from("daily_goals")
         .select("*")
         .eq("user_id", userId)
-        .gt("expires_at", now)
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -50,8 +54,42 @@ export function useDailyGoals(userId?: string) {
 
       if (data) {
         const goal = data as DailyGoal;
-        setActiveGoal(goal);
-        setCountdown(calculateGoalCountdown(goal.expires_at, getServerNow()));
+        const isUnexpired = new Date(goal.expires_at).getTime() > serverNow.getTime();
+
+        if (isUnexpired) {
+          // Standard unexpired 24-hour goal set
+          setActiveGoal(goal);
+          setCountdown(calculateGoalCountdown(goal.expires_at, serverNow));
+        } else {
+          // 24-hour window has expired.
+          // Mid-Session Goal Grace Window:
+          // If a session is currently active (or finishing) and either:
+          // 1. The goal was active when this session started (expires_at >= sessionStartTime)
+          // 2. Or the goal expired within the recent session window (last 4 hours)
+          const fourHoursAgoMs = serverNow.getTime() - 4 * 3600 * 1000;
+          const goalExpiryMs = new Date(goal.expires_at).getTime();
+          const wasActiveAtSessionStart = Boolean(
+            sessionStartTime && goalExpiryMs >= new Date(sessionStartTime).getTime()
+          );
+          const isEligibleSessionGrace =
+            isSessionActive && (wasActiveAtSessionStart || goalExpiryMs >= fourHoursAgoMs);
+
+          if (isEligibleSessionGrace) {
+            setActiveGoal(goal);
+            setCountdown({
+              remainingSeconds: 0,
+              formattedText: "EXPIRED",
+              isExpired: true,
+            });
+          } else {
+            setActiveGoal(null);
+            setCountdown({
+              remainingSeconds: 0,
+              formattedText: "EXPIRED",
+              isExpired: true,
+            });
+          }
+        }
       } else {
         setActiveGoal(null);
         setCountdown({
@@ -66,7 +104,7 @@ export function useDailyGoals(userId?: string) {
     } finally {
       setLoading(false);
     }
-  }, [supabase, userId]);
+  }, [supabase, userId, sessionStartTime, isSessionActive]);
 
   useEffect(() => {
     fetchActiveGoal();
@@ -95,12 +133,15 @@ export function useDailyGoals(userId?: string) {
 
       if (updated.isExpired) {
         clearInterval(intervalId);
-        fetchActiveGoal();
+        // If session is active, do not immediately wipe activeGoal to null
+        if (!isSessionActive) {
+          fetchActiveGoal();
+        }
       }
     }, 1000);
 
     return () => clearInterval(intervalId);
-  }, [activeGoal, fetchActiveGoal]);
+  }, [activeGoal, fetchActiveGoal, isSessionActive]);
 
   const createGoal = async (rawTaskTexts: string[]) => {
     if (!userId || actionLoading) return;
