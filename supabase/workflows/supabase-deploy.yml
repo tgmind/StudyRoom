@@ -1,0 +1,59 @@
+name: Deploy Supabase SQL Migrations
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'supabase/**'
+  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
+
+jobs:
+  deploy-supabase:
+    name: Apply SQL to Supabase
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Check for Supabase Credentials
+        id: check-credentials
+        run: |
+          if [ -z "${{ secrets.SUPABASE_PROJECT_ID }}" ] || [ -z "${{ secrets.SUPABASE_DB_PASSWORD }}" ]; then
+            echo "::warning ::Supabase secrets (SUPABASE_PROJECT_ID or SUPABASE_DB_PASSWORD) are not configured yet. Skipping automatic SQL migration. Configure them in GitHub Settings > Secrets and variables > Actions when ready."
+            echo "configured=false" >> $GITHUB_OUTPUT
+          else
+            echo "configured=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Setup Supabase CLI
+        if: steps.check-credentials.outputs.configured == 'true'
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link Supabase Project
+        if: steps.check-credentials.outputs.configured == 'true'
+        run: |
+          supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Apply SQL Migrations via Supabase CLI
+        if: steps.check-credentials.outputs.configured == 'true'
+        run: |
+          # 1. Apply any versioned migrations in supabase/migrations/ if present
+          if [ -d "supabase/migrations" ] && [ "$(ls -A supabase/migrations 2>/dev/null)" ]; then
+            echo "Pushing migrations from supabase/migrations..."
+            supabase db push --password ${{ secrets.SUPABASE_DB_PASSWORD }}
+          fi
+
+          # 2. Execute schema.sql to ensure latest RPCs and idempotent schema definitions are live
+          if [ -f "supabase/schema.sql" ]; then
+            echo "Applying latest schema.sql to Supabase..."
+            PGPASSWORD="${{ secrets.SUPABASE_DB_PASSWORD }}" psql -h "db.${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co" -U postgres -d postgres -f supabase/schema.sql
+          fi
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
