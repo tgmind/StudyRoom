@@ -56,23 +56,23 @@ export function BreakExpiredModal({
           <div className="p-2 rounded-lg bg-amber-500/20 text-amber-400 shrink-0 mt-0.5">
             <Clock className="w-5 h-5" />
           </div>
-          <div className="space-y-1">
-            <p className="text-sm font-bold text-amber-200">
+          <div className="space-y-1 min-w-0 flex-1">
+            <p className="text-sm font-bold text-amber-200 break-words leading-snug">
               You stayed on break for more than 1 hour. Session has been stopped. Start a new session.
             </p>
-            <p className="text-xs text-zinc-400 leading-relaxed">
+            <p className="text-xs text-zinc-400 leading-relaxed break-words">
               To maintain strict accountability and avoid idle sessions, breaks are limited to a maximum of 1 hour.
             </p>
           </div>
         </div>
 
         {/* Saved Study Time Confirmation */}
-        <div className="p-3.5 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-between">
-          <div className="flex items-center space-x-2">
+        <div className="p-3.5 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center space-x-2 min-w-0">
             <CheckCircle2 className="w-4 h-4 text-violet-400 shrink-0" />
             <span className="text-xs text-zinc-300 font-medium">Study Time Saved</span>
           </div>
-          <span className="font-mono text-xs font-black text-violet-400 px-2.5 py-1 rounded-full bg-violet-950/40 border border-violet-500/30">
+          <span className="font-mono text-xs font-black text-violet-400 px-2.5 py-1 rounded-full bg-violet-950/40 border border-violet-500/30 shrink-0 tabular-nums whitespace-nowrap">
             {formatDurationSeconds(savedStudySeconds)}
           </span>
         </div>

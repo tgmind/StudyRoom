@@ -90,9 +90,9 @@ export default function RoomPage() {
 
   const hasPendingGoals = Boolean(activeGoal?.tasks && activeGoal.tasks.some((t) => !t.completed));
 
-  const handleStartSession = async (focusTag?: string | null) => {
+  const handleStartSession = async () => {
     const nowIso = getServerNow().toISOString();
-    await startSession(focusTag ?? null);
+    await startSession();
     if (user) {
       broadcastStatusChange({
         id: user.id,
@@ -101,7 +101,7 @@ export default function RoomPage() {
         last_resumed_at: nowIso,
         break_started_at: null,
         active_study_seconds_snapshot: 0,
-        current_focus: focusTag ?? null,
+        current_focus: null,
       });
     }
   };
@@ -189,7 +189,7 @@ export default function RoomPage() {
         if (isGoalMissingOrExpired) {
           setIsGoalSetupModalOpen(true);
         } else {
-          await handleStartSession(null);
+          await handleStartSession();
         }
       }
     }
@@ -201,14 +201,14 @@ export default function RoomPage() {
     if (isGoalMissingOrExpired) {
       setIsGoalSetupModalOpen(true);
     } else {
-      await handleStartSession(null);
+      await handleStartSession();
     }
   };
 
   const handleGoalCreatedFromModal = async (tasks: string[]) => {
     await handleCreateGoal(tasks);
     setIsGoalSetupModalOpen(false);
-    await handleStartSession(null);
+    await handleStartSession();
   };
 
   return (

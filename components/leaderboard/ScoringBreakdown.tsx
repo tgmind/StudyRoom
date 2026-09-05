@@ -32,14 +32,32 @@ export function ScoringBreakdown({ isOpen, onClose }: ScoringBreakdownProps) {
             </p>
           </div>
 
-          <div className="p-3 bg-zinc-900 border border-zinc-800 rounded-lg space-y-1">
+          <div className="p-3 bg-zinc-900 border border-zinc-800 rounded-lg space-y-2">
             <h4 className="font-bold text-zinc-100 flex items-center justify-between">
-              <span>2. Goal Completion Rate</span>
+              <span>2. Dual-Pillar Goal Index</span>
               <span className="text-amber-400 font-mono">30% Weight</span>
             </h4>
-            <p className="text-zinc-400 text-[11px]">
-              Percentage of tasks completed in your 24-hour goal windows during the weekly window. Rewards follow-through on promised commitments.
+            <p className="text-zinc-400 text-[11px] leading-relaxed">
+              Fair scoring that rewards ambitious achievement while honoring discipline. It combines two complementary pillars:
             </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+              <div className="p-2 rounded bg-zinc-950/70 border border-zinc-800/80">
+                <span className="text-[10.5px] font-bold text-amber-300 block">
+                  60% Volume Pillar
+                </span>
+                <span className="text-[10px] text-zinc-400 block mt-0.5 leading-snug">
+                  Real tasks completed this week relative to group target (up to 15 tasks). Setting & finishing more tasks gives more points.
+                </span>
+              </div>
+              <div className="p-2 rounded bg-zinc-950/70 border border-zinc-800/80">
+                <span className="text-[10.5px] font-bold text-amber-300 block">
+                  40% Discipline Pillar
+                </span>
+                <span className="text-[10px] text-zinc-400 block mt-0.5 leading-snug">
+                  Completion rate of your committed tasks. Setting 1 task cannot game the system (minimum 3-task commitment benchmark).
+                </span>
+              </div>
+            </div>
           </div>
 
           <div className="p-3 bg-zinc-900 border border-zinc-800 rounded-lg space-y-1">

@@ -80,7 +80,10 @@ export const LeaderboardCard = memo(function LeaderboardCard({
           {/* User Name & Streak Tag */}
           <div className="min-w-0 flex-1">
             <div className="flex items-center space-x-1.5 min-w-0">
-              <h3 className={`text-xs sm:text-sm font-extrabold truncate ${isRank1 ? "text-amber-200" : "text-zinc-100"}`}>
+              <h3
+                className={`text-xs sm:text-sm font-extrabold truncate ${isRank1 ? "text-amber-200" : "text-zinc-100"}`}
+                title={entry.display_name}
+              >
                 {entry.display_name}
               </h3>
               {entry.has_achiever_badge && (
@@ -94,8 +97,13 @@ export const LeaderboardCard = memo(function LeaderboardCard({
                 </span>
               )}
             </div>
-            <p className="text-[10px] sm:text-[11px] text-zinc-400 font-medium truncate mt-0.5">
-              {entry.streak_days}d streak • {entry.goal_completion_pct}% goals
+            <p className="text-[10px] sm:text-[11px] text-zinc-400 font-medium break-words leading-tight mt-0.5">
+              {entry.streak_days}d streak •{" "}
+              {entry.total_tasks !== undefined &&
+              entry.completed_tasks !== undefined &&
+              entry.total_tasks > 0
+                ? `${entry.completed_tasks}/${entry.total_tasks} goals (${entry.goal_completion_pct}%)`
+                : `${entry.goal_completion_pct}% goals`}
             </p>
           </div>
         </div>

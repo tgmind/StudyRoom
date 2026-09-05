@@ -90,8 +90,8 @@ export const RivalryArena = memo(function RivalryArena({
               <div
                 className={`flex items-center justify-between px-1.5 py-0.5 mb-1 rounded-md border text-[8px] sm:text-[9px] font-black uppercase tracking-tight shadow-sm ${roleLabel.border} ${roleLabel.bg} ${roleLabel.text}`}
               >
-                <span className="truncate">{roleLabel.title}</span>
-                <span className="font-mono text-zinc-200 font-bold ml-1">
+                <span className="whitespace-nowrap shrink-0">{roleLabel.title}</span>
+                <span className="font-mono text-zinc-200 font-bold ml-1 tabular-nums whitespace-nowrap">
                   {formatWeeklyHours(weeklySeconds)}
                 </span>
               </div>

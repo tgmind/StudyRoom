@@ -91,6 +91,6 @@ describe("SessionController Component", () => {
     const startBtn = screen.getByText("Start Studying");
     startBtn.click();
 
-    expect(onStartSessionMock).toHaveBeenCalledWith(null);
+    expect(onStartSessionMock).toHaveBeenCalledTimes(1);
   });
 });

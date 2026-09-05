@@ -1,5 +1,5 @@
 // StudyRoom PWA Service Worker
-const CACHE_NAME = "studyroom-v5";
+const CACHE_NAME = "studyroom-v6";
 const OFFLINE_URL = "/offline.html";
 
 const PRECACHE_ASSETS = [

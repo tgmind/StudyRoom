@@ -50,9 +50,9 @@ export const TopHeader = memo(function TopHeader({
           </div>
 
           {expectedPeakHours && (
-            <div className="flex items-center space-x-1.5 mt-0.5 select-none text-[10px] text-zinc-400 font-medium tracking-tight truncate">
+            <div className="flex items-center space-x-1.5 mt-0.5 select-none text-[10px] text-zinc-400 font-medium tracking-tight flex-wrap">
               <span className="w-1 h-1 rounded-full bg-zinc-600 shrink-0" />
-              <span className="truncate">
+              <span className="break-words">
                 Expected peak: <span className="text-zinc-300 font-bold">{expectedPeakHours}</span>
               </span>
             </div>

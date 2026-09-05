@@ -4,7 +4,11 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { UserProfile, UserStatus } from "@/lib/supabase/types";
 import { getAdminUserId, isAdminUserId } from "@/hooks/useAdmin";
-import { calculateMemberElapsedStudySeconds, getWeekStartTimestamp } from "@/lib/time/format";
+import {
+  calculateMemberElapsedStudySeconds,
+  calculateMemberOfflineTimestampMs,
+  getWeekStartTimestamp,
+} from "@/lib/time/format";
 import { getEffectiveMemberStatus, isMemberBreakExpired, isMemberStudyExpired } from "@/lib/time/break";
 import { getServerNow } from "@/lib/time/clockSync";
 import { calculateExpectedPeakTraffic } from "@/lib/time/traffic";
@@ -43,7 +47,16 @@ export function sortMembers(members: UserProfile[], _currentUserId?: string): Us
       }
     }
 
-    // 3. Deterministic tie-breaker: alphabetical by display_name
+    // 3. Offline members: Increasing order of offline duration in realtime (most recently active first)
+    if (statusA === "offline" && statusB === "offline") {
+      const offlineA = calculateMemberOfflineTimestampMs(a, now);
+      const offlineB = calculateMemberOfflineTimestampMs(b, now);
+      if (offlineB !== offlineA) {
+        return offlineB - offlineA;
+      }
+    }
+
+    // 4. Deterministic tie-breaker: alphabetical by display_name
     return (a.display_name || "").localeCompare(b.display_name || "");
   });
 }
@@ -356,10 +369,13 @@ export function useLiveRoom(currentUserId?: string) {
 
     channelRef.current = channel;
 
-    // 3. Heartbeat polling (every 4 seconds) to guarantee synchronization across all users
+    // 3. Heartbeat polling (every 12 seconds when visible) to guarantee synchronization without bandwidth congestion
     const pollInterval = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        return;
+      }
       fetchMembers();
-    }, 4000);
+    }, 12000);
 
     // 4. Immediate resync when tab is focused or returns from background
     const handleVisibilityChange = () => {

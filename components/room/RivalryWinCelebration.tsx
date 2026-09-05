@@ -163,9 +163,9 @@ export const RivalryWinCelebration = memo(function RivalryWinCelebration({
                 won the Rivalry against{" "}
                 <span className="text-rose-300 font-bold">{winEvent.loserName}</span> 🎉
               </p>
-              <div className="flex items-center justify-center gap-1.5 text-[10px] sm:text-[11px] text-amber-300/90 font-semibold pt-0.5 sm:pt-1">
+              <div className="flex items-center justify-center gap-1.5 text-[10px] sm:text-[11px] text-amber-300/90 font-semibold pt-0.5 sm:pt-1 flex-wrap">
                 <Flame className="w-3.5 h-3.5 text-amber-400 fill-amber-400 shrink-0" />
-                <span className="truncate">Extended weekly study lead in Live Study!</span>
+                <span className="break-words">Extended weekly study lead in Live Study!</span>
               </div>
             </div>
 
@@ -199,7 +199,7 @@ export const RivalryWinCelebration = memo(function RivalryWinCelebration({
                 • {remainingMinutes}m left
               </span>
             </div>
-            <p className="text-xs sm:text-sm font-extrabold text-zinc-100 leading-tight mt-0.5 break-words line-clamp-2 sm:line-clamp-1">
+            <p className="text-xs sm:text-sm font-extrabold text-zinc-100 leading-tight mt-0.5 break-words">
               <span className="text-amber-300 font-black">{winEvent.winnerName}</span>{" "}
               won against{" "}
               <span className="text-rose-300 font-bold">{winEvent.loserName}</span> 🎉

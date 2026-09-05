@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import React from "react";
 import { render, screen, fireEvent, act } from "@testing-library/react";
-import { LaunchAnnouncementModal } from "@/components/ui/LaunchAnnouncementModal";
+import { LaunchAnnouncementModal, LAUNCH_UPDATE_STORAGE_KEY } from "@/components/ui/LaunchAnnouncementModal";
 
 describe("StudyRoom UPDATE Modal Component", () => {
   let mockStorage: Record<string, string> = {};
@@ -32,7 +32,7 @@ describe("StudyRoom UPDATE Modal Component", () => {
   });
 
   it("does not render when user has already acknowledged the update notice", () => {
-    mockStorage["studyroom_update_3h_notice_v1"] = "true";
+    mockStorage[LAUNCH_UPDATE_STORAGE_KEY] = "true";
 
     render(<LaunchAnnouncementModal />);
 
@@ -44,7 +44,7 @@ describe("StudyRoom UPDATE Modal Component", () => {
     expect(screen.queryByText("Understood")).toBeNull();
   });
 
-  it("renders update notice and closes saving state on clicking Understood", () => {
+  it("renders update notice with 3-hour limit and Streak section and closes saving state on clicking Understood", () => {
     render(<LaunchAnnouncementModal />);
 
     act(() => {
@@ -52,8 +52,10 @@ describe("StudyRoom UPDATE Modal Component", () => {
     });
 
     expect(screen.getAllByText("StudyRoom UPDATE").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("Study Sessions Capped at 3 Hours")).toBeDefined();
-    expect(screen.getByText(/restricted to a maximum of 3 hours per session/i)).toBeDefined();
+    expect(screen.getByText("3-Hour Maximum Session Limit")).toBeDefined();
+    expect(screen.getByText(/limited to a maximum of/i)).toBeDefined();
+    expect(screen.getByText(/Brand-New "Streak" Heatmap Section/i)).toBeDefined();
+    expect(screen.getByText(/Study for at least/i)).toBeDefined();
 
     const understoodBtn = screen.getByRole("button", { name: /understood/i });
     expect(understoodBtn).toBeDefined();
@@ -61,6 +63,6 @@ describe("StudyRoom UPDATE Modal Component", () => {
     fireEvent.click(understoodBtn);
 
     // Verify localStorage key is saved
-    expect(mockStorage["studyroom_update_3h_notice_v1"]).toBe("true");
+    expect(mockStorage[LAUNCH_UPDATE_STORAGE_KEY]).toBe("true");
   });
 });

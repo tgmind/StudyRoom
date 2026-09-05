@@ -300,8 +300,8 @@ BEGIN
   v_duration_minutes := GREATEST(0, FLOOR(v_total_study_seconds / 60)::INTEGER);
 
   -- Insert finished session record
-  INSERT INTO public.study_sessions (user_id, start_time, end_time, duration_minutes, focus_tag, completed_tasks)
-  VALUES (p_target_user_id, v_session_start, v_now, v_duration_minutes, v_focus, '[]'::JSONB)
+  INSERT INTO public.study_sessions (user_id, start_time, end_time, duration_minutes, completed_tasks)
+  VALUES (p_target_user_id, v_session_start, v_now, v_duration_minutes, '[]'::JSONB)
   RETURNING id INTO v_session_id;
 
   UPDATE public.session_blocks
@@ -381,7 +381,12 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- ------------------------------------------------------------
 -- 9. LEADERBOARD: Guaranteed Exclusion of Admin Accounts
+-- Implements Proposal 1: Dual-Pillar Goal Index (60% Volume Output + 40% Discipline Follow-Through)
 -- ------------------------------------------------------------
+DROP FUNCTION IF EXISTS public.rpc_get_leaderboard(TIMESTAMPTZ, TEXT);
+DROP FUNCTION IF EXISTS public.rpc_get_leaderboard(TIMESTAMPTZ);
+DROP FUNCTION IF EXISTS public.rpc_get_leaderboard();
+
 CREATE OR REPLACE FUNCTION public.rpc_get_leaderboard(
   p_week_start TIMESTAMPTZ DEFAULT NULL,
   p_timezone TEXT DEFAULT 'Asia/Kolkata'
@@ -395,13 +400,16 @@ RETURNS TABLE (
   total_study_minutes INTEGER,
   goal_completion_pct NUMERIC,
   streak_days INTEGER,
-  score NUMERIC
+  score NUMERIC,
+  completed_tasks INTEGER,
+  total_tasks INTEGER
 ) AS $$
 DECLARE
   v_tz TEXT := COALESCE(NULLIF(p_timezone, ''), 'Asia/Kolkata');
   v_week_start TIMESTAMPTZ;
   v_week_end TIMESTAMPTZ;
   v_max_study_minutes INTEGER := 1;
+  v_target_completed_tasks INTEGER := 3;
 BEGIN
   IF p_week_start IS NULL THEN
     v_week_start := (DATE_TRUNC('week', NOW() AT TIME ZONE v_tz) AT TIME ZONE v_tz);
@@ -420,9 +428,17 @@ BEGIN
   weekly_goals AS (
     SELECT g.user_id,
            COALESCE(
+             SUM( (SELECT COUNT(*) FROM jsonb_array_elements(g.tasks) t WHERE (t->>'completed')::boolean = true) ),
+             0
+           )::INTEGER AS completed_tasks_count,
+           COALESCE(
+             SUM(jsonb_array_length(g.tasks)),
+             0
+           )::INTEGER AS total_tasks_count,
+           COALESCE(
              ROUND(
                (SUM( (SELECT COUNT(*) FROM jsonb_array_elements(g.tasks) t WHERE (t->>'completed')::boolean = true) )::NUMERIC /
-                NULLIF(SUM(jsonb_array_length(g.tasks)), 0)::NUMERIC) * 100, 2
+                NULLIF(SUM(jsonb_array_length(g.tasks)), 0)::NUMERIC) * 100, 1
              ), 0
            ) AS completion_pct
     FROM public.daily_goals g
@@ -452,6 +468,8 @@ BEGIN
     u.has_achiever_badge,
     u.current_status,
     COALESCE(ws.study_mins, 0) AS total_study_minutes,
+    COALESCE(wg.completed_tasks_count, 0) AS completed_tasks,
+    COALESCE(wg.total_tasks_count, 0) AS total_tasks,
     COALESCE(wg.completion_pct, 0) AS goal_completion_pct,
     COALESCE(st.streak, 0) AS streak_days
   FROM public.users u
@@ -461,6 +479,7 @@ BEGIN
   WHERE COALESCE(u.is_admin, FALSE) = FALSE;  -- Strictly exclude admin accounts
 
   SELECT GREATEST(1, MAX(temp_user_stats.total_study_minutes)) INTO v_max_study_minutes FROM temp_user_stats;
+  SELECT GREATEST(3, LEAST(COALESCE(MAX(temp_user_stats.completed_tasks), 0), 15)) INTO v_target_completed_tasks FROM temp_user_stats;
 
   RETURN QUERY
   SELECT
@@ -473,12 +492,18 @@ BEGIN
     ts.goal_completion_pct,
     ts.streak_days,
     ROUND(
-      (0.50 * (ts.total_study_minutes::NUMERIC / v_max_study_minutes::NUMERIC * 100)) +
-      (0.30 * ts.goal_completion_pct) +
-      (0.20 * LEAST(ts.streak_days::NUMERIC / 7.0 * 100, 100.0)),
+      (0.50 * (ts.total_study_minutes::NUMERIC / v_max_study_minutes::NUMERIC * 100.0)) +
+      (0.30 * (
+        (0.60 * LEAST(100.0, (ts.completed_tasks::NUMERIC / v_target_completed_tasks::NUMERIC) * 100.0)) +
+        (0.40 * CASE WHEN ts.total_tasks > 0 THEN LEAST(100.0, (ts.completed_tasks::NUMERIC / GREATEST(3, ts.total_tasks)::NUMERIC) * 100.0) ELSE 0.0 END)
+      )) +
+      (0.20 * LEAST((ts.streak_days::NUMERIC / 7.0) * 100.0, 100.0)),
       1
-    ) AS score
+    ) AS score,
+    ts.completed_tasks,
+    ts.total_tasks
   FROM temp_user_stats ts
   ORDER BY score DESC, ts.total_study_minutes DESC, ts.display_name ASC;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+

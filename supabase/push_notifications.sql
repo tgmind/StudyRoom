@@ -141,8 +141,8 @@ BEGIN
 
   v_duration_minutes := GREATEST(0, FLOOR(v_total_study_seconds / 60)::INTEGER);
 
-  INSERT INTO public.study_sessions (user_id, start_time, end_time, duration_minutes, focus_tag, completed_tasks)
-  VALUES (p_user_id, v_session_start, v_now, v_duration_minutes, v_focus, '[]'::JSONB)
+  INSERT INTO public.study_sessions (user_id, start_time, end_time, duration_minutes, completed_tasks)
+  VALUES (p_user_id, v_session_start, v_now, v_duration_minutes, '[]'::JSONB)
   RETURNING id INTO v_session_id;
 
   UPDATE public.session_blocks

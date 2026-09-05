@@ -25,7 +25,6 @@ describe("useStudyHistory Hook", () => {
     start_time: new Date(now.getTime() - 2 * 3600 * 1000).toISOString(),
     end_time: new Date(now.getTime() - 1 * 3600 * 1000).toISOString(),
     duration_minutes: 60,
-    focus_tag: "Physics",
     completed_tasks: [{ id: "t1", task: "Optics" }],
   };
 
@@ -41,7 +40,6 @@ describe("useStudyHistory Hook", () => {
     start_time: new Date(now.getTime() - 10 * 24 * 3600 * 1000).toISOString(),
     end_time: new Date(now.getTime() - (10 * 24 * 3600 - 5400) * 1000).toISOString(),
     duration_minutes: 90,
-    focus_tag: "Chemistry",
     completed_tasks: [{ id: "t2", task: "Organic" }],
   };
 

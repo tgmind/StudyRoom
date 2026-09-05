@@ -36,7 +36,6 @@ describe("Goal Appending & Study History Logic", () => {
         start_time: "2026-09-01T10:00:00Z",
         end_time: "2026-09-01T11:30:00Z",
         duration_minutes: 90,
-        focus_tag: "Math",
         completed_tasks: [{ id: "t1", task: "Calculus" }],
       },
       {
@@ -45,7 +44,6 @@ describe("Goal Appending & Study History Logic", () => {
         start_time: "2026-09-01T14:00:00Z",
         end_time: "2026-09-01T15:00:00Z",
         duration_minutes: 60,
-        focus_tag: "Physics",
         completed_tasks: [],
       },
     ];
@@ -111,7 +109,6 @@ describe("Goal Appending & Study History Logic", () => {
         start_time: "2026-09-06T14:30:00Z",
         end_time: "2026-09-06T15:30:00Z",
         duration_minutes: 60,
-        focus_tag: "Physics",
         completed_tasks: [],
       },
       // Past Friday (Sep 4, 2026 at 5:00 PM IST = 11:30 UTC): Before Monday weekStartMs
@@ -121,7 +118,6 @@ describe("Goal Appending & Study History Logic", () => {
         start_time: "2026-09-04T11:30:00Z",
         end_time: "2026-09-04T12:30:00Z",
         duration_minutes: 60,
-        focus_tag: "Chemistry",
         completed_tasks: [],
       },
       // New Monday (Sep 7, 2026 at 8:00 AM IST = 02:30 UTC): At/After Monday weekStartMs
@@ -131,7 +127,6 @@ describe("Goal Appending & Study History Logic", () => {
         start_time: "2026-09-07T02:30:00Z",
         end_time: "2026-09-07T03:30:00Z",
         duration_minutes: 60,
-        focus_tag: "Math",
         completed_tasks: [],
       },
     ];

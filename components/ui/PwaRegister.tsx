@@ -8,6 +8,28 @@ export function PwaRegister() {
       return;
     }
 
+    // In development or localhost, unregister any active service workers to prevent
+    // stale cached HTML/chunks from causing SSR/client hydration mismatches.
+    const isLocalhost =
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1";
+
+    if (process.env.NODE_ENV === "development" || isLocalhost) {
+      navigator.serviceWorker.getRegistrations().then((registrations) => {
+        for (const registration of registrations) {
+          registration.unregister();
+        }
+      });
+      if ("caches" in window) {
+        caches.keys().then((keys) => {
+          for (const key of keys) {
+            caches.delete(key);
+          }
+        });
+      }
+      return;
+    }
+
     const registerSw = () => {
       navigator.serviceWorker
         .register("/sw.js")

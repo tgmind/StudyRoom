@@ -138,31 +138,31 @@ export default function HistoryPage() {
           {/* Responsive Metrics Bar (Non-breaking layout for narrow 320px-360px screens) */}
           <div className="grid grid-cols-2 gap-2 sm:gap-3.5 pt-2 border-t border-zinc-800/80">
             {/* Total Time Metric */}
-            <div className="flex items-center space-x-2.5 sm:space-x-3 p-2.5 sm:p-3 rounded-xl bg-zinc-950/60 border border-amber-500/15 min-w-0">
+            <div className="flex items-center space-x-2.5 sm:space-x-3 p-2.5 sm:p-3 rounded-xl bg-zinc-950/60 border border-amber-500/15 min-w-0 flex-1">
               <div className="p-1.5 sm:p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 shrink-0">
                 <Flame className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </div>
               <div className="min-w-0 flex-1">
-                <span className="text-[9px] sm:text-[10px] text-zinc-400 block font-semibold uppercase tracking-wider truncate">
+                <span className="text-[9px] sm:text-[10px] text-zinc-400 block font-semibold uppercase tracking-wider">
                   Total Time
                 </span>
-                <span className="font-mono font-extrabold text-amber-100 text-xs sm:text-base truncate block">
+                <span className="font-mono font-extrabold text-amber-100 text-xs sm:text-base block tabular-nums whitespace-nowrap">
                   {formatMinutesToHours(totalStudyMinutes)}
                 </span>
               </div>
             </div>
 
             {/* Total Sessions Metric */}
-            <div className="flex items-center space-x-2.5 sm:space-x-3 p-2.5 sm:p-3 rounded-xl bg-zinc-950/60 border border-violet-500/15 min-w-0">
+            <div className="flex items-center space-x-2.5 sm:space-x-3 p-2.5 sm:p-3 rounded-xl bg-zinc-950/60 border border-violet-500/15 min-w-0 flex-1">
               <div className="p-1.5 sm:p-2 rounded-lg bg-violet-500/10 border border-violet-500/20 text-violet-300 shrink-0">
                 <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </div>
               <div className="min-w-0 flex-1">
-                <span className="text-[9px] sm:text-[10px] text-zinc-400 block font-semibold uppercase tracking-wider truncate">
+                <span className="text-[9px] sm:text-[10px] text-zinc-400 block font-semibold uppercase tracking-wider">
                   Sessions
                 </span>
-                <div className="flex items-baseline space-x-1 truncate">
-                  <span className="font-mono font-extrabold text-violet-100 text-xs sm:text-base">
+                <div className="flex items-baseline space-x-1 flex-wrap">
+                  <span className="font-mono font-extrabold text-violet-100 text-xs sm:text-base tabular-nums">
                     {totalSessionsCount}
                   </span>
                   <span className="text-[9px] sm:text-[10px] text-zinc-400 font-medium">
@@ -222,12 +222,12 @@ export default function HistoryPage() {
                 return (
                   <section key={dateLabel} className="space-y-3">
                     {/* Date Section Header */}
-                    <div className="flex items-center justify-between px-1 text-xs sm:text-sm gap-2">
-                      <div className="flex items-center space-x-1.5 font-bold uppercase tracking-wider text-zinc-300 text-[11px] sm:text-xs truncate min-w-0">
+                    <div className="flex items-center justify-between px-1 text-xs sm:text-sm gap-2 flex-wrap">
+                      <div className="flex items-center space-x-1.5 font-bold uppercase tracking-wider text-zinc-300 text-[11px] sm:text-xs min-w-0">
                         <Calendar className="w-3.5 h-3.5 text-violet-400 shrink-0" />
-                        <span className="truncate">{dateLabel}</span>
+                        <span className="break-words">{dateLabel}</span>
                       </div>
-                      <span className="font-mono text-[10px] sm:text-[11px] text-zinc-400 font-semibold whitespace-nowrap shrink-0">
+                      <span className="font-mono text-[10px] sm:text-[11px] text-zinc-400 font-semibold whitespace-nowrap shrink-0 tabular-nums">
                         {dateSessions.length} {dateSessions.length === 1 ? "session" : "sessions"} • {formatMinutesToHours(dayMinutes)}
                       </span>
                     </div>
@@ -251,11 +251,11 @@ export default function HistoryPage() {
                               <div className="flex flex-wrap items-center justify-between gap-1.5 sm:gap-2">
                                 <div className="flex items-center space-x-2 sm:space-x-2.5 min-w-0">
                                   {/* Soft Faded Violet Duration Badge */}
-                                  <span className="px-2 py-0.5 sm:px-2.5 sm:py-0.5 rounded-lg bg-violet-500/10 border border-violet-500/25 text-violet-200 font-mono text-xs sm:text-sm font-black shadow-sm shrink-0">
+                                  <span className="px-2 py-0.5 sm:px-2.5 sm:py-0.5 rounded-lg bg-violet-500/10 border border-violet-500/25 text-violet-200 font-mono text-xs sm:text-sm font-black shadow-sm shrink-0 tabular-nums">
                                     {durationStr}
                                   </span>
 
-                                  <div className="text-xs sm:text-sm text-zinc-300 font-mono flex items-center space-x-1.5 whitespace-nowrap truncate">
+                                  <div className="text-xs sm:text-sm text-zinc-300 font-mono flex items-center space-x-1.5 whitespace-nowrap tabular-nums">
                                     <Clock className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
                                     <span>
                                       {formatSessionTime(session.start_time)} → {formatSessionTime(session.end_time)}
@@ -274,10 +274,10 @@ export default function HistoryPage() {
                                   {completedTasks.map((t) => (
                                     <span
                                       key={t.id}
-                                      className="inline-flex items-center space-x-1 px-2 py-0.5 sm:px-2.5 sm:py-0.5 rounded-md bg-violet-500/10 border border-violet-500/20 text-violet-200 text-[11px] sm:text-xs font-medium max-w-full truncate shadow-sm"
+                                      className="inline-flex items-center space-x-1 px-2 py-0.5 sm:px-2.5 sm:py-0.5 rounded-md bg-violet-500/10 border border-violet-500/20 text-violet-200 text-[11px] sm:text-xs font-medium max-w-full shadow-sm break-words"
                                     >
-                                      <span className="text-violet-400 font-bold">✓</span>
-                                      <span className="truncate">{t.task}</span>
+                                      <span className="text-violet-400 font-bold shrink-0">✓</span>
+                                      <span className="break-words">{t.task}</span>
                                     </span>
                                   ))}
                                 </div>
@@ -322,7 +322,7 @@ export default function HistoryPage() {
                       Earlier Weeks
                     </span>
                     <span className="text-zinc-600 text-[10px] select-none shrink-0">•</span>
-                    <span className="font-mono text-[10px] sm:text-[11px] text-zinc-400 truncate">
+                    <span className="font-mono text-[10px] sm:text-[11px] text-zinc-400 tabular-nums whitespace-nowrap shrink-0">
                       {pastWeeksCount} {pastWeeksCount === 1 ? "sess" : "sess"} ({formatMinutesToHours(pastWeeksMinutes)})
                     </span>
                   </div>
@@ -355,12 +355,12 @@ export default function HistoryPage() {
                       return (
                         <section key={dateLabel} className="space-y-3">
                           {/* Date Section Header */}
-                          <div className="flex items-center justify-between px-1 text-xs sm:text-sm gap-2">
-                            <div className="flex items-center space-x-1.5 font-bold uppercase tracking-wider text-zinc-300 text-[11px] sm:text-xs truncate min-w-0">
+                          <div className="flex items-center justify-between px-1 text-xs sm:text-sm gap-2 flex-wrap">
+                            <div className="flex items-center space-x-1.5 font-bold uppercase tracking-wider text-zinc-300 text-[11px] sm:text-xs min-w-0">
                               <Calendar className="w-3.5 h-3.5 text-violet-400 shrink-0" />
-                              <span className="truncate">{dateLabel}</span>
+                              <span className="break-words">{dateLabel}</span>
                             </div>
-                            <span className="font-mono text-[10px] sm:text-[11px] text-zinc-400 font-semibold whitespace-nowrap shrink-0">
+                            <span className="font-mono text-[10px] sm:text-[11px] text-zinc-400 font-semibold whitespace-nowrap shrink-0 tabular-nums">
                               {dateSessions.length} {dateSessions.length === 1 ? "session" : "sessions"} • {formatMinutesToHours(dayMinutes)}
                             </span>
                           </div>
@@ -384,11 +384,11 @@ export default function HistoryPage() {
                                     <div className="flex flex-wrap items-center justify-between gap-1.5 sm:gap-2">
                                       <div className="flex items-center space-x-2 sm:space-x-2.5 min-w-0">
                                         {/* Soft Faded Violet Duration Badge */}
-                                        <span className="px-2 py-0.5 sm:px-2.5 sm:py-0.5 rounded-lg bg-violet-500/10 border border-violet-500/25 text-violet-200 font-mono text-xs sm:text-sm font-black shadow-sm shrink-0">
+                                        <span className="px-2 py-0.5 sm:px-2.5 sm:py-0.5 rounded-lg bg-violet-500/10 border border-violet-500/25 text-violet-200 font-mono text-xs sm:text-sm font-black shadow-sm shrink-0 tabular-nums">
                                           {durationStr}
                                         </span>
 
-                                        <div className="text-xs sm:text-sm text-zinc-300 font-mono flex items-center space-x-1.5 whitespace-nowrap truncate">
+                                        <div className="text-xs sm:text-sm text-zinc-300 font-mono flex items-center space-x-1.5 whitespace-nowrap tabular-nums">
                                           <Clock className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
                                           <span>
                                             {formatSessionTime(session.start_time)} → {formatSessionTime(session.end_time)}
@@ -407,10 +407,10 @@ export default function HistoryPage() {
                                         {completedTasks.map((t) => (
                                           <span
                                             key={t.id}
-                                            className="inline-flex items-center space-x-1 px-2 py-0.5 sm:px-2.5 sm:py-0.5 rounded-md bg-violet-500/10 border border-violet-500/20 text-violet-200 text-[11px] sm:text-xs font-medium max-w-full truncate shadow-sm"
+                                            className="inline-flex items-center space-x-1 px-2 py-0.5 sm:px-2.5 sm:py-0.5 rounded-md bg-violet-500/10 border border-violet-500/20 text-violet-200 text-[11px] sm:text-xs font-medium max-w-full shadow-sm break-words"
                                           >
-                                            <span className="text-violet-400 font-bold">✓</span>
-                                            <span className="truncate">{t.task}</span>
+                                            <span className="text-violet-400 font-bold shrink-0">✓</span>
+                                            <span className="break-words">{t.task}</span>
                                           </span>
                                         ))}
                                       </div>

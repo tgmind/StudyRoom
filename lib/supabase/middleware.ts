@@ -36,7 +36,7 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   // Protected application routes (regular users)
-  const protectedRoutes = ["/room", "/leaderboard", "/goals", "/history", "/settings", "/guide"];
+  const protectedRoutes = ["/room", "/leaderboard", "/streak", "/goals", "/history", "/settings", "/guide"];
   const isProtectedRoute = protectedRoutes.some((route) => pathname.startsWith(route));
   const isAdminRoute = pathname.startsWith("/admin");
   const isAuthRoute = pathname.startsWith("/login") || pathname.startsWith("/signup");

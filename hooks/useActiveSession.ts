@@ -431,7 +431,7 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
     };
   }, [currentStatus]);
 
-  const startSession = async (focusTag?: string | null) => {
+  const startSession = async () => {
     if (actionLoadingRef.current) return;
     actionLoadingRef.current = true;
     setActionLoading(true);
@@ -439,7 +439,7 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
 
     try {
       const { data, error: rpcErr } = await (supabase as unknown as RpcCaller).rpc("rpc_start_session", {
-        p_focus: focusTag ?? null,
+        p_focus: null,
       });
 
       if (rpcErr) throw rpcErr;

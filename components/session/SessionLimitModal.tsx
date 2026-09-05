@@ -85,17 +85,17 @@ export function SessionLimitModal({
         </p>
 
         {/* Saved Session Stats Banner */}
-        <div className="p-3.5 bg-gradient-to-r from-fuchsia-950/40 via-zinc-900 to-violet-950/40 border border-fuchsia-500/30 rounded-xl flex items-center justify-between text-xs shadow-inner">
-          <div className="flex items-center space-x-2.5">
+        <div className="p-3.5 bg-gradient-to-r from-fuchsia-950/40 via-zinc-900 to-violet-950/40 border border-fuchsia-500/30 rounded-xl flex items-center justify-between gap-2 flex-wrap text-xs shadow-inner">
+          <div className="flex items-center space-x-2.5 min-w-0 flex-1">
             <div className="w-7 h-7 rounded-lg bg-fuchsia-500/20 border border-fuchsia-500/40 flex items-center justify-center text-fuchsia-400 shrink-0">
               <Clock className="w-4 h-4" />
             </div>
-            <div className="flex flex-col">
-              <span className="text-zinc-200 font-bold">Session Study Time Credited</span>
-              <span className="text-[10px] text-zinc-400 font-medium">Fair play cap enforced</span>
+            <div className="flex flex-col min-w-0">
+              <span className="text-zinc-200 font-bold break-words">Session Study Time Credited</span>
+              <span className="text-[10px] text-zinc-400 font-medium break-words">Fair play cap enforced</span>
             </div>
           </div>
-          <span className="font-mono text-fuchsia-400 font-black text-sm sm:text-base tracking-tight drop-shadow-[0_0_8px_rgba(232,121,249,0.3)]">
+          <span className="font-mono text-fuchsia-400 font-black text-sm sm:text-base tracking-tight drop-shadow-[0_0_8px_rgba(232,121,249,0.3)] shrink-0 tabular-nums whitespace-nowrap">
             {formatDurationSeconds(savedStudySeconds)}
           </span>
         </div>
@@ -133,7 +133,7 @@ export function SessionLimitModal({
                         : "bg-zinc-900/70 border-zinc-800 hover:border-zinc-700 hover:bg-zinc-900"
                     }`}
                   >
-                    <div className="flex items-center space-x-3 min-w-0 pr-2">
+                    <div className="flex items-center space-x-3 min-w-0 pr-2 flex-1">
                       <div className="shrink-0 text-zinc-400">
                         {isCompleted ? (
                           <CheckCircle2 className="w-4 h-4 text-emerald-400" />
@@ -144,7 +144,7 @@ export function SessionLimitModal({
                         )}
                       </div>
                       <span
-                        className={`text-xs sm:text-sm break-words line-clamp-2 leading-snug flex-1 ${
+                        className={`text-xs sm:text-sm break-words leading-snug flex-1 ${
                           isCompleted
                             ? "line-through text-zinc-500"
                             : isSelected

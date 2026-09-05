@@ -96,29 +96,29 @@ export default function LeaderboardPage() {
           </div>
 
           {/* Transparent Metric Formula Chips */}
-          <div className="grid grid-cols-3 gap-1.5 sm:gap-2.5 pt-2 border-t border-zinc-800/80 text-[10px] sm:text-xs">
-            <div className="p-2 rounded-xl bg-zinc-950/60 border border-violet-500/15 text-center min-w-0">
-              <div className="flex items-center justify-center space-x-1 text-violet-300 font-bold mb-0.5 whitespace-nowrap">
+          <div className="grid grid-cols-3 gap-1 sm:gap-2.5 pt-2 border-t border-zinc-800/80 text-[9px] min-[360px]:text-[10px] sm:text-xs">
+            <div className="p-1.5 sm:p-2 rounded-xl bg-zinc-950/60 border border-violet-500/15 text-center min-w-0">
+              <div className="flex items-center justify-center space-x-1 text-violet-300 font-bold mb-0.5 flex-wrap">
                 <Clock className="w-3 h-3 shrink-0" />
-                <span>50% Hours</span>
+                <span className="whitespace-nowrap">50% Hours</span>
               </div>
-              <span className="text-[9px] sm:text-[10px] text-zinc-500 block leading-tight">Study Duration</span>
+              <span className="text-[8.5px] sm:text-[10px] text-zinc-500 block leading-tight">Study Duration</span>
             </div>
 
-            <div className="p-2 rounded-xl bg-zinc-950/60 border border-fuchsia-500/15 text-center min-w-0">
-              <div className="flex items-center justify-center space-x-1 text-fuchsia-300 font-bold mb-0.5 whitespace-nowrap">
+            <div className="p-1.5 sm:p-2 rounded-xl bg-zinc-950/60 border border-fuchsia-500/15 text-center min-w-0">
+              <div className="flex items-center justify-center space-x-1 text-fuchsia-300 font-bold mb-0.5 flex-wrap">
                 <Target className="w-3 h-3 shrink-0" />
-                <span>30% Goals</span>
+                <span className="whitespace-nowrap">30% Goals</span>
               </div>
-              <span className="text-[9px] sm:text-[10px] text-zinc-500 block leading-tight">24h Task Rate</span>
+              <span className="text-[8.5px] sm:text-[10px] text-zinc-500 block leading-tight">Dual-Pillar Index</span>
             </div>
 
-            <div className="p-2 rounded-xl bg-zinc-950/60 border border-amber-500/15 text-center min-w-0">
-              <div className="flex items-center justify-center space-x-1 text-amber-300 font-bold mb-0.5 whitespace-nowrap">
+            <div className="p-1.5 sm:p-2 rounded-xl bg-zinc-950/60 border border-amber-500/15 text-center min-w-0">
+              <div className="flex items-center justify-center space-x-1 text-amber-300 font-bold mb-0.5 flex-wrap">
                 <Flame className="w-3 h-3 shrink-0" />
-                <span>20% Streak</span>
+                <span className="whitespace-nowrap">20% Streak</span>
               </div>
-              <span className="text-[9px] sm:text-[10px] text-zinc-500 block leading-tight">≥30m Daily</span>
+              <span className="text-[8.5px] sm:text-[10px] text-zinc-500 block leading-tight">≥30m Daily</span>
             </div>
           </div>
         </div>

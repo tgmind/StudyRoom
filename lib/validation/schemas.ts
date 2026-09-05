@@ -33,25 +33,6 @@ export function validateDisplayName(rawInput: string): ValidationResult<string> 
   return { isValid: true, value: trimmed };
 }
 
-/**
- * Validates focus tag: optional, trimmed, max 60 characters.
- */
-export function validateFocusTag(rawInput?: string | null): ValidationResult<string | null> {
-  if (!rawInput) {
-    return { isValid: true, value: null };
-  }
-
-  const trimmed = rawInput.trim();
-  if (trimmed.length === 0) {
-    return { isValid: true, value: null };
-  }
-
-  if (trimmed.length > 60) {
-    return { isValid: false, value: trimmed.substring(0, 60), error: "Focus tag cannot exceed 60 characters" };
-  }
-
-  return { isValid: true, value: trimmed };
-}
 
 /**
  * Validates a single goal task description: required, trimmed, 1 to 120 characters.

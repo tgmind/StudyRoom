@@ -98,8 +98,8 @@ export const MemberList = memo(function MemberList({
     [studyingMembers, breakMembers]
   );
   const offlineMembers = useMemo(
-    () => (members || []).filter((m) => getEffectiveMemberStatus(m, currentTimestamp) === "offline"),
-    [members, currentTimestamp]
+    () => (members || []).filter((m) => getEffectiveMemberStatus(m, offlineTimestamp) === "offline"),
+    [members, offlineTimestamp]
   );
 
   // Cached ref for reference-stability to prevent unnecessary DOM reconciliation of offline cards
@@ -110,7 +110,7 @@ export const MemberList = memo(function MemberList({
     // Fast O(N) extraction of authoritative offline timestamps
     const timestampMap = new Map<string, number>();
     for (const m of offlineMembers) {
-      timestampMap.set(m.id, calculateMemberOfflineTimestampMs(m, currentTimestamp));
+      timestampMap.set(m.id, calculateMemberOfflineTimestampMs(m, offlineTimestamp));
     }
 
     const nextSorted = [...offlineMembers].sort((a, b) => {
@@ -135,7 +135,7 @@ export const MemberList = memo(function MemberList({
 
     prevSortedOfflineRef.current = nextSorted;
     return nextSorted;
-  }, [offlineMembers, currentTimestamp]);
+  }, [offlineMembers, offlineTimestamp]);
 
   // Authoritative dynamic study duration for global ranking
   const getMemberStudySeconds = useCallback(
@@ -245,6 +245,7 @@ export const MemberList = memo(function MemberList({
   useIsomorphicLayoutEffect(() => {
     const prevRects = prevRectsRef.current;
     const currentOrder = sortedActiveMembers.map((m) => m.id);
+    const isInitialMount = prevOrderRef.current.length === 0 && currentOrder.length > 0;
     const hasOrderChanged =
       prevOrderRef.current.length > 0 &&
       (prevOrderRef.current.length !== currentOrder.length ||
@@ -288,16 +289,18 @@ export const MemberList = memo(function MemberList({
       });
     }
 
-    // Capture current rects & order for the next transition check
-    const nextRects = new Map<string, DOMRect>();
-    sortedActiveMembers.forEach((member) => {
-      const el = cardRefs.current.get(member.id);
-      if (el) {
-        nextRects.set(member.id, el.getBoundingClientRect());
-      }
-    });
-    prevRectsRef.current = nextRects;
-    prevOrderRef.current = currentOrder;
+    // Only query getBoundingClientRect when order changed or on initial mount to eliminate layout thrashing
+    if (isInitialMount || hasOrderChanged) {
+      const nextRects = new Map<string, DOMRect>();
+      sortedActiveMembers.forEach((member) => {
+        const el = cardRefs.current.get(member.id);
+        if (el) {
+          nextRects.set(member.id, el.getBoundingClientRect());
+        }
+      });
+      prevRectsRef.current = nextRects;
+      prevOrderRef.current = currentOrder;
+    }
   }, [sortedActiveMembers]);
 
   if (isLoading) {
@@ -351,8 +354,8 @@ export const MemberList = memo(function MemberList({
       {/* 2. Active Studying & On Break Members Section */}
       {(nonRivalActiveMembers.length > 0 || rivalries.length === 0) && (
         <div className="space-y-3">
-          <div className="flex items-center justify-between px-1">
-            <div className="flex items-center space-x-3">
+          <div className="flex items-center justify-between px-1 flex-wrap gap-2">
+            <div className="flex items-center space-x-2 sm:space-x-3 flex-wrap gap-y-1">
               <div className="flex items-center space-x-1.5">
                 <Flame className="w-4 h-4 text-fuchsia-400 fill-fuchsia-400" />
                 <h3 className="text-xs font-extrabold uppercase tracking-wider text-zinc-200">
@@ -371,7 +374,7 @@ export const MemberList = memo(function MemberList({
               )}
             </div>
 
-            <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-[10px] font-bold text-zinc-300 shadow-sm">
+            <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-[10px] font-bold text-zinc-300 shadow-sm shrink-0">
               <span className="w-1.5 h-1.5 rounded-full bg-fuchsia-400" />
               <span>Live Sync</span>
             </div>

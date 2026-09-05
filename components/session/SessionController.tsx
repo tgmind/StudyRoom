@@ -14,7 +14,7 @@ interface SessionControllerProps {
   focus?: string | null;
   elapsedSeconds: number;
   breakStartedAt?: string | null;
-  onStartSession: (focusTag?: string | null) => Promise<void>;
+  onStartSession: () => Promise<void>;
   onPauseSession: () => Promise<void>;
   onResumeSession: () => Promise<void>;
   onFinishSession: (completedTaskIds: string[]) => Promise<void>;
@@ -52,7 +52,7 @@ export const SessionController = memo(function SessionController({
       if (isGoalMissingOrExpired) {
         setIsGoalSetupModalOpen(true);
       } else {
-        await onStartSession(null);
+        await onStartSession();
       }
     } catch {
       // handled by parent error state
@@ -64,7 +64,7 @@ export const SessionController = memo(function SessionController({
       await onCreateGoal(tasks);
       setIsGoalSetupModalOpen(false);
       // Directly launch session after goals locked
-      await onStartSession(null);
+      await onStartSession();
     } catch {
       // handled by parent error state
     }

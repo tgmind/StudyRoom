@@ -51,7 +51,6 @@ export interface StudySession {
   start_time: string;
   end_time: string;
   duration_minutes: number;
-  focus_tag?: string | null;
   completed_tasks?: CompletedSessionTask[];
 }
 
@@ -76,6 +75,8 @@ export interface LeaderboardEntry {
   goal_completion_pct: number;
   streak_days: number;
   score: number;
+  completed_tasks?: number;
+  total_tasks?: number;
 }
 
 export interface SessionState {
@@ -91,6 +92,8 @@ export interface ScoringResult {
   goal_completion_score: number;
   consistency_score: number;
   composite_score: number;
+  volume_score?: number;
+  discipline_score?: number;
 }
 
 export type Json =
@@ -123,7 +126,6 @@ export interface Database {
           start_time: string;
           end_time: string;
           duration_minutes: number;
-          focus_tag?: string | null;
           completed_tasks?: CompletedSessionTask[];
         };
         Update: Partial<StudySession>;

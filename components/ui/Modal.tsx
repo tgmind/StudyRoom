@@ -81,11 +81,11 @@ export function Modal({
         {/* Modal Header */}
         <div className="flex items-start justify-between px-5 py-4 border-b border-zinc-800 bg-zinc-900/60">
           <div className="min-w-0 flex-1">
-            <h2 id="modal-title" className="text-sm sm:text-base font-bold text-zinc-100 leading-snug">
+            <h2 id="modal-title" className="text-sm sm:text-base font-bold text-zinc-100 leading-snug break-words">
               {title}
             </h2>
             {subtitle && (
-              <p className="text-[11px] sm:text-xs text-zinc-400 mt-0.5">{subtitle}</p>
+              <p className="text-[11px] sm:text-xs text-zinc-400 mt-0.5 break-words leading-relaxed">{subtitle}</p>
             )}
           </div>
           <button

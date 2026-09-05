@@ -102,7 +102,7 @@ export function StopHookModal({
                         <UncheckedSquare className="w-4 h-4 text-zinc-500 shrink-0" />
                       )}
                       <span
-                        className={`truncate font-medium ${
+                        className={`break-words leading-relaxed font-medium flex-1 ${
                           isAlreadyCompleted ? "line-through text-zinc-500" : ""
                         }`}
                       >
