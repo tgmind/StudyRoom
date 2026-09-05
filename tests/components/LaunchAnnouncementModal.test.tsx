@@ -44,7 +44,7 @@ describe("StudyRoom UPDATE Modal Component", () => {
     expect(screen.queryByText("Understood")).toBeNull();
   });
 
-  it("renders update notice with 3-hour limit and Streak section and closes saving state on clicking Understood", () => {
+  it("renders update notice with Leaderboard scoring reform, 3-hour limit, and Streak section and closes saving state on clicking Understood", () => {
     render(<LaunchAnnouncementModal />);
 
     act(() => {
@@ -52,6 +52,8 @@ describe("StudyRoom UPDATE Modal Component", () => {
     });
 
     expect(screen.getAllByText("StudyRoom UPDATE").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Fairer Leaderboard: Dual-Pillar Goal Index")).toBeDefined();
+    expect(screen.getByText(/Setting 1 goal can no longer beat students/i)).toBeDefined();
     expect(screen.getByText("3-Hour Maximum Session Limit")).toBeDefined();
     expect(screen.getByText(/limited to a maximum of/i)).toBeDefined();
     expect(screen.getByText(/Brand-New "Streak" Heatmap Section/i)).toBeDefined();

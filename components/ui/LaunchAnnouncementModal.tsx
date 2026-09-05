@@ -4,9 +4,9 @@ import React, { useState, useEffect } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { triggerHapticFeedback } from "@/lib/utils/haptics";
-import { Clock, Flame, ShieldCheck, ArrowRight, Sparkles, CheckCircle2 } from "lucide-react";
+import { Clock, Flame, ShieldCheck, ArrowRight, Sparkles, CheckCircle2, Trophy, Target } from "lucide-react";
 
-export const LAUNCH_UPDATE_STORAGE_KEY = "studyroom_update_3h_streak_notice_v2";
+export const LAUNCH_UPDATE_STORAGE_KEY = "studyroom_update_dual_pillar_streak_v3";
 
 export function LaunchAnnouncementModal() {
   const [isOpen, setIsOpen] = useState(false);
@@ -43,9 +43,9 @@ export function LaunchAnnouncementModal() {
       isOpen={isOpen}
       onClose={handleUnderstood}
       title="StudyRoom UPDATE"
-      subtitle="Important updates: 3-Hour Session Cap & New Streak Section"
+      subtitle="New Leaderboard Scoring, 3-Hour Session Cap & Streak Heatmap"
     >
-      <div className="space-y-3.5 sm:space-y-4 pt-0.5">
+      <div className="space-y-3.5 sm:space-y-4 pt-0.5 max-h-[75vh] overflow-y-auto pr-0.5">
         {/* Glowing Ambient Hero Header Card */}
         <div className="relative overflow-hidden rounded-2xl p-4 sm:p-5 bg-gradient-to-br from-violet-950/80 via-zinc-900 to-amber-950/40 border border-violet-500/35 shadow-[0_8px_30px_rgba(139,92,246,0.15)] space-y-2.5">
           {/* Subtle background ambient blur rings */}
@@ -62,24 +62,50 @@ export function LaunchAnnouncementModal() {
                   StudyRoom UPDATE
                 </span>
                 <span className="px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-extrabold bg-violet-500/20 text-violet-300 border border-violet-500/40 uppercase tracking-wide">
-                  New Features &amp; Rules
+                  New Features &amp; Fair Scoring
                 </span>
               </div>
               <h3 className="text-sm sm:text-base font-black text-white tracking-tight leading-snug mt-0.5">
-                Built for Fair Play &amp; Daily Consistency
+                Rewarding Real Effort, Fair Play &amp; Consistency
               </h3>
             </div>
           </div>
 
           <p className="relative z-10 text-xs sm:text-[13px] text-zinc-300 leading-relaxed pl-0.5">
-            We&apos;ve added two major platform improvements to keep rankings 100% fair and help you build an unbreakable study habit.
+            We&apos;ve rolled out major upgrades to make rankings 100% fair, reward ambitious goals, and help you build an unbreakable study habit.
           </p>
         </div>
 
         {/* Feature Cards Grid */}
         <div className="space-y-2.5 sm:space-y-3">
-          {/* 1. 3-Hour Session Cap */}
+          {/* 1. New Dual-Pillar Leaderboard Scoring */}
           <div className="group rounded-2xl bg-zinc-900/80 hover:bg-zinc-900 border border-zinc-800/90 hover:border-violet-500/40 p-3.5 sm:p-4 transition-all duration-200 shadow-sm">
+            <div className="flex items-start space-x-3 sm:space-x-3.5">
+              <div className="p-2 sm:p-2.5 rounded-xl bg-violet-500/10 border border-violet-500/25 text-violet-400 shrink-0 mt-0.5 shadow-inner">
+                <Trophy className="w-4 h-4 sm:w-5 sm:h-5 text-violet-400" />
+              </div>
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <h4 className="text-xs sm:text-sm font-black text-zinc-100 tracking-tight">
+                    Fairer Leaderboard: Dual-Pillar Goal Index
+                  </h4>
+                  <span className="text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-md bg-violet-500/10 text-violet-300 border border-violet-500/30 shrink-0">
+                    Scoring Reform
+                  </span>
+                </div>
+                <p className="text-[11px] sm:text-xs text-zinc-300 leading-relaxed">
+                  Setting 1 goal can no longer beat students doing 4–6 goals! Scores now balance <strong>60% Volume Output</strong> (tasks completed) with <strong>40% Discipline</strong> (completion rate).
+                </p>
+                <div className="flex items-center space-x-1.5 pt-0.5 text-[10px] sm:text-[11px] text-violet-300 font-semibold">
+                  <Target className="w-3.5 h-3.5 shrink-0 text-violet-400" />
+                  <span>Setting and finishing more goals now directly boosts your leaderboard standing.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 2. 3-Hour Session Cap */}
+          <div className="group rounded-2xl bg-zinc-900/80 hover:bg-zinc-900 border border-zinc-800/90 hover:border-amber-500/40 p-3.5 sm:p-4 transition-all duration-200 shadow-sm">
             <div className="flex items-start space-x-3 sm:space-x-3.5">
               <div className="p-2 sm:p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-400 shrink-0 mt-0.5 shadow-inner">
                 <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-amber-400" />
@@ -94,7 +120,7 @@ export function LaunchAnnouncementModal() {
                   </span>
                 </div>
                 <p className="text-[11px] sm:text-xs text-zinc-300 leading-relaxed">
-                  To ensure genuine effort and a level playing field, each study session is now limited to a maximum of <strong>3 hours</strong>. No student can leave their timer running unattended to earn unfair study time.
+                  To ensure genuine effort and a level playing field, each study session is limited to a maximum of <strong>3 hours</strong>. No student can leave their timer running unattended.
                 </p>
                 <div className="flex items-center space-x-1.5 pt-0.5 text-[10px] sm:text-[11px] text-emerald-400 font-semibold">
                   <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
@@ -104,8 +130,8 @@ export function LaunchAnnouncementModal() {
             </div>
           </div>
 
-          {/* 2. New Streak Heatmap Section */}
-          <div className="group rounded-2xl bg-zinc-900/80 hover:bg-zinc-900 border border-zinc-800/90 hover:border-amber-500/40 p-3.5 sm:p-4 transition-all duration-200 shadow-sm">
+          {/* 3. New Streak Heatmap Section */}
+          <div className="group rounded-2xl bg-zinc-900/80 hover:bg-zinc-900 border border-zinc-800/90 hover:border-orange-500/40 p-3.5 sm:p-4 transition-all duration-200 shadow-sm">
             <div className="flex items-start space-x-3 sm:space-x-3.5">
               <div className="p-2 sm:p-2.5 rounded-xl bg-orange-500/10 border border-orange-500/25 text-orange-400 shrink-0 mt-0.5 shadow-inner">
                 <Flame className="w-4 h-4 sm:w-5 sm:h-5 text-orange-400 fill-orange-400/90" />
@@ -130,7 +156,7 @@ export function LaunchAnnouncementModal() {
             </div>
           </div>
 
-          {/* 3. Account Safety Assurance */}
+          {/* 4. Account Safety Assurance */}
           <div className="rounded-xl bg-zinc-900/40 border border-zinc-800/60 p-2.5 sm:p-3 flex items-center space-x-2.5 text-zinc-400">
             <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
             <p className="text-[10px] sm:text-[11px] leading-snug">
@@ -140,7 +166,7 @@ export function LaunchAnnouncementModal() {
         </div>
 
         {/* Full-width Gradient Action Button */}
-        <div className="pt-1.5 sm:pt-2">
+        <div className="pt-1.5 sm:pt-2 sticky bottom-0 bg-zinc-950/90 backdrop-blur-md pb-1">
           <Button
             type="button"
             variant="primary"
