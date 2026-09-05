@@ -25,6 +25,11 @@ CREATE TABLE IF NOT EXISTS public.users (
   active_study_seconds_snapshot INTEGER NOT NULL DEFAULT 0,
   has_achiever_badge BOOLEAN NOT NULL DEFAULT FALSE,
   is_admin BOOLEAN NOT NULL DEFAULT FALSE,
+  three_hour_prompt_sent_at TIMESTAMPTZ,
+  last_offline_reminder_sent_at TIMESTAMPTZ,
+  break_warning_prompt_sent_at TIMESTAMPTZ,
+  last_break_expired_study_seconds INTEGER DEFAULT NULL,
+  last_offline_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -35,6 +40,9 @@ ALTER TABLE public.users ADD COLUMN IF NOT EXISTS active_study_seconds_snapshot 
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_break_expired_study_seconds INTEGER DEFAULT NULL;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_offline_at TIMESTAMPTZ;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS three_hour_prompt_sent_at TIMESTAMPTZ;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_offline_reminder_sent_at TIMESTAMPTZ;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS break_warning_prompt_sent_at TIMESTAMPTZ;
 
 -- Ensure full replica identity for realtime update payloads
 ALTER TABLE public.users REPLICA IDENTITY FULL;
@@ -938,6 +946,10 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- ------------------------------------------------------------
 -- 10. REALTIME PUBLICATION CONFIGURATION
 -- ------------------------------------------------------------
+ALTER TABLE public.users REPLICA IDENTITY FULL;
+ALTER TABLE public.study_sessions REPLICA IDENTITY FULL;
+ALTER TABLE public.daily_goals REPLICA IDENTITY FULL;
+
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -1255,7 +1267,7 @@ BEGIN
     AND block_type = 'study'
     AND session_id IS NULL;
 
-  v_duration_minutes := GREATEST(0, FLOOR(v_total_study_seconds / 60)::INTEGER);
+  v_duration_minutes := LEAST(180, GREATEST(0, FLOOR(v_total_study_seconds / 60)::INTEGER));
 
   INSERT INTO public.study_sessions (user_id, start_time, end_time, duration_minutes, completed_tasks)
   VALUES (p_target_user_id, v_session_start, v_now, v_duration_minutes, '[]'::JSONB)
@@ -1271,13 +1283,18 @@ BEGIN
       session_start_time = NULL,
       last_resumed_at = NULL,
       break_started_at = NULL,
-      active_study_seconds_snapshot = 0
+      active_study_seconds_snapshot = 0,
+      three_hour_prompt_sent_at = NULL,
+      break_warning_prompt_sent_at = NULL,
+      last_break_expired_study_seconds = NULL,
+      last_offline_at = v_now
   WHERE id = p_target_user_id;
 
   RETURN jsonb_build_object(
     'success', true,
     'session_id', v_session_id,
     'duration_minutes', v_duration_minutes,
+    'server_now', v_now,
     'message', 'Session suspended and saved by administrator'
   );
 END;

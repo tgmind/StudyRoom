@@ -19,10 +19,12 @@ CREATE TABLE IF NOT EXISTS public.push_subscriptions (
 -- Index for fast lookup by user_id
 CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user_id ON public.push_subscriptions(user_id);
 
--- 2. Add notification reminder tracking columns to public.users
+-- 2. Add notification reminder and offline tracking columns to public.users
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS three_hour_prompt_sent_at TIMESTAMPTZ;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_offline_reminder_sent_at TIMESTAMPTZ;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS break_warning_prompt_sent_at TIMESTAMPTZ;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_break_expired_study_seconds INTEGER DEFAULT NULL;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_offline_at TIMESTAMPTZ;
 
 -- 3. Row Level Security for push_subscriptions
 ALTER TABLE public.push_subscriptions ENABLE ROW LEVEL SECURITY;
@@ -51,7 +53,7 @@ CREATE POLICY "Service role full access to push subscriptions"
   TO service_role
   USING (true);
 
--- 4. Update rpc_start_session to reset three_hour_prompt_sent_at on session start
+-- 4. Synchronized rpc_start_session (resets prompt timestamps, trims focus, closes orphaned blocks)
 CREATE OR REPLACE FUNCTION public.rpc_start_session(p_focus TEXT DEFAULT NULL)
 RETURNS JSONB AS $$
 DECLARE
@@ -59,12 +61,14 @@ DECLARE
   v_current_status TEXT;
   v_now TIMESTAMPTZ := NOW();
   v_block_id UUID;
+  v_trimmed_focus TEXT;
 BEGIN
   v_user_id := auth.uid();
   IF v_user_id IS NULL THEN
     RAISE EXCEPTION 'Not authenticated';
   END IF;
 
+  -- Lock user row to prevent race conditions
   SELECT current_status INTO v_current_status
   FROM public.users
   WHERE id = v_user_id
@@ -77,32 +81,43 @@ BEGIN
     );
   END IF;
 
+  -- Close any orphaned open blocks from previous ungraceful disconnects
+  UPDATE public.session_blocks
+  SET end_time = v_now
+  WHERE user_id = v_user_id AND session_id IS NULL AND end_time IS NULL;
+
   -- Create first study block
   INSERT INTO public.session_blocks (user_id, session_id, block_type, start_time, end_time)
   VALUES (v_user_id, NULL, 'study', v_now, NULL)
   RETURNING id INTO v_block_id;
 
-  -- Update user profile to studying and reset the 3-hour prompt timestamp
+  -- Truncate focus string to max 60 chars
+  v_trimmed_focus := LEFT(TRIM(p_focus), 60);
+
+  -- Update user profile to studying and reset notification prompts
   UPDATE public.users
   SET current_status = 'studying',
-      current_focus = p_focus,
+      current_focus = v_trimmed_focus,
       session_start_time = v_now,
       last_resumed_at = v_now,
       break_started_at = NULL,
       active_study_seconds_snapshot = 0,
-      three_hour_prompt_sent_at = NULL
+      three_hour_prompt_sent_at = NULL,
+      break_warning_prompt_sent_at = NULL,
+      last_break_expired_study_seconds = NULL
   WHERE id = v_user_id;
 
   RETURN jsonb_build_object(
     'success', true,
     'status', 'studying',
     'session_start_time', v_now,
-    'block_id', v_block_id
+    'block_id', v_block_id,
+    'server_now', v_now
   );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- 5. RPC to stop user session on push notification action
+-- 5. RPC to stop user session on push notification action or break expiry
 CREATE OR REPLACE FUNCTION public.rpc_stop_user_session(p_user_id UUID)
 RETURNS JSONB AS $$
 DECLARE
@@ -139,7 +154,7 @@ BEGIN
     AND block_type = 'study'
     AND session_id IS NULL;
 
-  v_duration_minutes := GREATEST(0, FLOOR(v_total_study_seconds / 60)::INTEGER);
+  v_duration_minutes := LEAST(180, GREATEST(0, FLOOR(v_total_study_seconds / 60)::INTEGER));
 
   INSERT INTO public.study_sessions (user_id, start_time, end_time, duration_minutes, completed_tasks)
   VALUES (p_user_id, v_session_start, v_now, v_duration_minutes, '[]'::JSONB)
@@ -157,14 +172,60 @@ BEGIN
       break_started_at = NULL,
       active_study_seconds_snapshot = 0,
       three_hour_prompt_sent_at = NULL,
-      break_warning_prompt_sent_at = NULL
+      break_warning_prompt_sent_at = NULL,
+      last_break_expired_study_seconds = CASE WHEN v_status = 'break' THEN v_total_study_seconds::INTEGER ELSE NULL END,
+      last_offline_at = v_now
   WHERE id = p_user_id;
 
   RETURN jsonb_build_object(
     'success', true,
     'session_id', v_session_id,
-    'duration_minutes', v_duration_minutes
+    'duration_minutes', v_duration_minutes,
+    'server_now', v_now
   );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+-- 6. RPC to acknowledge and clear break-expiry notice for authenticated user
+CREATE OR REPLACE FUNCTION public.rpc_acknowledge_break_expiry()
+RETURNS JSONB AS $$
+DECLARE
+  v_user_id UUID := auth.uid();
+BEGIN
+  IF v_user_id IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  UPDATE public.users
+  SET last_break_expired_study_seconds = NULL
+  WHERE id = v_user_id;
+
+  RETURN jsonb_build_object('success', true);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 7. RPC to atomically terminate all expired breaks across the entire platform
+CREATE OR REPLACE FUNCTION public.rpc_cleanup_expired_breaks()
+RETURNS JSONB AS $$
+DECLARE
+  v_count INTEGER := 0;
+  v_user_rec RECORD;
+  v_now TIMESTAMPTZ := NOW();
+BEGIN
+  FOR v_user_rec IN
+    SELECT id FROM public.users
+    WHERE current_status = 'break'
+      AND break_started_at IS NOT NULL
+      AND EXTRACT(EPOCH FROM (v_now - break_started_at)) >= 3600
+  LOOP
+    PERFORM public.rpc_stop_user_session(v_user_rec.id);
+    v_count := v_count + 1;
+  END LOOP;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'terminated_count', v_count,
+    'server_now', v_now
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;

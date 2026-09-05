@@ -51,7 +51,7 @@ END $$;
 -- ------------------------------------------------------------
 -- Ensure optional tracking columns exist before resetting
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_offline_at TIMESTAMPTZ DEFAULT NOW();
-ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_break_expired_study_seconds BIGINT DEFAULT NULL;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_break_expired_study_seconds INTEGER DEFAULT NULL;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS break_warning_prompt_sent_at TIMESTAMPTZ DEFAULT NULL;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS three_hour_prompt_sent_at TIMESTAMPTZ DEFAULT NULL;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_offline_reminder_sent_at TIMESTAMPTZ DEFAULT NULL;
@@ -79,8 +79,12 @@ BEGIN
 END $$;
 
 -- ------------------------------------------------------------
--- 5. ENSURE REALTIME REPLICATION FOR USERS TABLE
+-- 5. ENSURE REALTIME REPLICATION FOR USERS, SESSIONS, AND GOALS
 -- ------------------------------------------------------------
+ALTER TABLE public.users REPLICA IDENTITY FULL;
+ALTER TABLE public.study_sessions REPLICA IDENTITY FULL;
+ALTER TABLE public.daily_goals REPLICA IDENTITY FULL;
+
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -88,6 +92,20 @@ BEGIN
     WHERE pubname = 'supabase_realtime' AND tablename = 'users' AND schemaname = 'public'
   ) THEN
     ALTER PUBLICATION supabase_realtime ADD TABLE public.users;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' AND tablename = 'study_sessions' AND schemaname = 'public'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.study_sessions;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' AND tablename = 'daily_goals' AND schemaname = 'public'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.daily_goals;
   END IF;
 EXCEPTION
   WHEN OTHERS THEN NULL;

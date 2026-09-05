@@ -49,10 +49,12 @@ The product philosophy is grounded in:
 - Finishing a session executes `rpc_finish_session` as an atomic PostgreSQL transaction (`SECURITY DEFINER`).
 - Locks the user profile row (`FOR UPDATE`), closes open study/break blocks at server `NOW()`, computes active study minutes, saves checked goal tasks, inserts `study_sessions`, and sets user status to `offline`.
 
-### 6. Normalized 50/30/20 Leaderboard Engine
+### 6. Dual-Pillar Goal Index Leaderboard Engine (50/30/20)
 Score is calculated out of 100 points:
-- **50% Study Hours Component**: `(user_weekly_study_minutes / peak_group_weekly_study_minutes) * 100`
-- **30% Goal Completion Component**: `(completed_weekly_tasks / total_weekly_tasks) * 100`
+- **50% Study Hours Component (Volume Output)**: `(user_weekly_study_minutes / peak_group_weekly_study_minutes) * 100`
+- **30% Goal Completion Component (Discipline Follow-Through)**: Dual-Pillar blend:
+  - 60% Task Volume Factor: `MIN((completed_tasks / target_completed_tasks) * 100, 100)` (Dynamic benchmark, min 3, max 15)
+  - 40% Follow-Through Factor: `(completed_tasks / MAX(3, total_tasks)) * 100` (Honors planning discipline)
 - **20% Consistency / Streak Component**: `MIN(qualifying_streak_days / 7.0, 1.0) * 100` (Qualifying day = >= 30 active study minutes).
 
 ### 7. Weekly Achiever Badge
@@ -69,10 +71,10 @@ Run `supabase/schema.sql` against your Supabase PostgreSQL instance:
 3. Click **Run**.
 
 This automatically initializes:
-- All database tables (`users`, `daily_goals`, `study_sessions`, `session_blocks`)
+- All database tables (`users`, `daily_goals`, `study_sessions`, `session_blocks`, `push_subscriptions`)
 - Row Level Security (RLS) policies for user data privacy
-- RPC Functions (`rpc_start_session`, `rpc_pause_session`, `rpc_resume_session`, `rpc_finish_session`, `rpc_create_daily_goal`, `rpc_get_leaderboard`, `rpc_calculate_weekly_achiever`)
-- Supabase Realtime publication configuration for `public.users`
+- RPC Functions (`rpc_start_session`, `rpc_pause_session`, `rpc_resume_session`, `rpc_finish_session`, `rpc_stop_user_session`, `rpc_acknowledge_break_expiry`, `rpc_cleanup_expired_breaks`, `rpc_create_daily_goal`, `rpc_get_leaderboard`, `rpc_calculate_weekly_achiever`)
+- Supabase Realtime publication configuration with `REPLICA IDENTITY FULL` for `public.users`, `public.study_sessions`, and `public.daily_goals`
 - **Supabase Storage Bucket `avatars`** (Public bucket with 2 MB file size limit and storage RLS policies)
 
 ### 2. Manual Storage Bucket Verification (Dashboard UI Alternative)

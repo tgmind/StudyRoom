@@ -297,7 +297,7 @@ BEGIN
     AND block_type = 'study'
     AND session_id IS NULL;
 
-  v_duration_minutes := GREATEST(0, FLOOR(v_total_study_seconds / 60)::INTEGER);
+  v_duration_minutes := LEAST(180, GREATEST(0, FLOOR(v_total_study_seconds / 60)::INTEGER));
 
   -- Insert finished session record
   INSERT INTO public.study_sessions (user_id, start_time, end_time, duration_minutes, completed_tasks)
@@ -315,13 +315,18 @@ BEGIN
       session_start_time = NULL,
       last_resumed_at = NULL,
       break_started_at = NULL,
-      active_study_seconds_snapshot = 0
+      active_study_seconds_snapshot = 0,
+      three_hour_prompt_sent_at = NULL,
+      break_warning_prompt_sent_at = NULL,
+      last_break_expired_study_seconds = NULL,
+      last_offline_at = v_now
   WHERE id = p_target_user_id;
 
   RETURN jsonb_build_object(
     'success', true,
     'session_id', v_session_id,
     'duration_minutes', v_duration_minutes,
+    'server_now', v_now,
     'message', 'Session suspended and saved by administrator'
   );
 END;
@@ -507,4 +512,71 @@ BEGIN
   ORDER BY score DESC, ts.total_study_minutes DESC, ts.display_name ASC;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- ------------------------------------------------------------
+-- 10. WEEKLY ACHIEVER CALCULATION RPC
+-- Evaluates previous week's performance and awards ⭐ Achiever Badge to top performer
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.rpc_calculate_weekly_achiever(p_timezone TEXT DEFAULT 'Asia/Kolkata')
+RETURNS UUID AS $$
+DECLARE
+  v_tz TEXT := COALESCE(NULLIF(p_timezone, ''), 'Asia/Kolkata');
+  v_prev_week_start TIMESTAMPTZ;
+  v_winner_id UUID;
+BEGIN
+  v_prev_week_start := (DATE_TRUNC('week', (NOW() - INTERVAL '7 days') AT TIME ZONE v_tz) AT TIME ZONE v_tz);
+
+  SELECT user_id INTO v_winner_id
+  FROM public.rpc_get_leaderboard(v_prev_week_start, v_tz)
+  WHERE total_study_minutes > 0
+  ORDER BY score DESC, total_study_minutes DESC
+  LIMIT 1;
+
+  -- Allow update of protected badge column inside security definer function
+  PERFORM set_config('studyroom.internal_badge_update', 'true', true);
+
+  -- Clear previous achiever badges
+  UPDATE public.users SET has_achiever_badge = FALSE WHERE has_achiever_badge = TRUE;
+
+  -- Set new achiever badge
+  IF v_winner_id IS NOT NULL THEN
+    UPDATE public.users SET has_achiever_badge = TRUE WHERE id = v_winner_id;
+  END IF;
+
+  RETURN v_winner_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- ------------------------------------------------------------
+-- 11. REALTIME REPLICATION & REPLICA IDENTITY CONFIGURATION
+-- ------------------------------------------------------------
+ALTER TABLE public.users REPLICA IDENTITY FULL;
+ALTER TABLE public.study_sessions REPLICA IDENTITY FULL;
+ALTER TABLE public.daily_goals REPLICA IDENTITY FULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' AND tablename = 'users' AND schemaname = 'public'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.users;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' AND tablename = 'study_sessions' AND schemaname = 'public'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.study_sessions;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' AND tablename = 'daily_goals' AND schemaname = 'public'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.daily_goals;
+  END IF;
+EXCEPTION
+  WHEN OTHERS THEN NULL;
+END $$;
 
