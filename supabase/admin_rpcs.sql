@@ -86,6 +86,8 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- ------------------------------------------------------------
 -- 4. ADMIN RPC: Get All Users (High Performance with CTEs)
 -- ------------------------------------------------------------
+DROP FUNCTION IF EXISTS public.rpc_admin_get_all_users(TEXT) CASCADE;
+DROP FUNCTION IF EXISTS public.rpc_admin_get_all_users() CASCADE;
 CREATE OR REPLACE FUNCTION public.rpc_admin_get_all_users(p_admin_email TEXT DEFAULT NULL)
 RETURNS TABLE (
   user_id UUID,
@@ -241,9 +243,13 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- ------------------------------------------------------------
 -- 7. ADMIN RPC: Force-End / Suspend User Session
 -- ------------------------------------------------------------
+DROP FUNCTION IF EXISTS public.rpc_admin_force_end_session(UUID, TEXT) CASCADE;
+DROP FUNCTION IF EXISTS public.rpc_admin_force_end_session(TEXT, UUID) CASCADE;
+DROP FUNCTION IF EXISTS public.rpc_admin_force_end_session() CASCADE;
+
 CREATE OR REPLACE FUNCTION public.rpc_admin_force_end_session(
-  p_admin_email TEXT DEFAULT NULL,
-  p_target_user_id UUID DEFAULT NULL
+  p_target_user_id UUID,
+  p_admin_email TEXT DEFAULT NULL
 )
 RETURNS JSONB AS $$
 DECLARE
@@ -386,9 +392,9 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- 9. LEADERBOARD: Guaranteed Exclusion of Admin Accounts
 -- Implements Proposal 1: Dual-Pillar Goal Index (60% Volume Output + 40% Discipline Follow-Through)
 -- ------------------------------------------------------------
-DROP FUNCTION IF EXISTS public.rpc_get_leaderboard(TIMESTAMPTZ, TEXT);
-DROP FUNCTION IF EXISTS public.rpc_get_leaderboard(TIMESTAMPTZ);
-DROP FUNCTION IF EXISTS public.rpc_get_leaderboard();
+DROP FUNCTION IF EXISTS public.rpc_get_leaderboard(TIMESTAMPTZ, TEXT) CASCADE;
+DROP FUNCTION IF EXISTS public.rpc_get_leaderboard(TIMESTAMPTZ) CASCADE;
+DROP FUNCTION IF EXISTS public.rpc_get_leaderboard() CASCADE;
 
 CREATE OR REPLACE FUNCTION public.rpc_get_leaderboard(
   p_week_start TIMESTAMPTZ DEFAULT NULL,

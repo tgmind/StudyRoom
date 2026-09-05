@@ -259,6 +259,45 @@ CREATE POLICY "Users can update their own session blocks"
 -- 7. AUTHORITATIVE SESSION MANAGEMENT RPCs
 -- ------------------------------------------------------------
 
+-- Cleanly drop legacy RPC signatures so PostgreSQL accepts updated return types (RETURNS TABLE)
+-- and parameter overloads without throwing ERROR 42P13 ("cannot change return type of existing function")
+DO $$
+DECLARE
+  f RECORD;
+BEGIN
+  FOR f IN (
+    SELECT p.oid::regprocedure AS func_signature
+    FROM pg_proc p
+    JOIN pg_namespace n ON p.pronamespace = n.oid
+    WHERE n.nspname = 'public'
+      AND p.proname IN (
+        'rpc_get_study_history',
+        'rpc_get_leaderboard',
+        'rpc_admin_get_all_users',
+        'rpc_admin_get_platform_stats',
+        'rpc_start_session',
+        'rpc_pause_session',
+        'rpc_resume_session',
+        'rpc_finish_session',
+        'rpc_terminate_expired_break',
+        'rpc_create_daily_goal',
+        'rpc_add_goal_tasks',
+        'rpc_clear_study_history',
+        'rpc_calculate_weekly_achiever',
+        'check_is_admin',
+        'rpc_admin_rename_user',
+        'rpc_admin_delete_user',
+        'rpc_admin_force_end_session',
+        'rpc_stop_user_session',
+        'rpc_acknowledge_break_expiry',
+        'rpc_cleanup_expired_breaks'
+      )
+  ) LOOP
+    EXECUTE 'DROP FUNCTION IF EXISTS ' || f.func_signature || ' CASCADE;';
+  END LOOP;
+END;
+$$;
+
 -- RPC: Start Session
 CREATE OR REPLACE FUNCTION public.rpc_start_session(p_focus TEXT DEFAULT NULL)
 RETURNS JSONB AS $$
@@ -713,6 +752,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- ------------------------------------------------------------
 
 -- Retrieve study history (Automatically purges records older than 90 days)
+DROP FUNCTION IF EXISTS public.rpc_get_study_history() CASCADE;
 CREATE OR REPLACE FUNCTION public.rpc_get_study_history()
 RETURNS TABLE (
   id UUID,
@@ -777,10 +817,10 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- 9. LEADERBOARD & ACHIEVER BADGE RPCs
 -- ------------------------------------------------------------
 
--- Drop prior function overloads to prevent PostgREST PGRST203 candidate ambiguity
-DROP FUNCTION IF EXISTS public.rpc_get_leaderboard(TIMESTAMPTZ, TEXT);
-DROP FUNCTION IF EXISTS public.rpc_get_leaderboard(TIMESTAMPTZ);
-DROP FUNCTION IF EXISTS public.rpc_get_leaderboard();
+-- Drop prior function overloads to prevent PostgREST PGRST203 candidate ambiguity and signature changes
+DROP FUNCTION IF EXISTS public.rpc_get_leaderboard(TIMESTAMPTZ, TEXT) CASCADE;
+DROP FUNCTION IF EXISTS public.rpc_get_leaderboard(TIMESTAMPTZ) CASCADE;
+DROP FUNCTION IF EXISTS public.rpc_get_leaderboard() CASCADE;
 
 -- Function to get leaderboard entries for a given week with timezone support (Default Asia/Kolkata)
 -- Implements Proposal 1: Dual-Pillar Goal Index (60% Volume Output + 40% Discipline Follow-Through)
@@ -1062,6 +1102,8 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Admin RPC: Get All Users
+DROP FUNCTION IF EXISTS public.rpc_admin_get_all_users(TEXT) CASCADE;
+DROP FUNCTION IF EXISTS public.rpc_admin_get_all_users() CASCADE;
 CREATE OR REPLACE FUNCTION public.rpc_admin_get_all_users(p_admin_email TEXT DEFAULT NULL)
 RETURNS TABLE (
   user_id UUID,
@@ -1207,9 +1249,13 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Admin RPC: Force End Session
+DROP FUNCTION IF EXISTS public.rpc_admin_force_end_session(UUID, TEXT) CASCADE;
+DROP FUNCTION IF EXISTS public.rpc_admin_force_end_session(TEXT, UUID) CASCADE;
+DROP FUNCTION IF EXISTS public.rpc_admin_force_end_session() CASCADE;
+
 CREATE OR REPLACE FUNCTION public.rpc_admin_force_end_session(
-  p_admin_email TEXT DEFAULT NULL,
-  p_target_user_id UUID DEFAULT NULL
+  p_target_user_id UUID,
+  p_admin_email TEXT DEFAULT NULL
 )
 RETURNS JSONB AS $$
 DECLARE
