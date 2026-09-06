@@ -5,7 +5,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { DailyGoal, GoalTask } from "@/lib/supabase/types";
 import { formatDurationSeconds } from "@/lib/time/format";
-import { CheckSquare, Square as UncheckedSquare, CheckCircle2, Clock, Play } from "lucide-react";
+import { CheckSquare, Square as UncheckedSquare, CheckCircle2, Clock } from "lucide-react";
 
 interface BreakGoalUpdateModalProps {
   isOpen: boolean;
@@ -75,12 +75,15 @@ export function BreakGoalUpdateModal({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Update Your Goals"
+      title="Finish Your Study Session"
       subtitle="Session ended after 1-hour break limit"
+      closeOnBackdropClick={false}
+      hideCloseButton={true}
+      disableEscape={true}
     >
       <div className="space-y-5">
         <p className="text-xs text-zinc-400">
-          Did you accomplish any goals during your study session before the break? Checked tasks will be recorded in your rolling 24-hour goal set.
+          What did you accomplish during this session? Checked tasks will be recorded in your rolling 24-hour goal set.
         </p>
 
         {/* Saved Session Stats Banner */}
@@ -160,20 +163,20 @@ export function BreakGoalUpdateModal({
 
         {/* Modal Action Controls */}
         <div className="pt-3 border-t border-zinc-800 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-2.5">
-          {/* Skip / End Without Goals */}
+          {/* White Button: End Without Goals */}
           <Button
             type="button"
             variant="secondary"
             size="md"
             onClick={handleSkipGoals}
             disabled={isBusy}
-            className="w-full sm:w-auto px-4 font-bold text-xs bg-zinc-900 text-zinc-300 hover:bg-zinc-800 border-zinc-700"
+            className="w-full sm:w-auto px-4 font-bold text-xs bg-zinc-100 text-zinc-950 hover:bg-white border-white shadow-sm"
           >
-            {isStartingNewSession ? "Skip & Start New" : "Skip Goals"}
+            End Without Goals
           </Button>
 
-          {/* Primary Action Button */}
-          {hasSelectedTasks ? (
+          {/* Primary Action Button when tasks are checked */}
+          {hasSelectedTasks && (
             <Button
               type="button"
               variant="primary"
@@ -182,30 +185,7 @@ export function BreakGoalUpdateModal({
               isLoading={isBusy}
               className="w-full sm:w-auto px-5 font-extrabold text-xs shadow-md bg-violet-600 hover:bg-violet-500 text-white border-violet-500 shadow-violet-600/20"
             >
-              Save Goals ({selectedTaskIds.length})
-            </Button>
-          ) : isStartingNewSession ? (
-            <Button
-              type="button"
-              variant="primary"
-              size="md"
-              onClick={handleSkipGoals}
-              disabled={isBusy}
-              className="w-full sm:w-auto px-5 font-extrabold text-xs shadow-md bg-zinc-100 text-zinc-950 hover:bg-white border-white flex items-center justify-center space-x-1.5"
-            >
-              <Play className="w-3.5 h-3.5 fill-current" />
-              <span>Start New Session</span>
-            </Button>
-          ) : (
-            <Button
-              type="button"
-              variant="primary"
-              size="md"
-              onClick={handleSkipGoals}
-              disabled={isBusy}
-              className="w-full sm:w-auto px-5 font-extrabold text-xs shadow-md bg-zinc-100 text-zinc-950 hover:bg-white border-white"
-            >
-              Done
+              Save Goals & Finish ({selectedTaskIds.length})
             </Button>
           )}
         </div>

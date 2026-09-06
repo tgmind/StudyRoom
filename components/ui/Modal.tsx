@@ -11,6 +11,9 @@ interface ModalProps {
   subtitle?: string;
   children: React.ReactNode;
   fullScreenMobile?: boolean;
+  closeOnBackdropClick?: boolean;
+  hideCloseButton?: boolean;
+  disableEscape?: boolean;
 }
 
 export function Modal({
@@ -20,6 +23,9 @@ export function Modal({
   subtitle,
   children,
   fullScreenMobile = false,
+  closeOnBackdropClick = true,
+  hideCloseButton = false,
+  disableEscape = false,
 }: ModalProps) {
   const [mounted, setMounted] = useState(false);
 
@@ -29,9 +35,9 @@ export function Modal({
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape" && !disableEscape) onClose();
     },
-    [onClose]
+    [onClose, disableEscape]
   );
 
   useEffect(() => {
@@ -66,7 +72,7 @@ export function Modal({
       aria-modal="true"
       aria-labelledby="modal-title"
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (closeOnBackdropClick && e.target === e.currentTarget) onClose();
       }}
     >
       <div
@@ -88,14 +94,16 @@ export function Modal({
               <p className="text-[11px] sm:text-xs text-zinc-400 mt-0.5 break-words leading-relaxed">{subtitle}</p>
             )}
           </div>
-          <button
-            onClick={onClose}
-            type="button"
-            aria-label="Close dialog"
-            className="p-1 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center shrink-0 ml-2 touch-manipulation"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          {!hideCloseButton && (
+            <button
+              onClick={onClose}
+              type="button"
+              aria-label="Close dialog"
+              className="p-1 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center shrink-0 ml-2 touch-manipulation"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          )}
         </div>
 
         {/* Modal Content */}

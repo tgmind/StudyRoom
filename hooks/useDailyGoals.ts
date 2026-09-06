@@ -117,11 +117,40 @@ export function useDailyGoals(
     document.addEventListener("visibilitychange", handleVisibility);
     window.addEventListener("focus", handleVisibility);
 
+    // Real-time listener for daily_goals table so multi-tab / cross-device updates sync immediately
+    let channel: any = null;
+    if (userId) {
+      try {
+        channel = supabase
+          .channel(`daily_goals_user_${userId}`)
+          .on(
+            "postgres_changes",
+            {
+              event: "*",
+              schema: "public",
+              table: "daily_goals",
+              filter: `user_id=eq.${userId}`,
+            },
+            () => {
+              fetchActiveGoal();
+            }
+          )
+          .subscribe();
+      } catch (subErr) {
+        console.warn("Could not subscribe to daily_goals realtime:", subErr);
+      }
+    }
+
     return () => {
       document.removeEventListener("visibilitychange", handleVisibility);
       window.removeEventListener("focus", handleVisibility);
+      if (channel) {
+        try {
+          supabase.removeChannel(channel);
+        } catch {}
+      }
     };
-  }, [fetchActiveGoal]);
+  }, [fetchActiveGoal, supabase, userId]);
 
   // Periodic 1s countdown tick for active goal
   useEffect(() => {
@@ -168,8 +197,17 @@ export function useDailyGoals(
 
       if (rpcErr) throw rpcErr;
 
-      const res = data as unknown as { success: boolean; error?: string };
+      const res = data as unknown as {
+        success: boolean;
+        error?: string;
+        created_at?: string;
+        server_now?: string;
+      };
       if (!res.success) throw new Error(res.error || "Failed to create goals");
+
+      if (res.created_at || res.server_now) {
+        calibrateWithServerTime(res.created_at || res.server_now);
+      }
 
       await fetchActiveGoal();
     } catch (err) {
@@ -226,45 +264,65 @@ export function useDailyGoals(
     setError(null);
 
     try {
-      const updatedTasks: GoalTask[] = (activeGoal.tasks || []).map((t) =>
-        taskIds.includes(t.id) ? { ...t, completed: true } : t
-      );
-
-      const { error: updateErr } = await (supabase as any)
-        .from("daily_goals")
-        .update({ tasks: updatedTasks })
-        .eq("id", activeGoal.id);
-
-      if (updateErr) throw updateErr;
-
-      // Also record task completions in the latest study session if available
+      // 1. Attempt authoritative RPC to record completed tasks across both daily_goals and study_sessions
+      let rpcSucceeded = false;
       try {
-        const { data: latestSession } = await (supabase as any)
-          .from("study_sessions")
-          .select("id, completed_tasks")
-          .eq("user_id", userId)
-          .not("end_time", "is", null)
-          .order("end_time", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (latestSession) {
-          const newlyCompletedObjects = activeGoal.tasks
-            .filter((t) => taskIds.includes(t.id))
-            .map((t) => ({ id: t.id, task: t.task }));
-
-          const existingTasks = (latestSession.completed_tasks || []) as { id: string; task: string }[];
-          const existingIds = new Set(existingTasks.map((et) => et.id));
-          const toAdd = newlyCompletedObjects.filter((nt) => !existingIds.has(nt.id));
-          const combined = [...existingTasks, ...toAdd];
-
-          await (supabase as any)
-            .from("study_sessions")
-            .update({ completed_tasks: combined })
-            .eq("id", latestSession.id);
+        const { data: rpcRes, error: rpcErr } = await (supabase as unknown as RpcCaller).rpc(
+          "rpc_record_break_expiry_goals",
+          { p_completed_task_ids: taskIds }
+        );
+        if (!rpcErr && (rpcRes as any)?.success) {
+          rpcSucceeded = true;
+          if ((rpcRes as any)?.server_now) {
+            calibrateWithServerTime((rpcRes as any).server_now);
+          }
         }
-      } catch (sessionErr) {
-        console.warn("Could not associate completed tasks with latest session:", sessionErr);
+      } catch {
+        rpcSucceeded = false;
+      }
+
+      // 2. Direct table update fallback if RPC is not deployed yet
+      if (!rpcSucceeded) {
+        const updatedTasks: GoalTask[] = (activeGoal.tasks || []).map((t) =>
+          taskIds.includes(t.id) ? { ...t, completed: true } : t
+        );
+
+        const { error: updateErr } = await (supabase as any)
+          .from("daily_goals")
+          .update({ tasks: updatedTasks })
+          .eq("id", activeGoal.id);
+
+        if (updateErr) throw updateErr;
+
+        // Also attempt to associate with latest session if feasible
+        try {
+          const { data: latestSession } = await (supabase as any)
+            .from("study_sessions")
+            .select("id, completed_tasks")
+            .eq("user_id", userId)
+            .not("end_time", "is", null)
+            .order("end_time", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (latestSession) {
+            const newlyCompletedObjects = activeGoal.tasks
+              .filter((t) => taskIds.includes(t.id))
+              .map((t) => ({ id: t.id, task: t.task }));
+
+            const existingTasks = (latestSession.completed_tasks || []) as { id: string; task: string }[];
+            const existingIds = new Set(existingTasks.map((et) => et.id));
+            const toAdd = newlyCompletedObjects.filter((nt) => !existingIds.has(nt.id));
+            const combined = [...existingTasks, ...toAdd];
+
+            await (supabase as any)
+              .from("study_sessions")
+              .update({ completed_tasks: combined })
+              .eq("id", latestSession.id);
+          }
+        } catch (sessionErr) {
+          console.warn("Could not associate completed tasks with latest session directly:", sessionErr);
+        }
       }
 
       await fetchActiveGoal();

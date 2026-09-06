@@ -111,7 +111,7 @@ describe("Mid-Session Goal Expiration & Graceful Completion Integration Audit", 
         fireEvent.click(task2Element);
       });
 
-      const saveGoalsBtn = screen.getByRole("button", { name: /Save Goals \(1\)/i });
+      const saveGoalsBtn = screen.getByRole("button", { name: /Save Goals & Finish \(1\)/i });
       await act(async () => {
         fireEvent.click(saveGoalsBtn);
       });

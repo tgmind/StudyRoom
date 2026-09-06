@@ -321,8 +321,7 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
     if (
       currentStatus === "offline" &&
       profile.last_break_expired_study_seconds !== undefined &&
-      profile.last_break_expired_study_seconds !== null &&
-      profile.last_break_expired_study_seconds > 0
+      profile.last_break_expired_study_seconds !== null
     ) {
       setSavedStudySecondsOnBreakExpiry(profile.last_break_expired_study_seconds);
       setIsBreakExpiredNoticeOpen(true);
@@ -559,7 +558,7 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
         localStorage.removeItem("studyroom_active_break");
       } catch {}
     }
-    if (profile?.last_break_expired_study_seconds) {
+    if (profile?.last_break_expired_study_seconds !== null && profile?.last_break_expired_study_seconds !== undefined) {
       Promise.resolve((supabase as unknown as RpcCaller).rpc("rpc_acknowledge_break_expiry")).catch(() => {});
     }
   };

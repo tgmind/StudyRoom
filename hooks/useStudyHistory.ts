@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { StudySession } from "@/lib/supabase/types";
-import { getWeekStartTimestamp } from "@/lib/time/format";
+import { StudySession, DailyGoal, GoalTask } from "@/lib/supabase/types";
+import { getWeekStartTimestamp, formatSessionDate } from "@/lib/time/format";
 import { getServerNow } from "@/lib/time/clockSync";
 
 type RpcCaller = {
@@ -17,10 +17,21 @@ export interface HistorySummary {
   pastWeeksMinutes: number;
 }
 
+export interface LapsedGoalWindow {
+  id: string;
+  expires_at: string;
+  created_at: string;
+  lapsedTasks: GoalTask[];
+  totalTasksCount: number;
+  completedTasksCount: number;
+}
+
 // Module-level SWR memory cache to make History tab switching instantaneous (0ms)
 let cachedHistoryUserId = "";
 let cachedCurrentWeekSessions: StudySession[] = [];
 let cachedPastSummary = { count: 0, minutes: 0 };
+let cachedCurrentWeekLapsedGoals: Record<string, LapsedGoalWindow[]> = {};
+let cachedPastWeeksLapsedGoals: Record<string, LapsedGoalWindow[]> = {};
 
 export function useStudyHistory(userId?: string) {
   const hasCachedData = Boolean(
@@ -37,6 +48,14 @@ export function useStudyHistory(userId?: string) {
   const [pastSummary, setPastSummary] = useState<{ count: number; minutes: number }>(() => {
     if (userId && cachedHistoryUserId === userId) return cachedPastSummary;
     return { count: 0, minutes: 0 };
+  });
+  const [currentWeekLapsedGoals, setCurrentWeekLapsedGoals] = useState<Record<string, LapsedGoalWindow[]>>(() => {
+    if (userId && cachedHistoryUserId === userId) return cachedCurrentWeekLapsedGoals;
+    return {};
+  });
+  const [pastWeeksLapsedGoals, setPastWeeksLapsedGoals] = useState<Record<string, LapsedGoalWindow[]>>(() => {
+    if (userId && cachedHistoryUserId === userId) return cachedPastWeeksLapsedGoals;
+    return {};
   });
   const [loading, setLoading] = useState(!hasCachedData);
   const [isPastLoading, setIsPastLoading] = useState(false);
@@ -114,6 +133,61 @@ export function useStudyHistory(userId?: string) {
         cachedHistoryUserId = userId;
         cachedCurrentWeekSessions = (currentRes.data || []) as StudySession[];
       }
+
+      // 3. Fetch user's daily goals to extract lapsed (uncompleted expired) goals
+      let fetchedGoals: DailyGoal[] = [];
+      try {
+        const goalsQuery = supabase.from("daily_goals").select("*");
+        const withUser = typeof (goalsQuery as any)?.eq === "function" ? (goalsQuery as any).eq("user_id", userId) : goalsQuery;
+        const withOrder = typeof (withUser as any)?.order === "function" ? (withUser as any).order("expires_at", { ascending: false }) : withUser;
+        const goalsRes = await withOrder;
+        if (goalsRes?.data) {
+          fetchedGoals = goalsRes.data as DailyGoal[];
+        }
+      } catch (goalErr) {
+        console.warn("Could not fetch daily goals for history:", goalErr);
+      }
+
+      const serverNowMs = serverNow.getTime();
+      const currentWeekStartMs = new Date(currentWeekStartIso).getTime();
+
+      const nextCurrentWeekLapsed: Record<string, LapsedGoalWindow[]> = {};
+      const nextPastWeeksLapsed: Record<string, LapsedGoalWindow[]> = {};
+
+      for (const g of fetchedGoals) {
+        const expiryMs = new Date(g.expires_at).getTime();
+        if (isNaN(expiryMs) || expiryMs > serverNowMs) {
+          continue;
+        }
+        const tasks = (g.tasks || []) as GoalTask[];
+        const lapsedTasks = tasks.filter((t) => !t.completed);
+        if (lapsedTasks.length === 0) {
+          continue;
+        }
+
+        const windowInfo: LapsedGoalWindow = {
+          id: g.id,
+          expires_at: g.expires_at,
+          created_at: g.created_at,
+          lapsedTasks,
+          totalTasksCount: tasks.length,
+          completedTasksCount: tasks.length - lapsedTasks.length,
+        };
+
+        const dateLabel = formatSessionDate(g.expires_at, serverNow);
+        if (expiryMs >= currentWeekStartMs) {
+          if (!nextCurrentWeekLapsed[dateLabel]) nextCurrentWeekLapsed[dateLabel] = [];
+          nextCurrentWeekLapsed[dateLabel].push(windowInfo);
+        } else {
+          if (!nextPastWeeksLapsed[dateLabel]) nextPastWeeksLapsed[dateLabel] = [];
+          nextPastWeeksLapsed[dateLabel].push(windowInfo);
+        }
+      }
+
+      setCurrentWeekLapsedGoals(nextCurrentWeekLapsed);
+      setPastWeeksLapsedGoals(nextPastWeeksLapsed);
+      cachedCurrentWeekLapsedGoals = nextCurrentWeekLapsed;
+      cachedPastWeeksLapsedGoals = nextPastWeeksLapsed;
     } catch (err) {
       console.error("Failed to fetch study history:", err);
       setError(err instanceof Error ? err.message : "Failed to load study history");
@@ -194,6 +268,10 @@ export function useStudyHistory(userId?: string) {
         setCurrentWeekSessions([]);
         setPastSessions([]);
         setPastSummary({ count: 0, minutes: 0 });
+        setCurrentWeekLapsedGoals({});
+        setPastWeeksLapsedGoals({});
+        cachedCurrentWeekLapsedGoals = {};
+        cachedPastWeeksLapsedGoals = {};
         setIsPastLoaded(false);
         return data;
       }
@@ -201,6 +279,10 @@ export function useStudyHistory(userId?: string) {
       setCurrentWeekSessions([]);
       setPastSessions([]);
       setPastSummary({ count: 0, minutes: 0 });
+      setCurrentWeekLapsedGoals({});
+      setPastWeeksLapsedGoals({});
+      cachedCurrentWeekLapsedGoals = {};
+      cachedPastWeeksLapsedGoals = {};
       setIsPastLoaded(false);
       return { success: true };
     } catch (err) {
@@ -228,12 +310,19 @@ export function useStudyHistory(userId?: string) {
     };
   }, [currentWeekSessions, pastSummary]);
 
+  const lapsedGoalsByDate = useMemo(() => {
+    return { ...pastWeeksLapsedGoals, ...currentWeekLapsedGoals };
+  }, [pastWeeksLapsedGoals, currentWeekLapsedGoals]);
+
   return {
     sessions,
     currentWeekSessions,
     pastSessions,
     pastSummary,
     totalSummary,
+    currentWeekLapsedGoals,
+    pastWeeksLapsedGoals,
+    lapsedGoalsByDate,
     loading,
     isPastLoading,
     isPastLoaded,

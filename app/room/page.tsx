@@ -9,7 +9,6 @@ import { TopHeader } from "@/components/navigation/TopHeader";
 import { BottomNav } from "@/components/navigation/BottomNav";
 import { SessionController } from "@/components/session/SessionController";
 import { MemberList } from "@/components/room/MemberList";
-import { BreakExpiredModal } from "@/components/session/BreakExpiredModal";
 import { BreakGoalUpdateModal } from "@/components/session/BreakGoalUpdateModal";
 import { SessionLimitModal } from "@/components/session/SessionLimitModal";
 import { CreateGoalModal } from "@/components/goals/CreateGoalModal";
@@ -67,14 +66,11 @@ export default function RoomPage() {
 
 
   const [isGoalSetupModalOpen, setIsGoalSetupModalOpen] = useState(false);
-  const [isBreakGoalModalOpen, setIsBreakGoalModalOpen] = useState(false);
-  const [isPendingStartNewAfterBreak, setIsPendingStartNewAfterBreak] = useState(false);
 
   // Mid-Session Goal Grace: Preserve active goals while user is studying, on break, or viewing completion notices
   const isSessionActive =
     status !== "offline" ||
     isBreakExpiredNoticeOpen ||
-    isBreakGoalModalOpen ||
     isSessionLimitNoticeOpen;
   const sessionStartTime = effectiveProfile?.session_start_time || null;
 
@@ -160,17 +156,6 @@ export default function RoomPage() {
     await createGoal(tasks);
   };
 
-  const handleProceedFromBreakNotice = (startNewSession: boolean) => {
-    closeBreakExpiredNotice();
-    setIsPendingStartNewAfterBreak(startNewSession);
-
-    if (hasPendingGoals) {
-      setIsBreakGoalModalOpen(true);
-    } else if (startNewSession) {
-      handleStartNewSessionAfterBreak();
-    }
-  };
-
   const handleSaveGoalsAfterBreak = async (completedTaskIds: string[]) => {
     try {
       if (completedTaskIds.length > 0) {
@@ -180,27 +165,7 @@ export default function RoomPage() {
     } catch (err) {
       console.error("Failed to save goals after break:", err);
     } finally {
-      setIsBreakGoalModalOpen(false);
-
-      if (isPendingStartNewAfterBreak) {
-        setIsPendingStartNewAfterBreak(false);
-        const isGoalMissingOrExpired = !activeGoal || countdown.isExpired;
-        if (isGoalMissingOrExpired) {
-          setIsGoalSetupModalOpen(true);
-        } else {
-          await handleStartSession();
-        }
-      }
-    }
-  };
-
-  const handleStartNewSessionAfterBreak = async () => {
-    closeBreakExpiredNotice();
-    const isGoalMissingOrExpired = !activeGoal || countdown.isExpired;
-    if (isGoalMissingOrExpired) {
-      setIsGoalSetupModalOpen(true);
-    } else {
-      await handleStartSession();
+      closeBreakExpiredNotice();
     }
   };
 
@@ -271,27 +236,13 @@ export default function RoomPage() {
         isLoading={goalActionLoading}
       />
 
-      {/* 1-Hour Break Inactivity Expiry Notice Modal */}
-      <BreakExpiredModal
+      {/* Persistent Goal Updates Prompt Modal after 1-hour Break Expiry */}
+      <BreakGoalUpdateModal
         isOpen={isBreakExpiredNoticeOpen}
         onClose={closeBreakExpiredNotice}
-        onStartNewSession={handleStartNewSessionAfterBreak}
-        onProceedToGoals={handleProceedFromBreakNotice}
-        savedStudySeconds={savedStudySecondsOnBreakExpiry}
-        hasActiveGoals={hasPendingGoals}
-      />
-
-      {/* Goal Updates Prompt Modal after 1-hour Break Expiry */}
-      <BreakGoalUpdateModal
-        isOpen={isBreakGoalModalOpen}
-        onClose={() => {
-          setIsBreakGoalModalOpen(false);
-          setIsPendingStartNewAfterBreak(false);
-        }}
         onConfirmSaveGoals={handleSaveGoalsAfterBreak}
         activeGoal={activeGoal}
         savedStudySeconds={savedStudySecondsOnBreakExpiry}
-        isStartingNewSession={isPendingStartNewAfterBreak}
         isLoading={goalActionLoading || actionLoading}
       />
 

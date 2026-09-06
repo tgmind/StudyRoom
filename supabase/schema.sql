@@ -648,6 +648,7 @@ BEGIN
       last_resumed_at = NULL,
       break_started_at = NULL,
       active_study_seconds_snapshot = 0,
+      last_break_expired_study_seconds = CASE WHEN v_status = 'break' THEN v_total_study_seconds::INTEGER ELSE NULL END,
       last_offline_at = v_now
   WHERE id = v_user_id;
 
@@ -1478,6 +1479,90 @@ BEGIN
   WHERE id = v_user_id;
 
   RETURN jsonb_build_object('success', true);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- RPC to record goal completions after break expiry and attach them to the latest session
+CREATE OR REPLACE FUNCTION public.rpc_record_break_expiry_goals(p_completed_task_ids TEXT[] DEFAULT ARRAY[]::TEXT[])
+RETURNS JSONB AS $$
+DECLARE
+  v_user_id UUID := auth.uid();
+  v_session_id UUID;
+  v_active_goal_id UUID;
+  v_tasks JSONB;
+  v_updated_tasks JSONB;
+  v_elem JSONB;
+  v_task_id TEXT;
+  v_is_completed BOOLEAN;
+  v_task_text TEXT;
+  v_session_completed_tasks JSONB := '[]'::JSONB;
+  v_now TIMESTAMPTZ := NOW();
+BEGIN
+  IF v_user_id IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  -- Update daily goals if tasks were selected
+  IF p_completed_task_ids IS NOT NULL AND array_length(p_completed_task_ids, 1) > 0 THEN
+    SELECT id, tasks INTO v_active_goal_id, v_tasks
+    FROM public.daily_goals
+    WHERE user_id = v_user_id
+      AND (
+        expires_at > v_now
+        OR expires_at >= (v_now - INTERVAL '24 hours')
+      )
+    ORDER BY created_at DESC
+    LIMIT 1
+    FOR UPDATE;
+
+    IF v_active_goal_id IS NOT NULL AND v_tasks IS NOT NULL THEN
+      v_updated_tasks := '[]'::JSONB;
+      FOR v_elem IN SELECT * FROM jsonb_array_elements(v_tasks)
+      LOOP
+        v_task_id := v_elem->>'id';
+        v_is_completed := COALESCE((v_elem->>'completed')::BOOLEAN, false);
+        v_task_text := v_elem->>'task';
+
+        IF v_task_id = ANY(p_completed_task_ids) THEN
+          v_is_completed := true;
+          v_session_completed_tasks := v_session_completed_tasks || jsonb_build_object(
+            'id', v_task_id,
+            'task', v_task_text
+          );
+        END IF;
+
+        v_updated_tasks := v_updated_tasks || jsonb_build_object(
+          'id', v_task_id,
+          'task', v_task_text,
+          'completed', v_is_completed
+        );
+      END LOOP;
+
+      UPDATE public.daily_goals
+      SET tasks = v_updated_tasks
+      WHERE id = v_active_goal_id;
+    END IF;
+
+    -- Attach completed tasks to the latest study session
+    SELECT id INTO v_session_id
+    FROM public.study_sessions
+    WHERE user_id = v_user_id
+    ORDER BY end_time DESC
+    LIMIT 1;
+
+    IF v_session_id IS NOT NULL AND jsonb_array_length(v_session_completed_tasks) > 0 THEN
+      UPDATE public.study_sessions
+      SET completed_tasks = COALESCE(completed_tasks, '[]'::JSONB) || v_session_completed_tasks
+      WHERE id = v_session_id;
+    END IF;
+  END IF;
+
+  -- Clear break expiry snapshot on user profile
+  UPDATE public.users
+  SET last_break_expired_study_seconds = NULL
+  WHERE id = v_user_id;
+
+  RETURN jsonb_build_object('success', true, 'server_now', v_now);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 

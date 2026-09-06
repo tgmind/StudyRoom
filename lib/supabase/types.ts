@@ -188,6 +188,10 @@ export interface Database {
         Args: { p_completed_task_ids?: string[] };
         Returns: Json;
       };
+      rpc_record_break_expiry_goals: {
+        Args: { p_completed_task_ids?: string[] };
+        Returns: Json;
+      };
       rpc_create_daily_goal: {
         Args: { p_tasks: GoalTask[] };
         Returns: Json;

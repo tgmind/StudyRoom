@@ -24,6 +24,7 @@ import {
   ChevronDown,
   ChevronUp,
   Loader2,
+  XCircle,
 } from "lucide-react";
 
 export default function HistoryPage() {
@@ -31,6 +32,8 @@ export default function HistoryPage() {
   const {
     currentWeekSessions: rawCurrentWeekSessions,
     pastSessions: rawPastSessions,
+    currentWeekLapsedGoals,
+    pastWeeksLapsedGoals,
     totalSummary,
     loading,
     isPastLoading,
@@ -73,6 +76,22 @@ export default function HistoryPage() {
     currentWeekSessions[label].push(s);
   }
 
+  // Ordered unique date labels for current week (combines session dates and any lapsed goal dates)
+  const currentWeekDateLabels: string[] = [];
+  for (const s of rawCurrentWeekSessions) {
+    const label = formatSessionDate(s.start_time);
+    if (!currentWeekDateLabels.includes(label)) {
+      currentWeekDateLabels.push(label);
+    }
+  }
+  if (currentWeekLapsedGoals) {
+    for (const label of Object.keys(currentWeekLapsedGoals)) {
+      if (!currentWeekDateLabels.includes(label)) {
+        currentWeekDateLabels.push(label);
+      }
+    }
+  }
+
   // Group loaded past week sessions by date
   const pastWeekSessions: { [dateLabel: string]: StudySession[] } = {};
   for (const s of rawPastSessions) {
@@ -83,8 +102,21 @@ export default function HistoryPage() {
     pastWeekSessions[label].push(s);
   }
 
-  const currentWeekEntries = Object.entries(currentWeekSessions);
-  const pastWeekEntries = Object.entries(pastWeekSessions);
+  // Ordered unique date labels for past weeks (combines past session dates and past lapsed goal dates)
+  const pastWeekDateLabels: string[] = [];
+  for (const s of rawPastSessions) {
+    const label = formatSessionDate(s.start_time);
+    if (!pastWeekDateLabels.includes(label)) {
+      pastWeekDateLabels.push(label);
+    }
+  }
+  if (pastWeeksLapsedGoals) {
+    for (const label of Object.keys(pastWeeksLapsedGoals)) {
+      if (!pastWeekDateLabels.includes(label)) {
+        pastWeekDateLabels.push(label);
+      }
+    }
+  }
 
   const pastWeeksCount = totalSummary.pastWeeksCount;
   const pastWeeksMinutes = totalSummary.pastWeeksMinutes;
@@ -214,9 +246,11 @@ export default function HistoryPage() {
           </div>
         ) : (
           <div className="space-y-6">
-            {/* 1. Current Week Sessions (Occupies screen by default) */}
-            {currentWeekEntries.length > 0 ? (
-              currentWeekEntries.map(([dateLabel, dateSessions]) => {
+            {/* 1. Current Week Sessions & Lapsed Goals (Occupies screen by default) */}
+            {currentWeekDateLabels.length > 0 ? (
+              currentWeekDateLabels.map((dateLabel) => {
+                const dateSessions = currentWeekSessions[dateLabel] || [];
+                const dayLapsedGoals = currentWeekLapsedGoals[dateLabel] || [];
                 const dayMinutes = dateSessions.reduce((acc, s) => acc + s.duration_minutes, 0);
 
                 return (
@@ -286,11 +320,58 @@ export default function HistoryPage() {
                           </div>
                         );
                       })}
+
+                      {/* Matching UI Red Card for Lapsed Goals at the end of that day's tree */}
+                      {dayLapsedGoals.map((lapsedGoal) => (
+                        <div key={lapsedGoal.id} className="relative">
+                          {/* Timeline Node Dot (Matching Rose/Red) */}
+                          <div className="absolute -left-4 sm:-left-6 top-4 -translate-x-1/2 w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-rose-500 border-2 border-zinc-950 shadow-sm ring-2 ring-rose-500/20" />
+
+                          <div className="bg-zinc-900/80 border border-rose-500/30 hover:border-rose-500/50 rounded-xl p-3 sm:p-4 shadow-sm transition-all space-y-2">
+                            {/* Top Line: Red Lapsed Badge + Window Ended Time */}
+                            <div className="flex flex-wrap items-center justify-between gap-1.5 sm:gap-2">
+                              <div className="flex items-center space-x-2 sm:space-x-2.5 min-w-0">
+                                <span className="px-2 py-0.5 sm:px-2.5 sm:py-0.5 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-300 font-mono text-xs sm:text-sm font-black shadow-sm shrink-0 tabular-nums">
+                                  Lapsed Goals
+                                </span>
+
+                                <div className="text-xs sm:text-sm text-zinc-300 font-mono flex items-center space-x-1.5 whitespace-nowrap tabular-nums">
+                                  <Clock className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                                  <span>
+                                    Window ended {formatSessionTime(lapsedGoal.expires_at)}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <span className="text-[10px] sm:text-xs font-mono font-bold text-rose-400/90 bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20">
+                                {lapsedGoal.lapsedTasks.length} {lapsedGoal.lapsedTasks.length === 1 ? "task" : "tasks"} unfinished
+                              </span>
+                            </div>
+
+                            {/* Bottom Line: Lapsed Goal Chips */}
+                            <div className="pt-1.5 border-t border-rose-950/40 flex flex-wrap gap-1.5 items-center">
+                              <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-rose-400 mr-1 flex items-center space-x-1 shrink-0">
+                                <XCircle className="w-3 h-3 text-rose-400" />
+                                <span>Lapsed:</span>
+                              </span>
+                              {lapsedGoal.lapsedTasks.map((t) => (
+                                <span
+                                  key={t.id}
+                                  className="inline-flex items-center space-x-1 px-2 py-0.5 sm:px-2.5 sm:py-0.5 rounded-md bg-rose-500/10 border border-rose-500/20 text-rose-200 text-[11px] sm:text-xs font-medium max-w-full shadow-sm break-words"
+                                >
+                                  <span className="text-rose-400 font-bold shrink-0">✕</span>
+                                  <span className="break-words line-through decoration-rose-500/50">{t.task}</span>
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </section>
                 );
               })
-            ) : (pastWeeksCount > 0 || pastWeekEntries.length > 0) ? (
+            ) : (pastWeeksCount > 0 || pastWeekDateLabels.length > 0) ? (
               <div className="p-4 rounded-2xl bg-zinc-900/40 border border-zinc-800/70 text-center space-y-1">
                 <p className="text-xs font-bold text-zinc-300">
                   No study sessions recorded yet for this week
@@ -302,7 +383,7 @@ export default function HistoryPage() {
             ) : null}
 
             {/* 2. Past Weeks Collapsible Archive (Ultra-compact space-saving banner) */}
-            {(pastWeeksCount > 0 || pastWeekEntries.length > 0) && (
+            {(pastWeeksCount > 0 || pastWeekDateLabels.length > 0) && (
               <div ref={archiveTopRef} className="pt-2 border-t border-zinc-800/80 space-y-3">
                 <button
                   type="button"
@@ -349,7 +430,9 @@ export default function HistoryPage() {
 
                 {isPastWeeksExpanded && isPastLoaded && (
                   <div className="space-y-6 pt-1 animate-in fade-in slide-in-from-top-2 duration-200">
-                    {pastWeekEntries.map(([dateLabel, dateSessions]) => {
+                    {pastWeekDateLabels.map((dateLabel) => {
+                      const dateSessions = pastWeekSessions[dateLabel] || [];
+                      const dayLapsedGoals = pastWeeksLapsedGoals[dateLabel] || [];
                       const dayMinutes = dateSessions.reduce((acc, s) => acc + s.duration_minutes, 0);
 
                       return (
@@ -419,6 +502,53 @@ export default function HistoryPage() {
                                 </div>
                               );
                             })}
+
+                            {/* Matching UI Red Card for Lapsed Goals at the end of that day's tree */}
+                            {dayLapsedGoals.map((lapsedGoal) => (
+                              <div key={lapsedGoal.id} className="relative">
+                                {/* Timeline Node Dot (Matching Rose/Red) */}
+                                <div className="absolute -left-4 sm:-left-6 top-4 -translate-x-1/2 w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-rose-500 border-2 border-zinc-950 shadow-sm ring-2 ring-rose-500/20" />
+
+                                <div className="bg-zinc-900/80 border border-rose-500/30 hover:border-rose-500/50 rounded-xl p-3 sm:p-4 shadow-sm transition-all space-y-2">
+                                  {/* Top Line: Red Lapsed Badge + Window Ended Time */}
+                                  <div className="flex flex-wrap items-center justify-between gap-1.5 sm:gap-2">
+                                    <div className="flex items-center space-x-2 sm:space-x-2.5 min-w-0">
+                                      <span className="px-2 py-0.5 sm:px-2.5 sm:py-0.5 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-300 font-mono text-xs sm:text-sm font-black shadow-sm shrink-0 tabular-nums">
+                                        Lapsed Goals
+                                      </span>
+
+                                      <div className="text-xs sm:text-sm text-zinc-300 font-mono flex items-center space-x-1.5 whitespace-nowrap tabular-nums">
+                                        <Clock className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                                        <span>
+                                          Window ended {formatSessionTime(lapsedGoal.expires_at)}
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    <span className="text-[10px] sm:text-xs font-mono font-bold text-rose-400/90 bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20">
+                                      {lapsedGoal.lapsedTasks.length} {lapsedGoal.lapsedTasks.length === 1 ? "task" : "tasks"} unfinished
+                                    </span>
+                                  </div>
+
+                                  {/* Bottom Line: Lapsed Goal Chips */}
+                                  <div className="pt-1.5 border-t border-rose-950/40 flex flex-wrap gap-1.5 items-center">
+                                    <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-rose-400 mr-1 flex items-center space-x-1 shrink-0">
+                                      <XCircle className="w-3 h-3 text-rose-400" />
+                                      <span>Lapsed:</span>
+                                    </span>
+                                    {lapsedGoal.lapsedTasks.map((t) => (
+                                      <span
+                                        key={t.id}
+                                        className="inline-flex items-center space-x-1 px-2 py-0.5 sm:px-2.5 sm:py-0.5 rounded-md bg-rose-500/10 border border-rose-500/20 text-rose-200 text-[11px] sm:text-xs font-medium max-w-full shadow-sm break-words"
+                                      >
+                                        <span className="text-rose-400 font-bold shrink-0">✕</span>
+                                        <span className="break-words line-through decoration-rose-500/50">{t.task}</span>
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         </section>
                       );

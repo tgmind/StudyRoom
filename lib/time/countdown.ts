@@ -24,7 +24,7 @@ export function calculateGoalCountdown(
     };
   }
 
-  const diffSeconds = Math.max(0, Math.floor((expiresAt - current) / 1000));
+  const diffSeconds = Math.min(86400, Math.max(0, Math.floor((expiresAt - current) / 1000)));
   const hours = Math.floor(diffSeconds / 3600);
   const minutes = Math.floor((diffSeconds % 3600) / 60);
   const seconds = diffSeconds % 60;
