@@ -124,6 +124,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
       try {
         localStorage.removeItem("studyroom_admin_uid");
+        if (typeof document !== "undefined") {
+          document.cookie = "studyroom_onboarded=; path=/; max-age=0";
+        }
       } catch {
         // ignore
       }

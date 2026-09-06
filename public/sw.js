@@ -1,16 +1,12 @@
 // StudyRoom PWA Service Worker
-const CACHE_NAME = "studyroom-v8";
+const CACHE_NAME = "studyroom-v9";
 const OFFLINE_URL = "/offline.html";
 
+// Precache ONLY static, public assets guaranteed to return 200 OK without authentication
 const PRECACHE_ASSETS = [
-  "/room",
-  "/leaderboard",
-  "/streak",
-  "/goals",
-  "/history",
-  "/settings",
   "/offline.html",
   "/manifest.json",
+  "/favicon.ico",
   "/icons/icon-192x192.png",
   "/icons/icon-512x512.png",
   "/icons/icon-maskable.png",
@@ -21,7 +17,7 @@ self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(PRECACHE_ASSETS).catch((err) => {
-        console.warn("[SW] Precache non-critical asset fetch error:", err);
+        console.warn("[SW] Precache asset fetch error:", err);
       });
     })
   );

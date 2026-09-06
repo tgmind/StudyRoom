@@ -44,20 +44,42 @@ export async function updateSession(request: NextRequest) {
 
   if (user) {
     const userEmail = (user.email || "").toLowerCase();
-
-    // Query profile for display_name and is_admin flag
-    const { data: profile } = await supabase
-      .from("users")
-      .select("display_name, is_admin")
-      .eq("id", user.id)
-      .single();
-
-    const profileData = profile as { display_name?: string; is_admin?: boolean } | null;
-    const isAdmin =
+    const isKnownAdmin =
       userEmail === adminEmail ||
       userEmail === "sa@admin.tg" ||
-      user.id === adminUid ||
-      profileData?.is_admin === true;
+      user.id === adminUid;
+
+    const isOnboardedCookie = request.cookies.get("studyroom_onboarded")?.value === "1";
+    let isAdmin = isKnownAdmin;
+    let isProfileIncomplete = false;
+
+    // Fast path: if user is already confirmed onboarded and not accessing admin, bypass DB roundtrip
+    if (isOnboardedCookie && !isAdminRoute) {
+      isProfileIncomplete = false;
+    } else {
+      // Query profile for display_name and is_admin flag
+      const { data: profile } = await supabase
+        .from("users")
+        .select("display_name, is_admin")
+        .eq("id", user.id)
+        .single();
+
+      const profileData = profile as { display_name?: string; is_admin?: boolean } | null;
+      if (profileData?.is_admin === true) {
+        isAdmin = true;
+      }
+      isProfileIncomplete = !profileData || !profileData.display_name || profileData.display_name.trim() === "";
+
+      // Cache onboarded status in cookie for 1 year to eliminate DB queries on every tab navigation
+      if (!isProfileIncomplete && !isOnboardedCookie) {
+        supabaseResponse.cookies.set("studyroom_onboarded", "1", {
+          path: "/",
+          maxAge: 60 * 60 * 24 * 365,
+          sameSite: "lax",
+          httpOnly: true,
+        });
+      }
+    }
 
     const createRedirect = (targetPath: string) => {
       const url = request.nextUrl.clone();
@@ -83,8 +105,6 @@ export async function updateSession(request: NextRequest) {
     }
 
     // Regular user flow: check profile onboarding status
-    const isProfileIncomplete = !profileData || !profileData.display_name || profileData.display_name.trim() === "";
-
     if (isProfileIncomplete && !isOnboardingRoute) {
       return createRedirect("/onboarding");
     }
@@ -93,6 +113,10 @@ export async function updateSession(request: NextRequest) {
       return createRedirect("/room");
     }
   } else {
+    if (request.cookies.has("studyroom_onboarded")) {
+      supabaseResponse.cookies.delete("studyroom_onboarded");
+    }
+
     // Unauthenticated access attempt to protected, admin, or onboarding routes
     if (isProtectedRoute || isOnboardingRoute || isAdminRoute) {
       const url = request.nextUrl.clone();
