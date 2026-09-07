@@ -113,4 +113,69 @@ describe("useActiveSession Hook - Break Expiry & RPC Resilience", () => {
     expect(result.current.savedStudySecondsOnBreakExpiry).toBe(2400);
     expect(result.current.error).toBeNull();
   });
+
+  it("does NOT open break expired notice when user voluntarily stops session while on break", async () => {
+    // User has only been on break for 1 minute (not expired)
+    const oneMinuteAgo = new Date(Date.now() - 60 * 1000).toISOString();
+    const activeBreakProfile = {
+      id: "user-4",
+      display_name: "Test User 4",
+      current_status: "break",
+      session_start_time: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+      break_started_at: oneMinuteAgo,
+      active_study_seconds_snapshot: 1740,
+    } as unknown as UserProfile;
+
+    mockRpc.mockResolvedValue({
+      data: { success: true, server_now: new Date().toISOString() },
+      error: null,
+    });
+
+    const { result } = renderHook(() => useActiveSession(activeBreakProfile));
+
+    await act(async () => {
+      await result.current.finishSession(["task-1"]);
+    });
+
+    // Voluntary stop must NOT trigger the break expired notice
+    expect(result.current.isBreakExpiredNoticeOpen).toBe(false);
+    expect(mockRpc).toHaveBeenCalledWith("rpc_finish_session", {
+      p_completed_task_ids: ["task-1"],
+    });
+  });
+
+  it("closeBreakExpiredNotice closes modal, calls rpc_acknowledge_break_expiry, and prevents reopening", async () => {
+    const offlineProfileWithExpiry = {
+      id: "user-5",
+      display_name: "Test User 5",
+      current_status: "offline",
+      last_break_expired_study_seconds: 2500,
+    } as unknown as UserProfile;
+
+    mockRpc.mockResolvedValue({
+      data: { success: true },
+      error: null,
+    });
+
+    const { result, rerender } = renderHook(
+      ({ profile }) => useActiveSession(profile),
+      { initialProps: { profile: offlineProfileWithExpiry } }
+    );
+
+    await waitFor(() => {
+      expect(result.current.isBreakExpiredNoticeOpen).toBe(true);
+    });
+
+    // User chooses "End Without Goals" or saves goals -> closeBreakExpiredNotice is called
+    await act(async () => {
+      await result.current.closeBreakExpiredNotice();
+    });
+
+    expect(result.current.isBreakExpiredNoticeOpen).toBe(false);
+    expect(mockRpc).toHaveBeenCalledWith("rpc_acknowledge_break_expiry");
+
+    // Even if rerender happens with the same profile object, notice must stay closed
+    rerender({ profile: { ...offlineProfileWithExpiry } });
+    expect(result.current.isBreakExpiredNoticeOpen).toBe(false);
+  });
 });

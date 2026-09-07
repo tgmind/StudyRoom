@@ -648,7 +648,7 @@ BEGIN
       last_resumed_at = NULL,
       break_started_at = NULL,
       active_study_seconds_snapshot = 0,
-      last_break_expired_study_seconds = CASE WHEN v_status = 'break' THEN v_total_study_seconds::INTEGER ELSE NULL END,
+      last_break_expired_study_seconds = NULL,
       last_offline_at = v_now
   WHERE id = v_user_id;
 

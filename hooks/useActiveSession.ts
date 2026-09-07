@@ -21,6 +21,7 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
   const [isBreakExpiredNoticeOpen, setIsBreakExpiredNoticeOpen] = useState(false);
   const [savedStudySecondsOnBreakExpiry, setSavedStudySecondsOnBreakExpiry] = useState(0);
   const isAutoTerminatingRef = useRef(false);
+  const dismissedBreakExpiryRef = useRef(false);
 
   // 3-Hour Maximum Session Limit State
   const [isSessionLimitNoticeOpen, setIsSessionLimitNoticeOpen] = useState(false);
@@ -112,6 +113,7 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
             localStorage.removeItem("studyroom_active_break");
           } catch {}
         }
+        dismissedBreakExpiryRef.current = true;
 
         if (!res.success) {
           if (res.error?.toLowerCase().includes("no active session")) {
@@ -191,6 +193,7 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
           console.warn("Auto-termination on break expiry notice:", terminateErr);
         } finally {
           setError(null);
+          dismissedBreakExpiryRef.current = false;
           setIsBreakExpiredNoticeOpen(true);
           if (onStatusChangeRef.current) onStatusChangeRef.current("offline");
         }
@@ -316,6 +319,7 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
   // Check if an offline user had an expired break that ended while offline / in background
   useEffect(() => {
     if (typeof window === "undefined" || !profile || currentStatus === "break") return;
+    if (dismissedBreakExpiryRef.current) return;
 
     // 1. Authoritative Server Check: Profile indicates last session ended due to expired break
     if (
@@ -431,6 +435,7 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
   }, [currentStatus]);
 
   const startSession = async () => {
+    dismissedBreakExpiryRef.current = false;
     if (actionLoadingRef.current) return;
     actionLoadingRef.current = true;
     setActionLoading(true);
@@ -551,7 +556,8 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
     }
   };
 
-  const closeBreakExpiredNotice = () => {
+  const closeBreakExpiredNotice = useCallback(async () => {
+    dismissedBreakExpiryRef.current = true;
     setIsBreakExpiredNoticeOpen(false);
     if (typeof window !== "undefined") {
       try {
@@ -559,9 +565,17 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
       } catch {}
     }
     if (profile?.last_break_expired_study_seconds !== null && profile?.last_break_expired_study_seconds !== undefined) {
-      Promise.resolve((supabase as unknown as RpcCaller).rpc("rpc_acknowledge_break_expiry")).catch(() => {});
+      profile.last_break_expired_study_seconds = null;
+      try {
+        await (supabase as unknown as RpcCaller).rpc("rpc_acknowledge_break_expiry");
+      } catch (err) {
+        console.warn("rpc_acknowledge_break_expiry error:", err);
+      }
     }
-  };
+    if (onStatusChangeRef.current) {
+      onStatusChangeRef.current();
+    }
+  }, [supabase, profile]);
 
   const closeSessionLimitNotice = () => {
     setIsSessionLimitNoticeOpen(false);

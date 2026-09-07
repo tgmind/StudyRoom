@@ -50,6 +50,7 @@ export function BreakGoalUpdateModal({
       onClose();
     } catch (err) {
       console.error("Save goals error in modal:", err);
+      onClose();
     } finally {
       setIsSubmitting(false);
     }
@@ -64,6 +65,7 @@ export function BreakGoalUpdateModal({
       onClose();
     } catch (err) {
       console.error("Skip goals error in modal:", err);
+      onClose();
     } finally {
       setIsSubmitting(false);
     }

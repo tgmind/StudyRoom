@@ -160,12 +160,13 @@ export default function RoomPage() {
     try {
       if (completedTaskIds.length > 0) {
         await completeGoalTasks(completedTaskIds);
-        await Promise.allSettled([refreshGoals(), refreshProfile(), refreshMembers()]);
       }
+      await closeBreakExpiredNotice();
+      await Promise.allSettled([refreshGoals(), refreshProfile(), refreshMembers()]);
     } catch (err) {
       console.error("Failed to save goals after break:", err);
-    } finally {
-      closeBreakExpiredNotice();
+      await closeBreakExpiredNotice();
+      await Promise.allSettled([refreshGoals(), refreshProfile(), refreshMembers()]);
     }
   };
 
