@@ -9,6 +9,37 @@ export const DEFAULT_RELEASE_VERSION = "v1.0.0";
 export const DEFAULT_APK_DOWNLOAD_URL =
   "https://github.com/tgmind/StudyRoom/releases/download/v1.0.0/StudyRoom-v1.0.0.apk";
 
+/**
+ * Detects if the user is running inside an installed PWA or Native Android App.
+ */
+export function isRunningInAppOrPwa(): boolean {
+  if (typeof window === "undefined") return false;
+
+  // 1. Native Android App Bridge or custom User Agent
+  const hasAndroidBridge = Boolean(
+    (window as unknown as { AndroidBridge?: unknown }).AndroidBridge
+  );
+  const isAndroidAppUa = window.navigator.userAgent.includes("StudyRoom-Android");
+  if (hasAndroidBridge || isAndroidAppUa) return true;
+
+  // 2. Standalone / Fullscreen PWA display mode
+  if (typeof window.matchMedia === "function") {
+    if (
+      window.matchMedia("(display-mode: standalone)").matches ||
+      window.matchMedia("(display-mode: fullscreen)").matches ||
+      window.matchMedia("(display-mode: minimal-ui)").matches
+    ) {
+      return true;
+    }
+  }
+
+  // 3. iOS standalone mode or Android app referrer
+  if ((window.navigator as unknown as { standalone?: boolean }).standalone === true) return true;
+  if (typeof document !== "undefined" && document.referrer.startsWith("android-app://")) return true;
+
+  return false;
+}
+
 let cachedRelease: ReleaseInfo | null = null;
 
 /**

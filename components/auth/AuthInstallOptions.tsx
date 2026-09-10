@@ -6,6 +6,7 @@ import { Modal } from "@/components/ui/Modal";
 import {
   fetchLatestApkRelease,
   triggerApkDirectDownload,
+  isRunningInAppOrPwa,
   DEFAULT_APK_DOWNLOAD_URL,
   DEFAULT_RELEASE_VERSION,
 } from "@/lib/app/latestRelease";
@@ -29,13 +30,12 @@ export function AuthInstallOptions() {
   const [downloadSuccessToast, setDownloadSuccessToast] = useState(false);
 
   useEffect(() => {
-    // Detect standalone / already installed
+    // Detect standalone / already installed in PWA or Native App
     if (typeof window !== "undefined") {
-      const inStandalone =
-        (typeof window.matchMedia === "function" &&
-          window.matchMedia("(display-mode: standalone)").matches) ||
-        (window.navigator as unknown as { standalone?: boolean }).standalone === true;
-      setIsStandalone(inStandalone);
+      if (isRunningInAppOrPwa()) {
+        setIsStandalone(true);
+        return;
+      }
 
       const ua = window.navigator.userAgent.toLowerCase();
       setIsIos(/iphone|ipad|ipod/.test(ua));
@@ -94,6 +94,10 @@ export function AuthInstallOptions() {
       setDownloadSuccessToast(false);
     }, 7000);
   };
+
+  if (isStandalone) {
+    return null;
+  }
 
   return (
     <div className="pt-4 border-t border-zinc-900/90 space-y-3">

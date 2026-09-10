@@ -2,6 +2,28 @@ plugins {
     id("com.android.application")
 }
 
+def resolveKeystore() {
+    def candidates = [
+        System.getenv("KEYSTORE_PATH"),
+        project.findProperty("KEYSTORE_PATH") as String,
+        "../keystore/release.keystore",
+        "keystore/release.keystore",
+        "release.keystore"
+    ]
+
+    for (String path : candidates) {
+        if (path) {
+            File f = file(path)
+            if (f.exists()) return f
+            f = rootProject.file(path)
+            if (f.exists()) return f
+            f = file("../" + path)
+            if (f.exists()) return f
+        }
+    }
+    return null
+}
+
 android {
     namespace = "com.studyroom.app"
     compileSdk = 34
@@ -11,7 +33,7 @@ android {
         minSdk = 24
         targetSdk = 34
         versionCode = 1
-        versionName = "1.0.0"
+        versionName = project.findProperty("versionName") ?: "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -19,11 +41,15 @@ android {
 
     signingConfigs {
         release {
-            if (System.getenv("KEYSTORE_PATH") != null && file(System.getenv("KEYSTORE_PATH")).exists()) {
-                storeFile = file(System.getenv("KEYSTORE_PATH"))
-                storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "studyroom"
-                keyAlias = System.getenv("KEY_ALIAS") ?: "studyroom"
-                keyPassword = System.getenv("KEY_PASSWORD") ?: "studyroom"
+            def resolvedStoreFile = resolveKeystore()
+            if (resolvedStoreFile != null && resolvedStoreFile.exists()) {
+                storeFile = resolvedStoreFile
+                storePassword = System.getenv("KEYSTORE_PASSWORD") ?: (project.findProperty("KEYSTORE_PASSWORD") ?: "studyroom_secure_release_key")
+                keyAlias = System.getenv("KEY_ALIAS") ?: (project.findProperty("KEY_ALIAS") ?: "studyroom")
+                keyPassword = System.getenv("KEY_PASSWORD") ?: (project.findProperty("KEY_PASSWORD") ?: "studyroom_secure_release_key")
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
             }
         }
     }
@@ -35,8 +61,11 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            if (System.getenv("KEYSTORE_PATH") != null && file(System.getenv("KEYSTORE_PATH")).exists()) {
+            def resolvedStoreFile = resolveKeystore()
+            if (resolvedStoreFile != null && resolvedStoreFile.exists()) {
                 signingConfig = signingConfigs.getByName("release")
+            } else {
+                throw new GradleException("Release keystore could not be found! Please ensure KEYSTORE_PATH is set or android/keystore/release.keystore exists.")
             }
         }
         debug {

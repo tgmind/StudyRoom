@@ -124,6 +124,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
       try {
         localStorage.removeItem("studyroom_admin_uid");
+        localStorage.removeItem("pwa_banner_dismissed");
         if (typeof document !== "undefined") {
           document.cookie = "studyroom_onboarded=; path=/; max-age=0";
         }

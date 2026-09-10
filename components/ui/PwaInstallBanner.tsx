@@ -4,9 +4,11 @@ import React, { useState, useEffect } from "react";
 import { Download, X, Share, PlusSquare, Smartphone, Globe, Loader2, Check } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { usePathname } from "next/navigation";
+import { useAuthContext } from "@/components/auth/AuthProvider";
 import {
   fetchLatestApkRelease,
   triggerApkDirectDownload,
+  isRunningInAppOrPwa,
   DEFAULT_APK_DOWNLOAD_URL,
   DEFAULT_RELEASE_VERSION,
 } from "@/lib/app/latestRelease";
@@ -17,31 +19,33 @@ interface BeforeInstallPromptEvent extends Event {
 }
 
 export function PwaInstallBanner() {
+  const auth = useAuthContext();
+  const pathname = usePathname();
+
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showBanner, setShowBanner] = useState(false);
   const [showIosGuide, setShowIosGuide] = useState(false);
   const [isIos, setIsIos] = useState(false);
-  const [isStandalone, setIsStandalone] = useState(false);
+  const [isInstalledAppOrPwa, setIsInstalledAppOrPwa] = useState(false);
 
   const [apkUrl, setApkUrl] = useState(DEFAULT_APK_DOWNLOAD_URL);
   const [appVersion, setAppVersion] = useState(DEFAULT_RELEASE_VERSION);
   const [isDownloadingApk, setIsDownloadingApk] = useState(false);
   const [downloadSuccessToast, setDownloadSuccessToast] = useState(false);
 
-  const pathname = usePathname();
+  // STRICT RULE 1: Only display on Login or Signup pages
   const isAuthPage = pathname === "/login" || pathname === "/signup";
 
-  useEffect(() => {
-    // Check if running in standalone mode (already installed)
-    const inStandaloneMode =
-      (typeof window !== "undefined" &&
-        typeof window.matchMedia === "function" &&
-        window.matchMedia("(display-mode: standalone)").matches) ||
-      (typeof window !== "undefined" &&
-        (window.navigator as unknown as { standalone?: boolean }).standalone === true);
+  // STRICT RULE 2: Never display to logged in users
+  const isLoggedIn = Boolean(auth?.user);
 
-    if (inStandaloneMode) {
-      setIsStandalone(true);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    // STRICT RULE 3: Never display to users already in the PWA or native App
+    if (isRunningInAppOrPwa()) {
+      setIsInstalledAppOrPwa(true);
+      setShowBanner(false);
       return;
     }
 
@@ -50,25 +54,27 @@ export function PwaInstallBanner() {
     const isIosDevice = /iphone|ipad|ipod/.test(userAgent);
     setIsIos(isIosDevice);
 
-    // Check if user dismissed banner recently in localStorage
-    const dismissedTime = localStorage.getItem("pwa_banner_dismissed");
-    const isDismissed = dismissedTime && Date.now() - parseInt(dismissedTime, 10) < 86400000;
+    // STRICT RULE 4: Check if dismissed by the user. Once dismissed, stays hidden
+    // until the user explicitly signs out (which clears this key in AuthProvider).
+    const isDismissed = localStorage.getItem("pwa_banner_dismissed") === "true";
 
     // Listen for beforeinstallprompt event (Android / Chromium)
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e as BeforeInstallPromptEvent);
 
-      if (!isDismissed) {
+      if (isAuthPage && !isLoggedIn && !isDismissed) {
         setShowBanner(true);
       }
     };
 
     window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
 
-    // On auth pages or iOS Safari, show the install options banner if not dismissed
-    if (!isDismissed && (isAuthPage || isIosDevice)) {
+    // Show banner on auth pages for unauthenticated visitors if not dismissed
+    if (isAuthPage && !isLoggedIn && !isDismissed) {
       setShowBanner(true);
+    } else {
+      setShowBanner(false);
     }
 
     // Fetch dynamic latest release from GitHub API
@@ -80,7 +86,7 @@ export function PwaInstallBanner() {
     return () => {
       window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
     };
-  }, [isAuthPage]);
+  }, [isAuthPage, isLoggedIn]);
 
   const handlePwaInstallClick = async () => {
     if (deferredPrompt) {
@@ -93,7 +99,6 @@ export function PwaInstallBanner() {
     } else if (isIos) {
       setShowIosGuide(true);
     } else {
-      // Fallback if prompt not available: guide user or dismiss
       setShowIosGuide(false);
     }
   };
@@ -116,19 +121,18 @@ export function PwaInstallBanner() {
 
   const handleDismiss = () => {
     setShowBanner(false);
-    localStorage.setItem("pwa_banner_dismissed", Date.now().toString());
+    localStorage.setItem("pwa_banner_dismissed", "true");
   };
 
-  if (isStandalone || !showBanner) return null;
+  // If already installed in PWA or App, or user is logged in, or not on auth pages, never render
+  if (isInstalledAppOrPwa || isLoggedIn || !isAuthPage || !showBanner) {
+    return null;
+  }
 
   return (
     <>
-      {/* Floating Bottom Dual Install Banner */}
-      <div
-        className={`fixed ${
-          isAuthPage ? "bottom-4 sm:bottom-6" : "bottom-20"
-        } left-3.5 right-3.5 z-50 max-w-md mx-auto p-3.5 bg-zinc-950/95 border border-zinc-700/80 rounded-2xl shadow-2xl backdrop-blur-xl animate-in slide-in-from-bottom duration-300 space-y-3`}
-      >
+      {/* Floating Bottom Dual Install Banner (Strictly on Login & Signup) */}
+      <div className="fixed bottom-4 sm:bottom-6 left-3.5 right-3.5 z-50 max-w-md mx-auto p-3.5 bg-zinc-950/95 border border-zinc-700/80 rounded-2xl shadow-2xl backdrop-blur-xl animate-in slide-in-from-bottom duration-300 space-y-3">
         <div className="flex items-start justify-between space-x-2">
           <div className="flex items-center space-x-2.5 min-w-0 flex-1">
             <div className="w-8 h-8 rounded-xl bg-zinc-900 border border-zinc-700 flex items-center justify-center text-zinc-100 shrink-0 shadow-sm">

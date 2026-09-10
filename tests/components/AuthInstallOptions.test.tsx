@@ -5,16 +5,32 @@ import { AuthInstallOptions } from "@/components/auth/AuthInstallOptions";
 import { PwaInstallBanner } from "@/components/ui/PwaInstallBanner";
 import * as latestReleaseModule from "@/lib/app/latestRelease";
 
+let mockPathname = "/login";
+let mockUser: { id: string } | null = null;
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
-  usePathname: () => "/login",
+  usePathname: () => mockPathname,
+}));
+
+vi.mock("@/components/auth/AuthProvider", () => ({
+  useAuthContext: () => ({
+    user: mockUser,
+    profile: null,
+    loading: false,
+    error: null,
+    refreshProfile: vi.fn(),
+    signOut: vi.fn(),
+  }),
 }));
 
 describe("AuthInstallOptions and Dual Installation Flow", () => {
   let mockStorage: Record<string, string> = {};
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.restoreAllMocks();
+    mockPathname = "/login";
+    mockUser = null;
     mockStorage = {};
     const storageMock = {
       getItem: (key: string) => mockStorage[key] || null,
@@ -47,7 +63,7 @@ describe("AuthInstallOptions and Dual Installation Flow", () => {
     });
   });
 
-  it("renders both Web PWA and Android App options", async () => {
+  it("renders both Web PWA and Android App options for unauthenticated visitor", async () => {
     render(<AuthInstallOptions />);
 
     expect(screen.getByText("Web PWA")).toBeInTheDocument();
@@ -98,12 +114,12 @@ describe("AuthInstallOptions and Dual Installation Flow", () => {
     expect(promptMock).toHaveBeenCalledTimes(1);
   });
 
-  it("renders dual-choice floating PwaInstallBanner on auth pages", async () => {
+  it("renders dual-choice floating PwaInstallBanner on auth pages when logged out", async () => {
     const triggerSpy = vi.spyOn(latestReleaseModule, "triggerApkDirectDownload").mockImplementation(() => {});
 
     render(<PwaInstallBanner />);
 
-    // On /login, banner is shown automatically
+    // On /login for unauthenticated visitor, banner is shown automatically
     expect(screen.getByText("Install StudyRoom App")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /install pwa/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /get apk/i })).toBeInTheDocument();
@@ -111,5 +127,41 @@ describe("AuthInstallOptions and Dual Installation Flow", () => {
     // Clicking Get APK triggers direct download
     fireEvent.click(screen.getByRole("button", { name: /get apk/i }));
     expect(triggerSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("strictly suppresses PwaInstallBanner when user is logged in", async () => {
+    mockUser = { id: "user-abc-123" };
+
+    render(<PwaInstallBanner />);
+
+    expect(screen.queryByText("Install StudyRoom App")).not.toBeInTheDocument();
+  });
+
+  it("strictly suppresses PwaInstallBanner on internal app pages like /settings or /room", async () => {
+    mockPathname = "/settings";
+
+    render(<PwaInstallBanner />);
+
+    expect(screen.queryByText("Install StudyRoom App")).not.toBeInTheDocument();
+  });
+
+  it("strictly suppresses banner and options when already running in PWA or App", async () => {
+    vi.spyOn(latestReleaseModule, "isRunningInAppOrPwa").mockReturnValue(true);
+
+    const { container: bannerContainer } = render(<PwaInstallBanner />);
+    expect(bannerContainer.firstChild).toBeNull();
+
+    const { container: optionsContainer } = render(<AuthInstallOptions />);
+    expect(optionsContainer.firstChild).toBeNull();
+  });
+
+  it("persists dismissal in localStorage when closed with X button", async () => {
+    render(<PwaInstallBanner />);
+
+    const dismissBtn = screen.getByRole("button", { name: /dismiss banner/i });
+    fireEvent.click(dismissBtn);
+
+    expect(mockStorage["pwa_banner_dismissed"]).toBe("true");
+    expect(screen.queryByText("Install StudyRoom App")).not.toBeInTheDocument();
   });
 });

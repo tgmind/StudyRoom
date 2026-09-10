@@ -43,9 +43,9 @@ export default function RootLayout({
       <body className="h-full min-h-screen flex flex-col antialiased bg-[#090a0f] text-foreground selection:bg-zinc-800 selection:text-zinc-100">
         <PwaRegister />
         <OfflineBanner />
-        <PwaInstallBanner />
         <AuthProvider>
           <LaunchAnnouncementModal />
+          <PwaInstallBanner />
           <div className="flex-1 w-full flex flex-col">
             {children}
           </div>
