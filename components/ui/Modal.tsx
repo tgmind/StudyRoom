@@ -107,7 +107,12 @@ export function Modal({
         </div>
 
         {/* Modal Content */}
-        <div className="p-4 sm:p-5 overflow-y-auto flex-1">{children}</div>
+        <div
+          className="p-4 sm:p-5 overflow-y-auto flex-1 overscroll-contain touch-pan-y"
+          style={{ WebkitOverflowScrolling: "touch" }}
+        >
+          {children}
+        </div>
       </div>
     </div>
   );

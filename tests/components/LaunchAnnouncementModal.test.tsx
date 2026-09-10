@@ -60,8 +60,8 @@ describe("StudyRoom UPDATE Modal Component", () => {
       vi.advanceTimersByTime(2000);
     });
 
-    expect(screen.queryByText("StudyRoom UPDATE")).toBeNull();
-    expect(screen.queryByText("Understood")).toBeNull();
+    expect(screen.queryByText("StudyRoom App Launch")).toBeNull();
+    expect(screen.queryByText(/Download Native App/i)).toBeNull();
   });
 
   it("strictly suppresses rendering on /signup route", () => {
@@ -73,8 +73,8 @@ describe("StudyRoom UPDATE Modal Component", () => {
       vi.advanceTimersByTime(2000);
     });
 
-    expect(screen.queryByText("StudyRoom UPDATE")).toBeNull();
-    expect(screen.queryByText("Understood")).toBeNull();
+    expect(screen.queryByText("StudyRoom App Launch")).toBeNull();
+    expect(screen.queryByText(/Download Native App/i)).toBeNull();
   });
 
   it("strictly suppresses rendering when user is not authenticated", () => {
@@ -90,8 +90,8 @@ describe("StudyRoom UPDATE Modal Component", () => {
       vi.advanceTimersByTime(2000);
     });
 
-    expect(screen.queryByText("StudyRoom UPDATE")).toBeNull();
-    expect(screen.queryByText("Understood")).toBeNull();
+    expect(screen.queryByText("StudyRoom App Launch")).toBeNull();
+    expect(screen.queryByText(/Download Native App/i)).toBeNull();
   });
 
   it("does not render when user has already acknowledged the update notice", () => {
@@ -103,11 +103,11 @@ describe("StudyRoom UPDATE Modal Component", () => {
       vi.advanceTimersByTime(1000);
     });
 
-    expect(screen.queryByText("StudyRoom UPDATE")).toBeNull();
-    expect(screen.queryByText("Understood")).toBeNull();
+    expect(screen.queryByText("StudyRoom App Launch")).toBeNull();
+    expect(screen.queryByText(/Download Native App/i)).toBeNull();
   });
 
-  it("renders update notice for authenticated user on /room and saves acknowledgment on clicking Understood", () => {
+  it("renders stable app announcement on /room and saves acknowledgment when dismissed", () => {
     mockPathname = "/room";
     mockAuthContext = {
       user: { id: "user-test-123" },
@@ -120,18 +120,16 @@ describe("StudyRoom UPDATE Modal Component", () => {
       vi.advanceTimersByTime(1000);
     });
 
-    expect(screen.getAllByText("StudyRoom UPDATE").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("Fairer Leaderboard: Dual-Pillar Goal Index")).toBeDefined();
-    expect(screen.getByText(/Setting 1 goal can no longer beat students/i)).toBeDefined();
-    expect(screen.getByText("3-Hour Maximum Session Limit")).toBeDefined();
-    expect(screen.getByText(/limited to a maximum of/i)).toBeDefined();
-    expect(screen.getByText(/Brand-New "Streak" Heatmap Section/i)).toBeDefined();
-    expect(screen.getByText(/Study for at least/i)).toBeDefined();
+    expect(screen.getAllByText("StudyRoom App Launch").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Switch to the Native Android App")).toBeDefined();
+    expect(screen.getByText("0ms Instant Launch & Zero Freezes")).toBeDefined();
+    expect(screen.getByText("Live Notification Chronometer")).toBeDefined();
+    expect(screen.getByText("Rock-Solid Background Sync")).toBeDefined();
 
-    const understoodBtn = screen.getByRole("button", { name: /understood/i });
-    expect(understoodBtn).toBeDefined();
+    const continueBtn = screen.getByRole("button", { name: /continue on webapp for now/i });
+    expect(continueBtn).toBeDefined();
 
-    fireEvent.click(understoodBtn);
+    fireEvent.click(continueBtn);
 
     // Verify localStorage keys (global + per-user) are saved
     expect(mockStorage[LAUNCH_UPDATE_STORAGE_KEY]).toBe("true");
