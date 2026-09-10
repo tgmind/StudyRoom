@@ -170,6 +170,9 @@ public class MainActivity extends AppCompatActivity {
         swipeRefreshLayout.setOnRefreshListener(() -> {
             webView.reload();
         });
+        // Disable touch interception so inner Web scroll containers (modals, dialogs, lists)
+        // can scroll back up smoothly without SwipeRefreshLayout stealing downward swipe gestures
+        swipeRefreshLayout.setEnabled(false);
     }
 
     @SuppressLint({"SetJavaScriptEnabled", "JavascriptInterface"})

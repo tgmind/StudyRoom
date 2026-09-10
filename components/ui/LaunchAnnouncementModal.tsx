@@ -144,7 +144,7 @@ export function LaunchAnnouncementModal() {
       subtitle="Official Native Android App is now available for all students"
     >
       {/* Single, non-nested fluid scroll container */}
-      <div className="space-y-3.5 sm:space-y-4 pt-0.5">
+      <div className="space-y-3.5 sm:space-y-4 pt-0.5 pb-8">
         {/* Glowing Ambient Hero Header Card */}
         <div className="relative overflow-hidden rounded-2xl p-4 sm:p-5 bg-gradient-to-br from-violet-950/80 via-zinc-900 to-emerald-950/40 border border-violet-500/35 shadow-[0_8px_30px_rgba(139,92,246,0.15)] space-y-2.5">
           {/* Ambient blur rings */}
@@ -277,7 +277,7 @@ export function LaunchAnnouncementModal() {
                 type="button"
                 onClick={handleDownloadApp}
                 disabled={downloadState === "downloading"}
-                className="w-full font-black text-xs sm:text-sm py-3.5 px-4 rounded-xl bg-gradient-to-r from-violet-600 via-indigo-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white shadow-lg shadow-violet-500/25 flex items-center justify-center space-x-2 touch-manipulation active:scale-[0.98] transition-all disabled:opacity-75"
+                className="w-full font-black text-xs sm:text-sm py-3.5 px-4 rounded-xl bg-gradient-to-r from-violet-600 via-indigo-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white shadow-lg shadow-violet-500/25 flex items-center justify-center space-x-2 active:scale-[0.98] transition-all disabled:opacity-75"
               >
                 {downloadState === "downloading" ? (
                   <>
@@ -315,7 +315,7 @@ export function LaunchAnnouncementModal() {
               variant="primary"
               size="lg"
               onClick={handleUnderstood}
-              className="w-full font-black text-xs sm:text-sm py-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-500/25 flex items-center justify-center space-x-2 touch-manipulation active:scale-95 transition-all"
+              className="w-full font-black text-xs sm:text-sm py-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-500/25 flex items-center justify-center space-x-2 active:scale-95 transition-all"
             >
               <span>Understood • Continue to Room</span>
               <ArrowRight className="w-4 h-4" />
