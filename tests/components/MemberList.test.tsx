@@ -128,4 +128,130 @@ describe("MemberList Component & Live Global View", () => {
     // Zoya (10m) -> Pallavi (1h) -> Aditya (12h)
     expect(memberCardNames).toEqual(["Zoya", "Pallavi", "Aditya"]);
   });
+
+  it("calls onRivalryWin once with stable 15m bucket ID when a rivalry dissolves and suppresses duplicates", () => {
+    const handleRivalryWin = vi.fn();
+
+    const rival1: UserProfile = {
+      id: "rival-1",
+      display_name: "Rival One",
+      avatar_url: null,
+      current_status: "studying",
+      session_start_time: new Date(Date.now() - 10 * 1000).toISOString(),
+      weekly_study_seconds: 20000,
+      current_focus: null,
+      has_achiever_badge: false,
+      created_at: new Date().toISOString(),
+    };
+
+    const rival2: UserProfile = {
+      id: "rival-2",
+      display_name: "Rival Two",
+      avatar_url: null,
+      current_status: "studying",
+      session_start_time: new Date(Date.now() - 10 * 1000).toISOString(),
+      weekly_study_seconds: 20100, // 100s gap, within 600s threshold
+      current_focus: null,
+      has_achiever_badge: false,
+      created_at: new Date().toISOString(),
+    };
+
+    // 1. Initial render with active rivalry (currentUserId is rival-2, the leader)
+    const { rerender } = render(
+      <MemberList
+        members={[rival1, rival2]}
+        currentUserId="rival-2"
+        onRivalryWin={handleRivalryWin}
+      />
+    );
+
+    // Initial render: rivalry is active, no win declared yet
+    expect(handleRivalryWin).not.toHaveBeenCalled();
+
+    // 2. Rivalry dissolves: rival2 pulls ahead by 1000s (> 600s threshold)
+    const rival2Ahead: UserProfile = {
+      ...rival2,
+      weekly_study_seconds: 21500, // 1500s gap, dissolves rivalry
+    };
+
+    rerender(
+      <MemberList
+        members={[rival1, rival2Ahead]}
+        currentUserId="rival-2"
+        onRivalryWin={handleRivalryWin}
+      />
+    );
+
+    // onRivalryWin should have been called once for rival-2 winning
+    expect(handleRivalryWin).toHaveBeenCalledTimes(1);
+    const winEvent = handleRivalryWin.mock.calls[0][0];
+    expect(winEvent.winnerName).toBe("Rival Two");
+    expect(winEvent.loserName).toBe("Rival One");
+    expect(winEvent.id).toMatch(/^win-rival-2-rival-1-\d+$/);
+
+    // 3. Duplicate re-renders or updates within 15-minute cooldown should NOT re-trigger
+    rerender(
+      <MemberList
+        members={[rival1, rival2Ahead]}
+        currentUserId="rival-2"
+        onRivalryWin={handleRivalryWin}
+      />
+    );
+    expect(handleRivalryWin).toHaveBeenCalledTimes(1);
+  });
+
+  it("suppresses onRivalryWin when current user is not the winner and the winner is active (Designated Broadcaster)", () => {
+    const handleRivalryWin = vi.fn();
+
+    const rival1: UserProfile = {
+      id: "rival-1",
+      display_name: "Rival One",
+      avatar_url: null,
+      current_status: "studying",
+      session_start_time: new Date(Date.now() - 10 * 1000).toISOString(),
+      weekly_study_seconds: 20000,
+      current_focus: null,
+      has_achiever_badge: false,
+      created_at: new Date().toISOString(),
+    };
+
+    const rival2: UserProfile = {
+      id: "rival-2",
+      display_name: "Rival Two",
+      avatar_url: null,
+      current_status: "studying",
+      session_start_time: new Date(Date.now() - 10 * 1000).toISOString(),
+      weekly_study_seconds: 20100, // 100s gap
+      current_focus: null,
+      has_achiever_badge: false,
+      created_at: new Date().toISOString(),
+    };
+
+    // Current user is rival-1 (the loser/non-winner peer). Both rival-1 and rival-2 are active.
+    const { rerender } = render(
+      <MemberList
+        members={[rival1, rival2]}
+        currentUserId="rival-1"
+        onRivalryWin={handleRivalryWin}
+      />
+    );
+
+    // Rivalry dissolves
+    const rival2Ahead: UserProfile = {
+      ...rival2,
+      weekly_study_seconds: 21500,
+    };
+
+    rerender(
+      <MemberList
+        members={[rival1, rival2Ahead]}
+        currentUserId="rival-1"
+        onRivalryWin={handleRivalryWin}
+      />
+    );
+
+    // Because rival-2 (winner) is active in the room, rival-1's client does NOT broadcast (avoids storm)
+    expect(handleRivalryWin).not.toHaveBeenCalled();
+  });
 });
+

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, memo } from "react";
+import React, { useState, useEffect, useRef, memo } from "react";
 import { RivalryWinEvent } from "@/lib/time/rivalry";
 import { Trophy, X, Sparkles, Swords, Crown, Flame } from "lucide-react";
 import { triggerHapticFeedback } from "@/lib/utils/haptics";
@@ -36,6 +36,9 @@ export const RivalryWinCelebration = memo(function RivalryWinCelebration({
   const [remainingMinutes, setRemainingMinutes] = useState(15);
   const [progressPercent, setProgressPercent] = useState(100);
 
+  // Track event IDs and winner-loser pairs that have already displayed full-screen modal
+  const celebratedIdsRef = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     if (!winEvent) return;
 
@@ -47,17 +50,41 @@ export const RivalryWinCelebration = memo(function RivalryWinCelebration({
       return;
     }
 
-    // Check if dismissed in localStorage
+    // Check if dismissed in localStorage (both ID and pair key)
     try {
       const dismissedKey = `studyroom_win_dismissed_${winEvent.id}`;
+      const pairDismissedKey = `studyroom_win_dismissed_pair_${winEvent.winnerName}_${winEvent.loserName}`;
       if (localStorage.getItem(dismissedKey)) {
+        setIsDismissed(true);
+        return;
+      }
+      const pairVal = localStorage.getItem(pairDismissedKey);
+      if (pairVal && now - parseInt(pairVal, 10) < PERSISTENCE_DURATION_MS) {
         setIsDismissed(true);
         return;
       }
     } catch {}
 
-    // If event is fresh (less than 10 seconds old), show full celebration popup with haptic feedback
-    if (elapsed < 10000) {
+    // Check if full celebration modal has already run for this event or pair
+    const pairKey = `${winEvent.winnerName}_${winEvent.loserName}`;
+    let sessionCelebrated = false;
+    try {
+      sessionCelebrated = Boolean(sessionStorage.getItem(`studyroom_win_celebrated_${winEvent.id}`));
+    } catch {}
+
+    const alreadyCelebrated =
+      celebratedIdsRef.current.has(winEvent.id) ||
+      celebratedIdsRef.current.has(pairKey) ||
+      sessionCelebrated;
+
+    // If event is fresh (< 10s old) and hasn't been celebrated yet, show celebration modal once with haptics
+    if (!alreadyCelebrated && elapsed < 10000) {
+      celebratedIdsRef.current.add(winEvent.id);
+      celebratedIdsRef.current.add(pairKey);
+      try {
+        sessionStorage.setItem(`studyroom_win_celebrated_${winEvent.id}`, "true");
+      } catch {}
+
       setIsPopupVisible(true);
       triggerHapticFeedback([30, 40, 50]);
       const timer = setTimeout(() => {
@@ -65,6 +92,7 @@ export const RivalryWinCelebration = memo(function RivalryWinCelebration({
       }, POPUP_AUTO_MINIMIZE_MS);
       return () => clearTimeout(timer);
     } else {
+      // Keep popup closed, compact banner will display
       setIsPopupVisible(false);
     }
   }, [winEvent]);
@@ -103,6 +131,9 @@ export const RivalryWinCelebration = memo(function RivalryWinCelebration({
     triggerHapticFeedback(15);
     try {
       localStorage.setItem(`studyroom_win_dismissed_${winEvent.id}`, "true");
+      const pairDismissedKey = `studyroom_win_dismissed_pair_${winEvent.winnerName}_${winEvent.loserName}`;
+      localStorage.setItem(pairDismissedKey, Date.now().toString());
+      localStorage.removeItem("studyroom_active_rivalry_win");
     } catch {}
     if (onDismiss) onDismiss();
   };

@@ -228,9 +228,12 @@ export const MemberList = memo(function MemberList({
 
   // Track resolved rivalries to trigger celebratory win announcements
   const prevRivalriesRef = useRef<RivalryState[]>([]);
+  const recentDeclaredWinsRef = useRef<Map<string, number>>(new Map());
+
   useEffect(() => {
     const prevRivalries = prevRivalriesRef.current;
     if (prevRivalries.length > 0) {
+      const nowMs = Date.now();
       for (const prev of prevRivalries) {
         const stillActive = rivalries.some((r) => r.id === prev.id);
         if (!stillActive && prev.rivalMembers.length >= 2) {
@@ -245,12 +248,42 @@ export const MemberList = memo(function MemberList({
           if (stillRivalsTogether) continue;
 
           if (winner?.display_name && loser?.display_name) {
-            const winMinute = Math.floor(Date.now() / 60000);
+            const pairKey = `${winner.id}_${loser.id}`;
+            const lastDeclared = recentDeclaredWinsRef.current.get(pairKey) || 0;
+            // Strict 15-minute cooldown to prevent repeating celebratory announcements for the same pair
+            if (nowMs - lastDeclared < 15 * 60 * 1000) {
+              continue;
+            }
+
+            // Designated Broadcaster check to avoid peer broadcast storm:
+            // 1. If current user is the winner, they broadcast.
+            // 2. If current user is not the winner, but the winner is online in activeMembers, let the winner broadcast.
+            // 3. If the winner is offline, let the first active member coordinate.
+            if (currentUserId) {
+              const isWinner = currentUserId === winner.id;
+              const isWinnerActive = activeMembers.some((m) => m.id === winner.id);
+              if (!isWinner && isWinnerActive) {
+                // Winner is active; defer to winner to broadcast
+                continue;
+              }
+              if (!isWinner && !isWinnerActive) {
+                const firstActiveId = sortedActiveMembers[0]?.id;
+                if (firstActiveId && currentUserId !== firstActiveId) {
+                  // Defer to the first active peer coordinator
+                  continue;
+                }
+              }
+            }
+
+            recentDeclaredWinsRef.current.set(pairKey, nowMs);
+
+            // 15-minute stable time bucket ID ensures all peers produce the exact same ID for deduplication
+            const timeBucket = Math.floor(nowMs / (15 * 60 * 1000));
             const winEvent: RivalryWinEvent = {
-              id: `win-${winner.id}-${loser.id}-${winMinute}`,
+              id: `win-${winner.id}-${loser.id}-${timeBucket}`,
               winnerName: winner.display_name,
               loserName: loser.display_name,
-              timestamp: Date.now(),
+              timestamp: nowMs,
             };
             if (onRivalryWin) {
               onRivalryWin(winEvent);
@@ -260,7 +293,7 @@ export const MemberList = memo(function MemberList({
       }
     }
     prevRivalriesRef.current = rivalries;
-  }, [rivalries, onRivalryWin]);
+  }, [rivalries, onRivalryWin, currentUserId, activeMembers, sortedActiveMembers]);
 
   // Refs for tracking DOM card elements and their bounding rectangles across re-orders
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
