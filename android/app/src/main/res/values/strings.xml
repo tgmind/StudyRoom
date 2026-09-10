@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">StudyRoom</string>
+    <string name="default_web_url">https://studyalive.netlify.app</string>
+    <string name="notification_channel_name">Live Study Timer</string>
+    <string name="notification_channel_desc">Shows live ticking timer during active study sessions and breaks</string>
+    <string name="open_room">Open Room</string>
+    <string name="exit_prompt">Press back again to exit StudyRoom</string>
+    <string name="offline_title">Offline</string>
+    <string name="offline_desc">Unable to connect to StudyRoom. Please check your internet connection.</string>
+    <string name="retry_button">Retry Connection</string>
+</resources>

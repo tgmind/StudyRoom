@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="brand_background">#090A0F</color>
+    <color name="brand_surface">#18181B</color>
+    <color name="brand_violet">#8B5CF6</color>
+    <color name="brand_amber">#F59E0B</color>
+    <color name="text_white">#FFFFFF</color>
+    <color name="text_muted">#A1A1AA</color>
+</resources>
