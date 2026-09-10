@@ -77,12 +77,8 @@ describe("StudyRoom UPDATE Modal Component", () => {
     expect(screen.queryByText(/Download Native App/i)).toBeNull();
   });
 
-  it("strictly suppresses rendering when user is not authenticated", () => {
-    mockPathname = "/room";
-    mockAuthContext = {
-      user: null,
-      loading: false,
-    };
+  it("strictly suppresses rendering on /onboarding route", () => {
+    mockPathname = "/onboarding";
 
     render(<LaunchAnnouncementModal />);
 
@@ -134,5 +130,22 @@ describe("StudyRoom UPDATE Modal Component", () => {
     // Verify localStorage keys (global + per-user) are saved
     expect(mockStorage[LAUNCH_UPDATE_STORAGE_KEY]).toBe("true");
     expect(mockStorage[`${LAUNCH_UPDATE_STORAGE_KEY}_user-test-123`]).toBe("true");
+  });
+
+  it("renders stable app announcement on /room even during initial page load while auth is loading", () => {
+    mockPathname = "/room";
+    mockAuthContext = {
+      user: null,
+      loading: true,
+    };
+
+    render(<LaunchAnnouncementModal />);
+
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+
+    expect(screen.getAllByText("StudyRoom App Launch").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Switch to the Native Android App")).toBeDefined();
   });
 });

@@ -27,7 +27,7 @@ import {
   getAppEnvironmentInfo,
 } from "@/lib/app/latestRelease";
 
-export const LAUNCH_UPDATE_STORAGE_KEY = "studyroom_announcement_stable_app_v1_0_3";
+export const LAUNCH_UPDATE_STORAGE_KEY = "studyroom_stable_app_v1_0_3_announcement";
 
 export function LaunchAnnouncementModal() {
   const [isOpen, setIsOpen] = useState(false);
@@ -62,14 +62,6 @@ export function LaunchAnnouncementModal() {
       return;
     }
 
-    // 2. Only show to users who are authenticated (or open the app while already logged in)
-    if (auth) {
-      if (auth.loading || !auth.user) {
-        setIsOpen(false);
-        return;
-      }
-    }
-
     // Detect environment & fetch release info
     setEnvInfo(getAppEnvironmentInfo());
     fetchLatestApkRelease()
@@ -79,13 +71,13 @@ export function LaunchAnnouncementModal() {
       .catch(() => {});
 
     try {
-      // 3. Check if user already acknowledged this update notice globally on this device
+      // 2. Check if user already acknowledged this update notice globally on this device
       const alreadySeen = localStorage.getItem(LAUNCH_UPDATE_STORAGE_KEY);
       if (alreadySeen === "true") {
         return;
       }
 
-      // 4. Also check per-user acknowledgment key
+      // 3. Also check per-user acknowledgment key if user ID is present
       const userId = auth?.user?.id;
       if (userId) {
         const userSeen = localStorage.getItem(`${LAUNCH_UPDATE_STORAGE_KEY}_${userId}`);
@@ -97,12 +89,12 @@ export function LaunchAnnouncementModal() {
       // Small delay to allow initial page layout to paint smoothly
       const timer = setTimeout(() => {
         setIsOpen(true);
-      }, 500);
+      }, 350);
       return () => clearTimeout(timer);
     } catch {
       // Fallback silently if localStorage is disabled or restricted
     }
-  }, [isExcludedRoute, auth?.loading, auth?.user?.id]);
+  }, [isExcludedRoute, auth?.user?.id]);
 
   const handleUnderstood = () => {
     try {
@@ -139,11 +131,8 @@ export function LaunchAnnouncementModal() {
     }, 3000);
   };
 
-  // Prevent rendering when on auth routes or unauthenticated
+  // Prevent rendering when on auth routes
   if (isExcludedRoute) {
-    return null;
-  }
-  if (auth && (auth.loading || !auth.user)) {
     return null;
   }
 
