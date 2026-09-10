@@ -9,6 +9,7 @@ import { BottomNav } from "@/components/navigation/BottomNav";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { AvatarUpload } from "@/components/ui/AvatarUpload";
+import { AppInfoCard } from "@/components/settings/AppInfoCard";
 import { validateDisplayName } from "@/lib/validation/schemas";
 import {
   Settings,
@@ -241,6 +242,9 @@ export default function SettingsPage() {
             </div>
           </form>
         </div>
+
+        {/* App Info & Version Card */}
+        <AppInfoCard />
 
         {/* Sign Out Card */}
         <div className="pt-2">

@@ -286,6 +286,7 @@ public class MainActivity extends AppCompatActivity {
         // High-precision session hook that parses epoch ms in JS and dispatches to Android
         String jsHook =
                 "(function() {" +
+                "  window.__STUDYROOM_NATIVE_VERSION = '1.0.1';" +
                 "  if (window._studyRoomHookInstalled) return;" +
                 "  window._studyRoomHookInstalled = true;" +
                 "  function checkAndNotify() {" +
@@ -414,6 +415,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public class WebAppInterface {
+
+        @JavascriptInterface
+        public String getAppVersion() {
+            return "1.0.1";
+        }
 
         @JavascriptInterface
         public void onSessionStateResolved(boolean isBreak, long breakStartMs, long accruedSeconds,
