@@ -169,10 +169,22 @@ public class MainActivity extends AppCompatActivity {
         );
         swipeRefreshLayout.setOnRefreshListener(() -> {
             webView.reload();
+            // Safety timeout: auto-dismiss spinner after 8s if network lags
+            swipeRefreshLayout.postDelayed(() -> {
+                if (swipeRefreshLayout != null && swipeRefreshLayout.isRefreshing()) {
+                    swipeRefreshLayout.setRefreshing(false);
+                }
+            }, 8000);
         });
-        // Disable touch interception so inner Web scroll containers (modals, dialogs, lists)
-        // can scroll back up smoothly without SwipeRefreshLayout stealing downward swipe gestures
-        swipeRefreshLayout.setEnabled(false);
+        // Pull-to-refresh enabled for main page browsing
+        swipeRefreshLayout.setEnabled(true);
+
+        // Crucial: Only trigger swipe-to-refresh when the WebView is at the very top (scrollY == 0)
+        // and cannot scroll up vertically. If canScrollVertically(-1) is true or getScrollY() > 0,
+        // child scroll up is active, so SwipeRefreshLayout must NOT intercept!
+        swipeRefreshLayout.setOnChildScrollUpCallback((parent, child) -> {
+            return webView != null && (webView.canScrollVertically(-1) || webView.getScrollY() > 0);
+        });
     }
 
     @SuppressLint({"SetJavaScriptEnabled", "JavascriptInterface"})
@@ -205,7 +217,7 @@ public class MainActivity extends AppCompatActivity {
 
         // Custom User-Agent tag for detection
         String existingUa = settings.getUserAgentString();
-        settings.setUserAgentString(existingUa + " StudyRoom-Android/1.0.4");
+        settings.setUserAgentString(existingUa + " StudyRoom-Android/1.0.5");
 
         // Native bridge for live notification chronometer
         webView.addJavascriptInterface(new WebAppInterface(), "AndroidBridge");
@@ -294,9 +306,43 @@ public class MainActivity extends AppCompatActivity {
         // High-precision session hook that parses epoch ms in JS and dispatches to Android
         String jsHook =
                 "(function() {" +
-                "  window.__STUDYROOM_NATIVE_VERSION = '1.0.4';" +
+                "  window.__STUDYROOM_NATIVE_VERSION = '1.0.5';" +
                 "  if (window._studyRoomHookInstalled) return;" +
                 "  window._studyRoomHookInstalled = true;" +
+                "  function updateSwipeRefreshState() {" +
+                "    try {" +
+                "      var hasModal = Boolean(" +
+                "        document.querySelector('[role=\"dialog\"]') ||" +
+                "        document.querySelector('.fixed.inset-0') ||" +
+                "        (document.body && document.body.style && document.body.style.overflow === 'hidden')" +
+                "      );" +
+                "      if (window.AndroidBridge && window.AndroidBridge.setSwipeRefreshEnabled) {" +
+                "        window.AndroidBridge.setSwipeRefreshEnabled(!hasModal);" +
+                "      }" +
+                "    } catch(e) {}" +
+                "  }" +
+                "  try {" +
+                "    var modalObserver = new MutationObserver(updateSwipeRefreshState);" +
+                "    if (document.body) {" +
+                "      modalObserver.observe(document.body, { attributes: true, attributeFilter: ['style', 'class'], childList: true, subtree: true });" +
+                "    }" +
+                "  } catch(e) {}" +
+                "  window.addEventListener('touchstart', function(e) {" +
+                "    try {" +
+                "      var t = e.target;" +
+                "      var isInnerScrolled = false;" +
+                "      while (t && t !== document.body && t !== document.documentElement) {" +
+                "        if (t.scrollTop > 0) { isInnerScrolled = true; break; }" +
+                "        t = t.parentElement;" +
+                "      }" +
+                "      if (isInnerScrolled && window.AndroidBridge && window.AndroidBridge.setSwipeRefreshEnabled) {" +
+                "        window.AndroidBridge.setSwipeRefreshEnabled(false);" +
+                "      }" +
+                "    } catch(err) {}" +
+                "  }, { passive: true });" +
+                "  window.addEventListener('touchend', function() {" +
+                "    updateSwipeRefreshState();" +
+                "  }, { passive: true });" +
                 "  function checkAndNotify() {" +
                 "    try {" +
                 "      var study = localStorage.getItem('studyroom_active_study') || '';" +
@@ -409,7 +455,13 @@ public class MainActivity extends AppCompatActivity {
                             }
                         } else if (webView != null) {
                             webView.evaluateJavascript(
-                                    "if (window.dispatchEvent) { window.dispatchEvent(new Event('online')); }",
+                                    "(function() {" +
+                                    "  try {" +
+                                    "    window.dispatchEvent(new Event('online'));" +
+                                    "    window.dispatchEvent(new Event('focus'));" +
+                                    "    document.dispatchEvent(new Event('visibilitychange'));" +
+                                    "  } catch(e) {}" +
+                                    "})();",
                                     null
                             );
                         }
@@ -426,7 +478,16 @@ public class MainActivity extends AppCompatActivity {
 
         @JavascriptInterface
         public String getAppVersion() {
-            return "1.0.4";
+            return "1.0.5";
+        }
+
+        @JavascriptInterface
+        public void setSwipeRefreshEnabled(boolean enabled) {
+            runOnUiThread(() -> {
+                if (swipeRefreshLayout != null) {
+                    swipeRefreshLayout.setEnabled(enabled);
+                }
+            });
         }
 
         @JavascriptInterface
@@ -497,6 +558,16 @@ public class MainActivity extends AppCompatActivity {
         isActivityVisible = true;
         if (webView != null) {
             webView.onResume();
+            // Trigger instant real-time synchronization across Web layers
+            webView.evaluateJavascript(
+                    "(function() {" +
+                    "  try {" +
+                    "    window.dispatchEvent(new Event('focus'));" +
+                    "    document.dispatchEvent(new Event('visibilitychange'));" +
+                    "  } catch(e) {}" +
+                    "})();",
+                    null
+            );
         }
     }
 
@@ -506,6 +577,15 @@ public class MainActivity extends AppCompatActivity {
         isActivityVisible = false;
         CookieManager.getInstance().flush();
         if (webView != null) {
+            webView.evaluateJavascript(
+                    "(function() {" +
+                    "  try {" +
+                    "    window.dispatchEvent(new Event('blur'));" +
+                    "    document.dispatchEvent(new Event('visibilitychange'));" +
+                    "  } catch(e) {}" +
+                    "})();",
+                    null
+            );
             webView.onPause();
         }
     }

@@ -46,9 +46,23 @@ export function Modal({
       document.body.style.overflow = "hidden";
       window.addEventListener("keydown", handleKeyDown);
 
+      // Disable Android SwipeRefreshLayout while modal is open to prevent touch interception
+      if (typeof window !== "undefined" && (window as any).AndroidBridge?.setSwipeRefreshEnabled) {
+        try {
+          (window as any).AndroidBridge.setSwipeRefreshEnabled(false);
+        } catch (e) {}
+      }
+
       return () => {
         document.body.style.overflow = originalOverflow;
         window.removeEventListener("keydown", handleKeyDown);
+
+        // Re-enable Android SwipeRefreshLayout when modal is closed
+        if (typeof window !== "undefined" && (window as any).AndroidBridge?.setSwipeRefreshEnabled) {
+          try {
+            (window as any).AndroidBridge.setSwipeRefreshEnabled(true);
+          } catch (e) {}
+        }
       };
     }
   }, [isOpen, handleKeyDown]);
