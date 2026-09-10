@@ -1,0 +1,152 @@
+name: Build & Release Android App
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_name:
+        description: "Version Name (e.g. 1.0.0)"
+        required: true
+        default: "1.0.0"
+      release_notes:
+        description: "Release Notes / Changelog"
+        required: false
+        default: "Official release of StudyRoom Native Android App.\n\n✨ Features:\n• 0ms Instant Native Splash Screen (No PWA freeze)\n• Live Ticking Study & Break Chronometer in Notification Panel\n• Non-Looping Back Button (Returns to Room, double-tap to exit)\n• Ultra-lightweight on device with smooth GPU hardware acceleration\n• Rock-solid synced timer running even if app is closed"
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build & Release Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Determine Version
+        id: version_step
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version_name }}"
+            TAG="v${VERSION}"
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+            TAG="v${VERSION}"
+          else
+            VERSION="1.0.0"
+            TAG="v1.0.0"
+          fi
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "TAG=${TAG}" >> $GITHUB_ENV
+          echo "Building StudyRoom APK version: ${VERSION} (${TAG})"
+
+      - name: Set up Java JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Cache Gradle Packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('android/gradle/wrapper/gradle-wrapper.properties', 'android/**/*.gradle*') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      - name: Prepare Release Signing Keystore
+        run: |
+          mkdir -p android/keystore
+          if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
+            echo "Using custom keystore from repository secrets..."
+            echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/keystore/release.keystore
+            echo "KEYSTORE_PATH=keystore/release.keystore" >> $GITHUB_ENV
+            echo "KEYSTORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }}" >> $GITHUB_ENV
+            echo "KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> $GITHUB_ENV
+            echo "KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> $GITHUB_ENV
+          else
+            echo "Generating secure release keystore on runner..."
+            keytool -genkeypair -v \
+              -keystore android/keystore/release.keystore \
+              -alias studyroom \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -storepass "studyroom_secure_release_key" \
+              -keypass "studyroom_secure_release_key" \
+              -dname "CN=StudyRoom, OU=App, O=StudyRoom, L=Global, S=Global, C=US"
+            echo "KEYSTORE_PATH=keystore/release.keystore" >> $GITHUB_ENV
+            echo "KEYSTORE_PASSWORD=studyroom_secure_release_key" >> $GITHUB_ENV
+            echo "KEY_ALIAS=studyroom" >> $GITHUB_ENV
+            echo "KEY_PASSWORD=studyroom_secure_release_key" >> $GITHUB_ENV
+          fi
+
+      - name: Ensure Gradlew Executable
+        run: chmod +x android/gradlew
+
+      - name: Build Release APK with Gradle
+        run: |
+          cd android
+          ./gradlew assembleRelease --no-daemon -PversionName=${{ env.VERSION }}
+
+      - name: Package & Generate Checksum
+        run: |
+          APK_SRC="android/app/build/outputs/apk/release/app-release.apk"
+          APK_DEST="StudyRoom-v${{ env.VERSION }}.apk"
+          if [ -f "$APK_SRC" ]; then
+            cp "$APK_SRC" "$APK_DEST"
+          else
+            echo "Searching for generated APK..."
+            find android/app/build/outputs/apk/ -name "*.apk" -exec cp {} "$APK_DEST" \;
+          fi
+          sha256sum "$APK_DEST" > "${APK_DEST}.sha256"
+          echo "Generated APK: $APK_DEST"
+          cat "${APK_DEST}.sha256"
+
+      - name: Upload APK Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: StudyRoom-v${{ env.VERSION }}-apk
+          path: |
+            StudyRoom-v${{ env.VERSION }}.apk
+            StudyRoom-v${{ env.VERSION }}.apk.sha256
+
+      - name: Publish to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        with:
+          tag_name: ${{ env.TAG }}
+          name: "StudyRoom Android App ${{ env.TAG }}"
+          body: |
+            ## 📱 StudyRoom Native Android App (${{ env.TAG }})
+
+            ${{ github.event.inputs.release_notes || 'Official native Android release for StudyRoom.' }}
+
+            ---
+            ### 🚀 Highlights:
+            - **⚡ 0ms Native Splash**: Opens immediately without splash screen freezes.
+            - **⏱️ Live Notification Chronometer**: Real-time study/break timer running natively in your notification panel.
+            - **🔄 Smart Back Navigation**: Pressing back returns directly to the Room page; pressing back again exits cleanly.
+            - **🪶 Ultra-Lightweight**: Minimal battery consumption, 60–120 FPS hardware acceleration.
+            - **🔒 Rock-Solid Timer**: Continues tracking your study session accurately even if the app is closed or the phone is rebooted.
+
+            ### 📲 Installation Instructions:
+            1. Download `StudyRoom-v${{ env.VERSION }}.apk` below on your Android phone.
+            2. Tap the downloaded file to install (allow "Install from this source" if prompted by Android).
+            3. Log in and start your live study session!
+          files: |
+            StudyRoom-v${{ env.VERSION }}.apk
+            StudyRoom-v${{ env.VERSION }}.apk.sha256
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
