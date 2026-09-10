@@ -3,11 +3,31 @@ import React from "react";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { LaunchAnnouncementModal, LAUNCH_UPDATE_STORAGE_KEY } from "@/components/ui/LaunchAnnouncementModal";
 
+let mockPathname = "/room";
+let mockAuthContext: { user: { id: string } | null; loading: boolean } | null = {
+  user: { id: "user-test-123" },
+  loading: false,
+};
+
+vi.mock("next/navigation", () => ({
+  usePathname: () => mockPathname,
+}));
+
+vi.mock("@/components/auth/AuthProvider", () => ({
+  useAuthContext: () => mockAuthContext,
+}));
+
 describe("StudyRoom UPDATE Modal Component", () => {
   let mockStorage: Record<string, string> = {};
 
   beforeEach(() => {
     mockStorage = {};
+    mockPathname = "/room";
+    mockAuthContext = {
+      user: { id: "user-test-123" },
+      loading: false,
+    };
+
     const storageMock = {
       getItem: (key: string) => mockStorage[key] || null,
       setItem: (key: string, val: string) => {
@@ -31,6 +51,49 @@ describe("StudyRoom UPDATE Modal Component", () => {
     vi.unstubAllGlobals();
   });
 
+  it("strictly suppresses rendering on /login route", () => {
+    mockPathname = "/login";
+
+    render(<LaunchAnnouncementModal />);
+
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+
+    expect(screen.queryByText("StudyRoom UPDATE")).toBeNull();
+    expect(screen.queryByText("Understood")).toBeNull();
+  });
+
+  it("strictly suppresses rendering on /signup route", () => {
+    mockPathname = "/signup";
+
+    render(<LaunchAnnouncementModal />);
+
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+
+    expect(screen.queryByText("StudyRoom UPDATE")).toBeNull();
+    expect(screen.queryByText("Understood")).toBeNull();
+  });
+
+  it("strictly suppresses rendering when user is not authenticated", () => {
+    mockPathname = "/room";
+    mockAuthContext = {
+      user: null,
+      loading: false,
+    };
+
+    render(<LaunchAnnouncementModal />);
+
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+
+    expect(screen.queryByText("StudyRoom UPDATE")).toBeNull();
+    expect(screen.queryByText("Understood")).toBeNull();
+  });
+
   it("does not render when user has already acknowledged the update notice", () => {
     mockStorage[LAUNCH_UPDATE_STORAGE_KEY] = "true";
 
@@ -44,7 +107,13 @@ describe("StudyRoom UPDATE Modal Component", () => {
     expect(screen.queryByText("Understood")).toBeNull();
   });
 
-  it("renders update notice with Leaderboard scoring reform, 3-hour limit, and Streak section and closes saving state on clicking Understood", () => {
+  it("renders update notice for authenticated user on /room and saves acknowledgment on clicking Understood", () => {
+    mockPathname = "/room";
+    mockAuthContext = {
+      user: { id: "user-test-123" },
+      loading: false,
+    };
+
     render(<LaunchAnnouncementModal />);
 
     act(() => {
@@ -64,7 +133,8 @@ describe("StudyRoom UPDATE Modal Component", () => {
 
     fireEvent.click(understoodBtn);
 
-    // Verify localStorage key is saved
+    // Verify localStorage keys (global + per-user) are saved
     expect(mockStorage[LAUNCH_UPDATE_STORAGE_KEY]).toBe("true");
+    expect(mockStorage[`${LAUNCH_UPDATE_STORAGE_KEY}_user-test-123`]).toBe("true");
   });
 });

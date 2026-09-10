@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { usePathname } from "next/navigation";
+import { useAuthContext } from "@/components/auth/AuthProvider";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { triggerHapticFeedback } from "@/lib/utils/haptics";
@@ -10,13 +12,46 @@ export const LAUNCH_UPDATE_STORAGE_KEY = "studyroom_update_dual_pillar_streak_v3
 
 export function LaunchAnnouncementModal() {
   const [isOpen, setIsOpen] = useState(false);
+  const pathname = usePathname() || "";
+  const auth = useAuthContext();
+
+  const isExcludedRoute =
+    pathname === "/login" ||
+    pathname === "/signup" ||
+    pathname === "/onboarding" ||
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/signup") ||
+    pathname.startsWith("/onboarding");
 
   useEffect(() => {
+    // 1. Strictly do NOT show on login, signup, or onboarding pages
+    if (isExcludedRoute) {
+      setIsOpen(false);
+      return;
+    }
+
+    // 2. Only show to users who are authenticated (or open the app while already logged in)
+    if (auth) {
+      if (auth.loading || !auth.user) {
+        setIsOpen(false);
+        return;
+      }
+    }
+
     try {
-      // Check if user already acknowledged this update notice on this device
+      // 3. Check if user already acknowledged this update notice globally on this device
       const alreadySeen = localStorage.getItem(LAUNCH_UPDATE_STORAGE_KEY);
       if (alreadySeen === "true") {
         return;
+      }
+
+      // 4. Also check per-user acknowledgment key
+      const userId = auth?.user?.id;
+      if (userId) {
+        const userSeen = localStorage.getItem(`${LAUNCH_UPDATE_STORAGE_KEY}_${userId}`);
+        if (userSeen === "true") {
+          return;
+        }
       }
 
       // Small delay to allow initial page layout to paint smoothly
@@ -27,16 +62,27 @@ export function LaunchAnnouncementModal() {
     } catch {
       // Fallback silently if localStorage is disabled or restricted
     }
-  }, []);
+  }, [isExcludedRoute, auth?.loading, auth?.user?.id]);
 
   const handleUnderstood = () => {
     try {
       localStorage.setItem(LAUNCH_UPDATE_STORAGE_KEY, "true");
+      if (auth?.user?.id) {
+        localStorage.setItem(`${LAUNCH_UPDATE_STORAGE_KEY}_${auth.user.id}`, "true");
+      }
     } catch {}
 
     triggerHapticFeedback([10, 30, 15]);
     setIsOpen(false);
   };
+
+  // Prevent rendering when on auth routes or unauthenticated
+  if (isExcludedRoute) {
+    return null;
+  }
+  if (auth && (auth.loading || !auth.user)) {
+    return null;
+  }
 
   return (
     <Modal

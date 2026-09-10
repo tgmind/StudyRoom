@@ -44,8 +44,8 @@ export default function RootLayout({
         <PwaRegister />
         <OfflineBanner />
         <PwaInstallBanner />
-        <LaunchAnnouncementModal />
         <AuthProvider>
+          <LaunchAnnouncementModal />
           <div className="flex-1 w-full flex flex-col">
             {children}
           </div>
