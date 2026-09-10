@@ -1,9 +1,15 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Download, X, Share, PlusSquare, Smartphone } from "lucide-react";
+import { Download, X, Share, PlusSquare, Smartphone, Globe, Loader2, Check } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
-import { Button } from "@/components/ui/Button";
+import { usePathname } from "next/navigation";
+import {
+  fetchLatestApkRelease,
+  triggerApkDirectDownload,
+  DEFAULT_APK_DOWNLOAD_URL,
+  DEFAULT_RELEASE_VERSION,
+} from "@/lib/app/latestRelease";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -17,11 +23,22 @@ export function PwaInstallBanner() {
   const [isIos, setIsIos] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
 
+  const [apkUrl, setApkUrl] = useState(DEFAULT_APK_DOWNLOAD_URL);
+  const [appVersion, setAppVersion] = useState(DEFAULT_RELEASE_VERSION);
+  const [isDownloadingApk, setIsDownloadingApk] = useState(false);
+  const [downloadSuccessToast, setDownloadSuccessToast] = useState(false);
+
+  const pathname = usePathname();
+  const isAuthPage = pathname === "/login" || pathname === "/signup";
+
   useEffect(() => {
     // Check if running in standalone mode (already installed)
     const inStandaloneMode =
-      window.matchMedia("(display-mode: standalone)").matches ||
-      (window.navigator as unknown as { standalone?: boolean }).standalone === true;
+      (typeof window !== "undefined" &&
+        typeof window.matchMedia === "function" &&
+        window.matchMedia("(display-mode: standalone)").matches) ||
+      (typeof window !== "undefined" &&
+        (window.navigator as unknown as { standalone?: boolean }).standalone === true);
 
     if (inStandaloneMode) {
       setIsStandalone(true);
@@ -33,34 +50,39 @@ export function PwaInstallBanner() {
     const isIosDevice = /iphone|ipad|ipod/.test(userAgent);
     setIsIos(isIosDevice);
 
+    // Check if user dismissed banner recently in localStorage
+    const dismissedTime = localStorage.getItem("pwa_banner_dismissed");
+    const isDismissed = dismissedTime && Date.now() - parseInt(dismissedTime, 10) < 86400000;
+
     // Listen for beforeinstallprompt event (Android / Chromium)
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e as BeforeInstallPromptEvent);
 
-      // Check if user dismissed banner recently in localStorage
-      const dismissedTime = localStorage.getItem("pwa_banner_dismissed");
-      if (!dismissedTime || Date.now() - parseInt(dismissedTime, 10) > 86400000) {
+      if (!isDismissed) {
         setShowBanner(true);
       }
     };
 
     window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
 
-    // Show iOS guide banner if on iOS Safari and not dismissed recently
-    if (isIosDevice && !inStandaloneMode) {
-      const dismissedTime = localStorage.getItem("pwa_banner_dismissed");
-      if (!dismissedTime || Date.now() - parseInt(dismissedTime, 10) > 86400000) {
-        setShowBanner(true);
-      }
+    // On auth pages or iOS Safari, show the install options banner if not dismissed
+    if (!isDismissed && (isAuthPage || isIosDevice)) {
+      setShowBanner(true);
     }
+
+    // Fetch dynamic latest release from GitHub API
+    fetchLatestApkRelease().then((info) => {
+      if (info.apkDownloadUrl) setApkUrl(info.apkDownloadUrl);
+      if (info.version) setAppVersion(info.version);
+    });
 
     return () => {
       window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
     };
-  }, []);
+  }, [isAuthPage]);
 
-  const handleInstallClick = async () => {
+  const handlePwaInstallClick = async () => {
     if (deferredPrompt) {
       deferredPrompt.prompt();
       const choiceResult = await deferredPrompt.userChoice;
@@ -70,7 +92,26 @@ export function PwaInstallBanner() {
       setDeferredPrompt(null);
     } else if (isIos) {
       setShowIosGuide(true);
+    } else {
+      // Fallback if prompt not available: guide user or dismiss
+      setShowIosGuide(false);
     }
+  };
+
+  const handleApkDownloadClick = () => {
+    setIsDownloadingApk(true);
+    setDownloadSuccessToast(true);
+
+    // Direct background APK download without page redirect
+    triggerApkDirectDownload(apkUrl, `StudyRoom-${appVersion}.apk`);
+
+    setTimeout(() => {
+      setIsDownloadingApk(false);
+    }, 3500);
+
+    setTimeout(() => {
+      setDownloadSuccessToast(false);
+    }, 7000);
   };
 
   const handleDismiss = () => {
@@ -82,44 +123,77 @@ export function PwaInstallBanner() {
 
   return (
     <>
-      {/* Floating Bottom PWA Install Banner */}
-      <div className="fixed bottom-20 left-4 right-4 z-50 max-w-md mx-auto p-4 bg-zinc-950/95 border border-zinc-700/80 rounded-2xl shadow-2xl backdrop-blur-xl animate-in slide-in-from-bottom duration-300">
-        <div className="flex items-center justify-between space-x-3">
-          <div className="flex items-center space-x-3 min-w-0 flex-1">
-            <div className="w-10 h-10 rounded-xl bg-zinc-900 border border-zinc-700 flex items-center justify-center text-zinc-100 shrink-0 shadow-md">
-              <Smartphone className="w-5 h-5 text-violet-400" />
+      {/* Floating Bottom Dual Install Banner */}
+      <div
+        className={`fixed ${
+          isAuthPage ? "bottom-4 sm:bottom-6" : "bottom-20"
+        } left-3.5 right-3.5 z-50 max-w-md mx-auto p-3.5 bg-zinc-950/95 border border-zinc-700/80 rounded-2xl shadow-2xl backdrop-blur-xl animate-in slide-in-from-bottom duration-300 space-y-3`}
+      >
+        <div className="flex items-start justify-between space-x-2">
+          <div className="flex items-center space-x-2.5 min-w-0 flex-1">
+            <div className="w-8 h-8 rounded-xl bg-zinc-900 border border-zinc-700 flex items-center justify-center text-zinc-100 shrink-0 shadow-sm">
+              <Smartphone className="w-4 h-4 text-violet-400" />
             </div>
 
             <div className="min-w-0 flex-1">
-              <h3 className="text-xs font-bold text-zinc-100 leading-snug">
-                Install StudyRoom PWA
+              <h3 className="text-xs font-bold text-zinc-100 leading-tight">
+                Install StudyRoom App
               </h3>
-              <p className="text-[11px] text-zinc-400 mt-0.5 leading-snug">
-                Fast home screen access & offline study support
+              <p className="text-[10px] text-zinc-400 mt-0.5 leading-tight">
+                Choose Web PWA or direct Native Android APK
               </p>
             </div>
           </div>
 
-          <div className="flex items-center space-x-2 shrink-0">
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={handleInstallClick}
-              className="px-3 text-xs font-extrabold space-x-1.5 shadow-md bg-zinc-100 text-zinc-950 hover:bg-white"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>Install</span>
-            </Button>
+          <button
+            type="button"
+            onClick={handleDismiss}
+            className="p-1.5 text-zinc-400 hover:text-white rounded-lg transition-colors -mr-1 -mt-0.5"
+            aria-label="Dismiss banner"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
 
-            <button
-              type="button"
-              onClick={handleDismiss}
-              className="p-2 text-zinc-400 hover:text-white rounded-lg transition-colors"
-              aria-label="Dismiss banner"
-            >
-              <X className="w-4 h-4" />
-            </button>
+        {downloadSuccessToast && (
+          <div className="p-2 bg-emerald-950/70 border border-emerald-800/80 rounded-lg text-[11px] text-emerald-200 flex items-center space-x-1.5">
+            <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <span>
+              <strong>Download started!</strong> Pull down notification shade to install.
+            </span>
           </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-2 pt-0.5">
+          {/* Option 1: Web PWA */}
+          <button
+            type="button"
+            onClick={handlePwaInstallClick}
+            className="w-full py-2 px-2.5 bg-zinc-900 hover:bg-zinc-850 border border-zinc-700/70 text-zinc-100 rounded-xl text-xs font-bold flex items-center justify-center space-x-1.5 transition-colors active:scale-[0.98] shadow-sm"
+          >
+            <Globe className="w-3.5 h-3.5 text-violet-400" />
+            <span>Install PWA</span>
+          </button>
+
+          {/* Option 2: Native Android App (.APK) */}
+          <button
+            type="button"
+            onClick={handleApkDownloadClick}
+            disabled={isDownloadingApk}
+            className="w-full py-2 px-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-75 text-white rounded-xl text-xs font-bold flex items-center justify-center space-x-1.5 transition-colors active:scale-[0.98] shadow-sm shadow-emerald-950"
+          >
+            {isDownloadingApk ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>Downloading...</span>
+              </>
+            ) : (
+              <>
+                <Download className="w-3.5 h-3.5" />
+                <span>Get APK ({appVersion})</span>
+              </>
+            )}
+          </button>
         </div>
       </div>
 
@@ -152,9 +226,13 @@ export function PwaInstallBanner() {
           </div>
 
           <div className="pt-2 flex justify-end">
-            <Button variant="primary" size="md" onClick={() => setShowIosGuide(false)}>
+            <button
+              type="button"
+              onClick={() => setShowIosGuide(false)}
+              className="px-4 py-2 bg-zinc-100 text-zinc-950 font-bold rounded-lg text-xs hover:bg-white"
+            >
               Got it!
-            </Button>
+            </button>
           </div>
         </div>
       </Modal>

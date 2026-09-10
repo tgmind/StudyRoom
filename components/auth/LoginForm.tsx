@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { isAdminEmail, isAdminUserId } from "@/hooks/useAdmin";
+import { AuthInstallOptions } from "@/components/auth/AuthInstallOptions";
 
 export function LoginForm() {
   const [email, setEmail] = useState("");
@@ -126,6 +127,8 @@ export function LoginForm() {
           Sign up
         </Link>
       </div>
+
+      <AuthInstallOptions />
     </div>
   );
 }
