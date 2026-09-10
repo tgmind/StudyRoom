@@ -11,6 +11,10 @@ import { ScoringBreakdown } from "@/components/leaderboard/ScoringBreakdown";
 import { Trophy, HelpCircle, Star, Sparkles, Clock, Target, Flame } from "lucide-react";
 import { getAdminUserId, isAdminUserId } from "@/hooks/useAdmin";
 import { calculateLeaderboardScore } from "@/lib/scoring/engine";
+import { calculateWeeklyStreak } from "@/lib/scoring/streak";
+import { getWeekStartTimestamp, calculateMemberElapsedStudySeconds } from "@/lib/time/format";
+import { getServerNow } from "@/lib/time/clockSync";
+import { StudySession } from "@/lib/supabase/types";
 
 type RpcCaller = {
   rpc: (name: string, params?: Record<string, unknown>) => Promise<{ data: unknown; error: Error | null }>;
@@ -38,18 +42,57 @@ export default function LeaderboardPage() {
         setError(null);
 
         const timezone = process.env.NEXT_PUBLIC_APP_TIMEZONE || "Asia/Kolkata";
-        const { data, error: rpcErr } = await (supabase as unknown as RpcCaller).rpc("rpc_get_leaderboard", {
-          p_timezone: timezone,
-        });
+        const serverNow = getServerNow();
+        const currentWeekStartIso = new Date(getWeekStartTimestamp(serverNow, timezone)).toISOString();
 
-        if (rpcErr) throw rpcErr;
+        // 1. Fetch leaderboard RPC and current week's study sessions concurrently
+        const [rpcResult, sessionsResult] = await Promise.all([
+          (supabase as unknown as RpcCaller).rpc("rpc_get_leaderboard", {
+            p_timezone: timezone,
+          }),
+          supabase
+            .from("study_sessions")
+            .select("id, user_id, start_time, duration_minutes")
+            .gte("start_time", currentWeekStartIso),
+        ]);
 
-        const rawEntries = (data as unknown as LeaderboardEntry[]) || [];
+        if (rpcResult.error) throw rpcResult.error;
+
+        const rawEntries = (rpcResult.data as unknown as LeaderboardEntry[]) || [];
         const filtered = rawEntries.filter((e) => {
           if (isAdminUserId(e.user_id)) return false;
           if ((e as unknown as { is_admin?: boolean }).is_admin === true) return false;
           return true;
         });
+
+        // 2. Group weekly sessions by user to compute weekly qualifying streak (matching Weekly Heatmap)
+        const weeklyStreaksByUser = new Map<string, number>();
+        if (sessionsResult.data) {
+          const sessionsByUser = new Map<string, StudySession[]>();
+          for (const row of sessionsResult.data as StudySession[]) {
+            if (!row.user_id) continue;
+            const list = sessionsByUser.get(row.user_id) || [];
+            list.push(row);
+            sessionsByUser.set(row.user_id, list);
+          }
+
+          for (const [uid, userSessions] of sessionsByUser.entries()) {
+            const liveMinutes =
+              uid === user?.id && profile?.current_status === "studying"
+                ? Math.floor(calculateMemberElapsedStudySeconds(profile, serverNow) / 60)
+                : 0;
+
+            const streak = calculateWeeklyStreak(userSessions, serverNow, liveMinutes, timezone);
+            weeklyStreaksByUser.set(uid, streak);
+          }
+        }
+
+        // If current user is studying but has no past sessions this week yet, calculate their live streak
+        if (user?.id && profile?.current_status === "studying" && !weeklyStreaksByUser.has(user.id)) {
+          const liveMinutes = Math.floor(calculateMemberElapsedStudySeconds(profile, serverNow) / 60);
+          const streak = calculateWeeklyStreak([], serverNow, liveMinutes, timezone);
+          weeklyStreaksByUser.set(user.id, streak);
+        }
 
         // Identify weekly benchmarks across active group competitors
         const maxGroupStudyMinutes = Math.max(1, ...filtered.map((e) => e.total_study_minutes || 0));
@@ -59,17 +102,27 @@ export default function LeaderboardPage() {
         const recalculatedEntries: LeaderboardEntry[] = filtered.map((entry) => {
           const completed = entry.completed_tasks ?? (entry.goal_completion_pct > 0 ? 1 : 0);
           const total = entry.total_tasks ?? (entry.goal_completion_pct > 0 ? 1 : 0);
+
+          // Weekly streak matches the Weekly Study Heatmap (resets to 0 on weekly restart, max 7)
+          let weeklyStreak = weeklyStreaksByUser.get(entry.user_id);
+          if (weeklyStreak === undefined) {
+            // If sessions were successfully loaded, user had 0 qualifying sessions this week
+            // Fallback to entry.streak_days only if sessions query completely failed
+            weeklyStreak = sessionsResult.data ? 0 : (entry.streak_days || 0);
+          }
+
           const { composite_score } = calculateLeaderboardScore(
             entry.total_study_minutes || 0,
             maxGroupStudyMinutes,
             completed,
             total,
-            entry.streak_days || 0,
+            weeklyStreak,
             maxGroupCompletedTasks
           );
 
           return {
             ...entry,
+            streak_days: weeklyStreak,
             score: composite_score,
           };
         });
@@ -94,7 +147,7 @@ export default function LeaderboardPage() {
         }
       }
     },
-    [supabase]
+    [supabase, user?.id, profile]
   );
 
   useEffect(() => {

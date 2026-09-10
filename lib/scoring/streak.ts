@@ -285,6 +285,27 @@ export function calculateWeeklyHeatmap(
 }
 
 /**
+ * Calculates the number of qualifying study days (>= 30 mins) achieved in the current week (Monday to Sunday).
+ * Perfectly matches the flame icons in the Weekly Study Heatmap of the Streaks section.
+ * Automatically starts at 0 on weekly restart (Monday 00:00:00).
+ */
+export function calculateWeeklyStreak(
+  sessions: StudySession[],
+  referenceDate: Date = new Date(),
+  liveActiveMinutes = 0,
+  timezone: string = process.env.NEXT_PUBLIC_APP_TIMEZONE || "Asia/Kolkata"
+): number {
+  const heatmapDays = calculateWeeklyHeatmap(sessions, referenceDate, liveActiveMinutes, timezone);
+  let qualifiedDays = 0;
+  for (const day of heatmapDays) {
+    if ((day.isPast || day.isToday) && day.isQualified) {
+      qualifiedDays++;
+    }
+  }
+  return qualifiedDays;
+}
+
+/**
  * Calculates historical all-time or 90-day best streak record.
  */
 export function calculateBestStreak(

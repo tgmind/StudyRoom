@@ -106,7 +106,7 @@ export function ScoringBreakdown({ isOpen, onClose }: ScoringBreakdownProps) {
               <span className="text-fuchsia-400 font-mono font-bold">20% Weight</span>
             </h4>
             <p className="text-zinc-400 text-[11px] leading-relaxed">
-              Consecutive days recording at least 30 active study minutes. Capped at 7 qualifying days (100% streak score).
+              Qualifying days (≥30m active study) achieved in the current week (Monday–Sunday), matching your Weekly Study Heatmap. Resets to 0 every Monday at midnight alongside study hours and goals. Capped at 7 qualifying days (100% streak score).
             </p>
           </div>
         </div>

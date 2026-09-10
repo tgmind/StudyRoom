@@ -24,7 +24,7 @@
         <activity
             android:name=".MainActivity"
             android:theme="@style/Theme.StudyRoom.Splash"
-            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|uiMode"
             android:windowSoftInputMode="adjustResize"
             android:exported="true">
             <intent-filter>

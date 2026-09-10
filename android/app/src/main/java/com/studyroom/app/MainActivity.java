@@ -5,7 +5,6 @@ import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.graphics.Color;
 import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
@@ -14,7 +13,9 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
+import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
+import android.webkit.RenderProcessGoneDetail;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
@@ -36,10 +37,6 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
 import org.json.JSONObject;
 
-import java.text.SimpleDateFormat;
-import java.util.Locale;
-import java.util.TimeZone;
-
 public class MainActivity extends AppCompatActivity {
 
     private WebView webView;
@@ -49,12 +46,14 @@ public class MainActivity extends AppCompatActivity {
 
     private ValueCallback<Uri[]> fileChooserCallback;
     private ActivityResultLauncher<Intent> fileChooserLauncher;
+    private ActivityResultLauncher<String> notificationPermissionLauncher;
 
     private ConnectivityManager connectivityManager;
     private ConnectivityManager.NetworkCallback networkCallback;
 
     private String baseUrl;
     private long lastBackPressedTime = 0;
+    private boolean isActivityVisible = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -71,7 +70,7 @@ public class MainActivity extends AppCompatActivity {
         offlineContainer = findViewById(R.id.offlineContainer);
         btnRetry = findViewById(R.id.btnRetry);
 
-        setupNotificationPermissions();
+        setupPermissionLaunchers();
         setupFileChooserLauncher();
         setupSwipeRefresh();
         setupWebView();
@@ -86,16 +85,52 @@ public class MainActivity extends AppCompatActivity {
 
         if (savedInstanceState == null) {
             webView.loadUrl(baseUrl + "/room");
+        } else {
+            webView.restoreState(savedInstanceState);
+        }
+
+        handleIncomingIntent(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleIncomingIntent(intent);
+    }
+
+    private void handleIncomingIntent(Intent intent) {
+        if (intent != null && StudySessionService.ACTION_RESUME_STUDY.equals(intent.getAction())) {
+            if (webView != null) {
+                // Programmatically trigger Resume in web app
+                webView.evaluateJavascript(
+                        "(function() {" +
+                        "  var btns = document.querySelectorAll('button');" +
+                        "  for (var i = 0; i < btns.length; i++) {" +
+                        "    if (btns[i].textContent && btns[i].textContent.trim() === 'Resume') {" +
+                        "      btns[i].click();" +
+                        "      break;" +
+                        "    }" +
+                        "  }" +
+                        "})();",
+                        null
+                );
+            }
         }
     }
 
-    private void setupNotificationPermissions() {
+    private void setupPermissionLaunchers() {
+        notificationPermissionLauncher = registerForActivityResult(
+                new ActivityResultContracts.RequestPermission(),
+                isGranted -> {
+                    // Handled gracefully
+                }
+        );
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
                     != PackageManager.PERMISSION_GRANTED) {
-                registerForActivityResult(new ActivityResultContracts.RequestPermission(), isGranted -> {
-                    // Permission result handled gracefully
-                }).launch(Manifest.permission.POST_NOTIFICATIONS);
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS);
             }
         }
     }
@@ -153,11 +188,18 @@ public class MainActivity extends AppCompatActivity {
         settings.setSupportZoom(false);
         settings.setDisplayZoomControls(false);
 
-        // Append custom user agent tag
-        String existingUa = settings.getUserAgentString();
-        settings.setUserAgentString(existingUa + " StudyRoom-Android/1.0.0");
+        // Persistent Cookie Management to guarantee session cookies (Supabase auth) are never lost
+        CookieManager cookieManager = CookieManager.getInstance();
+        cookieManager.setAcceptCookie(true);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            cookieManager.setAcceptThirdPartyCookies(webView, true);
+        }
 
-        // Add native Javascript Interface for notification chronometer integration
+        // Custom User-Agent tag for detection
+        String existingUa = settings.getUserAgentString();
+        settings.setUserAgentString(existingUa + " StudyRoom-Android/1.0.1");
+
+        // Native bridge for live notification chronometer
         webView.addJavascriptInterface(new WebAppInterface(), "AndroidBridge");
 
         webView.setWebViewClient(new WebViewClient() {
@@ -184,7 +226,10 @@ public class MainActivity extends AppCompatActivity {
                 offlineContainer.setVisibility(View.GONE);
                 webView.setVisibility(View.VISIBLE);
 
-                // Inject lightweight native session observer into WebView (zero web codebase changes)
+                // Flush cookies to flash storage so session persists across process restarts
+                CookieManager.getInstance().flush();
+
+                // Inject session observer
                 injectSessionStateHook(view);
             }
 
@@ -196,6 +241,17 @@ public class MainActivity extends AppCompatActivity {
                     webView.setVisibility(View.GONE);
                     offlineContainer.setVisibility(View.VISIBLE);
                 }
+            }
+
+            @Override
+            public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
+                // Prevent app termination when OS reclaims WebView renderer memory
+                if (webView != null) {
+                    webView.destroy();
+                    webView = null;
+                }
+                recreate();
+                return true;
             }
         });
 
@@ -227,6 +283,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void injectSessionStateHook(WebView view) {
+        // High-precision session hook that parses epoch ms in JS and dispatches to Android
         String jsHook =
                 "(function() {" +
                 "  if (window._studyRoomHookInstalled) return;" +
@@ -235,23 +292,54 @@ public class MainActivity extends AppCompatActivity {
                 "    try {" +
                 "      var study = localStorage.getItem('studyroom_active_study') || '';" +
                 "      var brk = localStorage.getItem('studyroom_active_break') || '';" +
-                "      if (window.AndroidBridge && window.AndroidBridge.onSessionStateChanged) {" +
+                "      var brkObj = null;" +
+                "      try { brkObj = brk ? JSON.parse(brk) : null; } catch(e) {}" +
+                "      var studyObj = null;" +
+                "      try { studyObj = study ? JSON.parse(study) : null; } catch(e) {}" +
+                "      var breakStartMs = 0;" +
+                "      if (brkObj && brkObj.breakStartedAt) {" +
+                "        var t = new Date(brkObj.breakStartedAt).getTime();" +
+                "        if (!isNaN(t) && t > 0) breakStartMs = t;" +
+                "      }" +
+                "      var studyStartMs = 0;" +
+                "      if (studyObj) {" +
+                "        var rawTime = studyObj.lastResumedAt || studyObj.sessionStartTime;" +
+                "        if (rawTime) {" +
+                "          var st = new Date(rawTime).getTime();" +
+                "          if (!isNaN(st) && st > 0) studyStartMs = st;" +
+                "        }" +
+                "      }" +
+                "      var accruedSec = 0;" +
+                "      if (brkObj && typeof brkObj.accruedSeconds === 'number') {" +
+                "        accruedSec = Math.floor(brkObj.accruedSeconds);" +
+                "      }" +
+                "      var focusText = (studyObj && studyObj.focus) ? String(studyObj.focus) : '';" +
+                "      if (window.AndroidBridge && window.AndroidBridge.onSessionStateResolved) {" +
+                "        window.AndroidBridge.onSessionStateResolved(" +
+                "          Boolean(brkObj && breakStartMs > 0)," +
+                "          breakStartMs," +
+                "          accruedSec," +
+                "          Boolean(studyObj && studyStartMs > 0)," +
+                "          studyStartMs," +
+                "          focusText" +
+                "        );" +
+                "      } else if (window.AndroidBridge && window.AndroidBridge.onSessionStateChanged) {" +
                 "        window.AndroidBridge.onSessionStateChanged(study, brk);" +
                 "      }" +
-                "    } catch(e) {}" +
+                "    } catch(err) {}" +
                 "  }" +
                 "  var origSet = localStorage.setItem;" +
                 "  var origRem = localStorage.removeItem;" +
                 "  localStorage.setItem = function(k, v) {" +
                 "    origSet.apply(this, arguments);" +
                 "    if (k === 'studyroom_active_study' || k === 'studyroom_active_break') {" +
-                "      checkAndNotify();" +
+                "      setTimeout(checkAndNotify, 50);" +
                 "    }" +
                 "  };" +
                 "  localStorage.removeItem = function(k) {" +
                 "    origRem.apply(this, arguments);" +
                 "    if (k === 'studyroom_active_study' || k === 'studyroom_active_break') {" +
-                "      checkAndNotify();" +
+                "      setTimeout(checkAndNotify, 50);" +
                 "    }" +
                 "  };" +
                 "  checkAndNotify();" +
@@ -265,7 +353,7 @@ public class MainActivity extends AppCompatActivity {
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
-                String currentUrl = webView.getUrl();
+                String currentUrl = (webView != null) ? webView.getUrl() : null;
                 if (currentUrl == null) {
                     finish();
                     return;
@@ -274,14 +362,14 @@ public class MainActivity extends AppCompatActivity {
                 Uri uri = Uri.parse(currentUrl);
                 String path = uri.getPath();
 
-                // 1. If on any tab/page other than /room, jump directly to Room tab
+                // If on any tab other than /room, jump directly to Room tab
                 if (path != null && !path.equals("/room") && !path.equals("/") && !path.isEmpty()) {
                     webView.loadUrl(baseUrl + "/room");
                     lastBackPressedTime = System.currentTimeMillis();
                     return;
                 }
 
-                // 2. If already on /room, exit only on second back press within 2.5s
+                // If on /room, exit only on second back press within 2.5s
                 long now = System.currentTimeMillis();
                 if (now - lastBackPressedTime < 2500) {
                     finish();
@@ -306,10 +394,11 @@ public class MainActivity extends AppCompatActivity {
                     runOnUiThread(() -> {
                         if (offlineContainer.getVisibility() == View.VISIBLE) {
                             offlineContainer.setVisibility(View.GONE);
-                            webView.setVisibility(View.VISIBLE);
-                            webView.reload();
-                        } else {
-                            // Signal online event to web app for smooth realtime WebSocket resync
+                            if (webView != null) {
+                                webView.setVisibility(View.VISIBLE);
+                                webView.reload();
+                            }
+                        } else if (webView != null) {
                             webView.evaluateJavascript(
                                     "if (window.dispatchEvent) { window.dispatchEvent(new Event('online')); }",
                                     null
@@ -318,56 +407,100 @@ public class MainActivity extends AppCompatActivity {
                     });
                 }
             };
-            connectivityManager.registerNetworkCallback(request, networkCallback);
+            try {
+                connectivityManager.registerNetworkCallback(request, networkCallback);
+            } catch (Exception ignored) {}
         }
     }
 
     public class WebAppInterface {
+
+        @JavascriptInterface
+        public void onSessionStateResolved(boolean isBreak, long breakStartMs, long accruedSeconds,
+                                           boolean isStudy, long studyStartMs, String focusText) {
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
+
+                if (isBreak && breakStartMs > 0) {
+                    StudySessionService.startBreakSession(MainActivity.this, breakStartMs, accruedSeconds);
+                    return;
+                }
+
+                if (isStudy && studyStartMs > 0) {
+                    StudySessionService.startStudySession(MainActivity.this, studyStartMs, focusText);
+                    return;
+                }
+
+                StudySessionService.stopSession(MainActivity.this);
+            });
+        }
+
+        // Backward-compatible fallback interface
         @JavascriptInterface
         public void onSessionStateChanged(String studyJson, String breakJson) {
-            try {
-                if (breakJson != null && !breakJson.trim().isEmpty() && !breakJson.equals("{}")) {
-                    JSONObject obj = new JSONObject(breakJson);
-                    String breakStartedAtIso = obj.optString("breakStartedAt");
-                    long accrued = obj.optLong("accruedSeconds", 0);
-                    long breakStartMs = parseIsoToMs(breakStartedAtIso);
-                    StudySessionService.startBreakSession(MainActivity.this, breakStartMs, accrued);
-                    return;
-                }
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                try {
+                    if (breakJson != null && !breakJson.trim().isEmpty() && !breakJson.equals("{}")) {
+                        JSONObject obj = new JSONObject(breakJson);
+                        long accrued = obj.optLong("accruedSeconds", 0);
+                        String iso = obj.optString("breakStartedAt");
+                        long breakStartMs = System.currentTimeMillis();
+                        if (iso != null && !iso.isEmpty()) {
+                            try {
+                                java.time.Instant inst = java.time.Instant.parse(iso);
+                                breakStartMs = inst.toEpochMilli();
+                            } catch (Exception ignored) {}
+                        }
+                        StudySessionService.startBreakSession(MainActivity.this, breakStartMs, accrued);
+                        return;
+                    }
 
-                if (studyJson != null && !studyJson.trim().isEmpty() && !studyJson.equals("{}")) {
-                    JSONObject obj = new JSONObject(studyJson);
-                    String lastResumedAtIso = obj.optString("lastResumedAt");
-                    String sessionStartIso = obj.optString("sessionStartTime");
-                    long startMs = parseIsoToMs(lastResumedAtIso.isEmpty() ? sessionStartIso : lastResumedAtIso);
-                    StudySessionService.startStudySession(MainActivity.this, startMs, "");
-                    return;
-                }
+                    if (studyJson != null && !studyJson.trim().isEmpty() && !studyJson.equals("{}")) {
+                        JSONObject obj = new JSONObject(studyJson);
+                        String focus = obj.optString("focus", "");
+                        long startMs = System.currentTimeMillis();
+                        String iso = obj.optString("lastResumedAt", obj.optString("sessionStartTime", ""));
+                        if (!iso.isEmpty()) {
+                            try {
+                                java.time.Instant inst = java.time.Instant.parse(iso);
+                                startMs = inst.toEpochMilli();
+                            } catch (Exception ignored) {}
+                        }
+                        StudySessionService.startStudySession(MainActivity.this, startMs, focus);
+                        return;
+                    }
 
-                // If neither active, session has stopped
-                StudySessionService.stopSession(MainActivity.this);
-            } catch (Exception e) {
-                // Fallback silently
-            }
+                    StudySessionService.stopSession(MainActivity.this);
+                } catch (Exception ignored) {}
+            });
         }
     }
 
-    private long parseIsoToMs(String isoTimestamp) {
-        if (isoTimestamp == null || isoTimestamp.isEmpty()) {
-            return System.currentTimeMillis();
+    @Override
+    protected void onResume() {
+        super.onResume();
+        isActivityVisible = true;
+        if (webView != null) {
+            webView.onResume();
         }
-        try {
-            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
-            sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
-            return sdf.parse(isoTimestamp).getTime();
-        } catch (Exception e) {
-            try {
-                SimpleDateFormat sdf2 = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US);
-                sdf2.setTimeZone(TimeZone.getTimeZone("UTC"));
-                return sdf2.parse(isoTimestamp).getTime();
-            } catch (Exception ignored) {
-                return System.currentTimeMillis();
-            }
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        isActivityVisible = false;
+        CookieManager.getInstance().flush();
+        if (webView != null) {
+            webView.onPause();
+        }
+    }
+
+    @Override
+    protected void onSaveInstanceState(@NonNull Bundle outState) {
+        super.onSaveInstanceState(outState);
+        if (webView != null) {
+            webView.saveState(outState);
         }
     }
 
@@ -377,6 +510,11 @@ public class MainActivity extends AppCompatActivity {
             try {
                 connectivityManager.unregisterNetworkCallback(networkCallback);
             } catch (Exception ignored) {}
+        }
+        CookieManager.getInstance().flush();
+        if (webView != null) {
+            webView.destroy();
+            webView = null;
         }
         super.onDestroy();
     }

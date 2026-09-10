@@ -897,12 +897,12 @@ BEGIN
       s.user_id,
       DATE_TRUNC('day', s.start_time AT TIME ZONE v_tz) AS study_day
     FROM public.study_sessions s
-    WHERE s.start_time >= (NOW() - INTERVAL '7 days')
+    WHERE s.start_time >= v_week_start AND s.start_time < v_week_end
     GROUP BY s.user_id, DATE_TRUNC('day', s.start_time AT TIME ZONE v_tz)
     HAVING SUM(s.duration_minutes) >= 30
   ),
   user_streaks AS (
-    -- Days with >= 30 mins active study in local calendar days
+    -- Days with >= 30 mins active study in local calendar days within current week
     SELECT qd.user_id, COUNT(DISTINCT qd.study_day)::INTEGER AS streak
     FROM qualifying_days qd
     GROUP BY qd.user_id
