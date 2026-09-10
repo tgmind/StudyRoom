@@ -205,7 +205,7 @@ public class MainActivity extends AppCompatActivity {
 
         // Custom User-Agent tag for detection
         String existingUa = settings.getUserAgentString();
-        settings.setUserAgentString(existingUa + " StudyRoom-Android/1.0.3");
+        settings.setUserAgentString(existingUa + " StudyRoom-Android/1.0.4");
 
         // Native bridge for live notification chronometer
         webView.addJavascriptInterface(new WebAppInterface(), "AndroidBridge");
@@ -294,7 +294,7 @@ public class MainActivity extends AppCompatActivity {
         // High-precision session hook that parses epoch ms in JS and dispatches to Android
         String jsHook =
                 "(function() {" +
-                "  window.__STUDYROOM_NATIVE_VERSION = '1.0.3';" +
+                "  window.__STUDYROOM_NATIVE_VERSION = '1.0.4';" +
                 "  if (window._studyRoomHookInstalled) return;" +
                 "  window._studyRoomHookInstalled = true;" +
                 "  function checkAndNotify() {" +
@@ -426,7 +426,7 @@ public class MainActivity extends AppCompatActivity {
 
         @JavascriptInterface
         public String getAppVersion() {
-            return "1.0.3";
+            return "1.0.4";
         }
 
         @JavascriptInterface

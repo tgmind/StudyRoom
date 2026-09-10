@@ -5,9 +5,9 @@ export interface ReleaseInfo {
   publishedAt?: string;
 }
 
-export const DEFAULT_RELEASE_VERSION = "v1.0.3";
+export const DEFAULT_RELEASE_VERSION = "v1.0.4";
 export const DEFAULT_APK_DOWNLOAD_URL =
-  "https://github.com/tgmind/StudyRoom/releases/download/v1.0.3/StudyRoom-v1.0.3.apk";
+  "https://github.com/tgmind/StudyRoom/releases/download/v1.0.4/StudyRoom-v1.0.4.apk";
 
 /**
  * Detects if the user is running inside an installed PWA or Native Android App.
