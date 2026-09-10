@@ -17,16 +17,35 @@
     -webkit-tap-highlight-color: transparent;
   }
 
-  /* Seamless Native App UX: Hide scrollbars across all browsers while keeping smooth scrolling */
+  /* Seamless Native App UX: Completely hide scrollbars across all browsers, viewports & WebViews */
+  html,
+  body,
   * {
-    scrollbar-width: none; /* Firefox */
-    -ms-overflow-style: none; /* IE / Edge */
+    scrollbar-width: none !important; /* Firefox */
+    -ms-overflow-style: none !important; /* IE / Edge */
   }
 
+  html::-webkit-scrollbar,
+  body::-webkit-scrollbar,
   *::-webkit-scrollbar {
-    display: none; /* Chrome, Safari, Edge, Android Chrome, iOS Safari */
-    width: 0;
-    height: 0;
+    display: none !important; /* Chrome, Safari, Edge, Android Chrome, Android WebView */
+    width: 0 !important;
+    height: 0 !important;
+    background: transparent !important;
+  }
+
+  html::-webkit-scrollbar-thumb,
+  body::-webkit-scrollbar-thumb,
+  *::-webkit-scrollbar-thumb {
+    display: none !important;
+    background: transparent !important;
+  }
+
+  html::-webkit-scrollbar-track,
+  body::-webkit-scrollbar-track,
+  *::-webkit-scrollbar-track {
+    display: none !important;
+    background: transparent !important;
   }
 }
 

@@ -188,6 +188,11 @@ public class MainActivity extends AppCompatActivity {
         settings.setSupportZoom(false);
         settings.setDisplayZoomControls(false);
 
+        // Hide ugly native Android scrollbars completely
+        webView.setVerticalScrollBarEnabled(false);
+        webView.setHorizontalScrollBarEnabled(false);
+        webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
+
         // Persistent Cookie Management to guarantee session cookies (Supabase auth) are never lost
         CookieManager cookieManager = CookieManager.getInstance();
         cookieManager.setAcceptCookie(true);
@@ -197,7 +202,7 @@ public class MainActivity extends AppCompatActivity {
 
         // Custom User-Agent tag for detection
         String existingUa = settings.getUserAgentString();
-        settings.setUserAgentString(existingUa + " StudyRoom-Android/1.0.1");
+        settings.setUserAgentString(existingUa + " StudyRoom-Android/1.0.2");
 
         // Native bridge for live notification chronometer
         webView.addJavascriptInterface(new WebAppInterface(), "AndroidBridge");
@@ -286,7 +291,7 @@ public class MainActivity extends AppCompatActivity {
         // High-precision session hook that parses epoch ms in JS and dispatches to Android
         String jsHook =
                 "(function() {" +
-                "  window.__STUDYROOM_NATIVE_VERSION = '1.0.1';" +
+                "  window.__STUDYROOM_NATIVE_VERSION = '1.0.2';" +
                 "  if (window._studyRoomHookInstalled) return;" +
                 "  window._studyRoomHookInstalled = true;" +
                 "  function checkAndNotify() {" +
@@ -418,7 +423,7 @@ public class MainActivity extends AppCompatActivity {
 
         @JavascriptInterface
         public String getAppVersion() {
-            return "1.0.1";
+            return "1.0.2";
         }
 
         @JavascriptInterface
