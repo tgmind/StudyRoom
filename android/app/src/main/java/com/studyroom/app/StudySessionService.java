@@ -171,14 +171,20 @@ public class StudySessionService extends Service {
         );
 
         int accentColor = ContextCompat.getColor(this, isBreak ? R.color.brand_amber : R.color.brand_violet);
+        String subHeader = isBreak ? "Recharge Break • 1h Max" : "Live Study • Deep Focus";
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_stat_timer)
                 .setColor(accentColor)
-                .setColorized(true)
+                // Omit setColorized(true) so the notification renders on the native dark theme surface
+                // rather than flooding the entire card background with a solid neon color
                 .setContentTitle(title)
                 .setContentText(subtext)
-                .setSubText(isBreak ? "Break • 1h Max" : "Live Study")
+                .setSubText(subHeader)
+                .setStyle(new NotificationCompat.BigTextStyle()
+                        .setBigContentTitle(title)
+                        .bigText(subtext)
+                        .setSummaryText(subHeader))
                 .setContentIntent(pendingIntent)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
@@ -187,10 +193,9 @@ public class StudySessionService extends Service {
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .setUsesChronometer(true)
                 .setWhen(baseTimeMs)
-                .setShowWhen(true)
-                .addAction(R.drawable.ic_stat_timer, getString(R.string.open_room), pendingIntent);
+                .setShowWhen(true);
 
-        // On break, add direct "Resume Study" action button for instant one-tap resume
+        // On break, put primary "Resume Study" action first, followed by "Open Room"
         if (isBreak) {
             Intent resumeIntent = new Intent(this, MainActivity.class);
             resumeIntent.setAction(ACTION_RESUME_STUDY);
@@ -201,7 +206,10 @@ public class StudySessionService extends Service {
                     resumeIntent,
                     PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0)
             );
-            builder.addAction(R.drawable.ic_stat_timer, "Resume Study", resumePendingIntent);
+            builder.addAction(R.drawable.ic_stat_timer, "▶ Resume Study", resumePendingIntent);
+            builder.addAction(R.drawable.ic_stat_timer, "↗ " + getString(R.string.open_room), pendingIntent);
+        } else {
+            builder.addAction(R.drawable.ic_stat_timer, "↗ " + getString(R.string.open_room), pendingIntent);
         }
 
         return builder.build();
