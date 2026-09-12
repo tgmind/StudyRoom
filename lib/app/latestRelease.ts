@@ -5,9 +5,9 @@ export interface ReleaseInfo {
   publishedAt?: string;
 }
 
-export const DEFAULT_RELEASE_VERSION = "v1.0.6";
+export const DEFAULT_RELEASE_VERSION = "v1.0.7";
 export const DEFAULT_APK_DOWNLOAD_URL =
-  "https://github.com/tgmind/StudyRoom/releases/download/v1.0.6/StudyRoom-v1.0.6.apk";
+  "https://github.com/tgmind/StudyRoom/releases/download/v1.0.7/StudyRoom-v1.0.7.apk";
 
 /**
  * Detects if the user is running inside an installed PWA or Native Android App.
@@ -224,39 +224,43 @@ export async function fetchLatestApkRelease(): Promise<ReleaseInfo> {
   };
 }
 
+let lastDownloadTriggerTime = 0;
+let lastDownloadUrl = "";
+
 /**
  * Triggers a direct APK file download in the browser without redirecting or reloading the page.
- * Uses an invisible iframe combined with a programmatic anchor click.
+ * Uses a single clean programmatic anchor click with debouncing to strictly prevent duplicate downloads.
  */
 export function triggerApkDirectDownload(downloadUrl: string, filename = "StudyRoom.apk") {
-  if (typeof document === "undefined") return;
+  if (typeof window === "undefined" || typeof document === "undefined" || !downloadUrl) return;
 
-  // Primary mechanism: Invisible iframe.
-  // Because the URL returns Content-Disposition: attachment, the browser handles it
-  // as a file download and the current web page NEVER navigates or reloads.
-  const iframe = document.createElement("iframe");
-  iframe.style.display = "none";
-  iframe.setAttribute("aria-hidden", "true");
-  iframe.src = downloadUrl;
-  document.body.appendChild(iframe);
+  // Debounce safeguard: prevent duplicate concurrent triggers within 3 seconds for the same URL
+  const now = Date.now();
+  if (lastDownloadUrl === downloadUrl && now - lastDownloadTriggerTime < 3000) {
+    return;
+  }
+  lastDownloadTriggerTime = now;
+  lastDownloadUrl = downloadUrl;
 
-  // Fallback anchor click
+  // Single clean anchor download trigger without target="_blank"
+  // When an anchor tag with download attribute is clicked, browsers initiate
+  // a background download without navigating the current window or opening duplicate tabs.
   const link = document.createElement("a");
   link.href = downloadUrl;
   link.setAttribute("download", filename);
-  link.setAttribute("target", "_blank");
   link.rel = "noopener noreferrer";
   link.style.display = "none";
   document.body.appendChild(link);
   link.click();
 
-  // Clean up elements after download starts
+  // Clean up element after download starts
   setTimeout(() => {
     try {
-      if (document.body.contains(iframe)) document.body.removeChild(iframe);
-      if (document.body.contains(link)) document.body.removeChild(link);
+      if (document.body.contains(link)) {
+        document.body.removeChild(link);
+      }
     } catch {
       // Ignore cleanup error
     }
-  }, 10000);
+  }, 1000);
 }

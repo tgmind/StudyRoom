@@ -217,12 +217,15 @@ public class MainActivity extends AppCompatActivity {
 
         // Custom User-Agent tag for detection
         String existingUa = settings.getUserAgentString();
-        settings.setUserAgentString(existingUa + " StudyRoom-Android/1.0.6");
+        settings.setUserAgentString(existingUa + " StudyRoom-Android/1.0.7");
 
         // Native bridge for live notification chronometer
         webView.addJavascriptInterface(new WebAppInterface(), "AndroidBridge");
 
         webView.setWebViewClient(new WebViewClient() {
+            private long lastExternalIntentTime = 0;
+            private String lastExternalIntentUrl = "";
+
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri uri = request.getUrl();
@@ -230,6 +233,15 @@ public class MainActivity extends AppCompatActivity {
 
                 // Open external links outside StudyRoom in device's default browser
                 if (host != null && !host.contains("netlify.app") && !host.contains("localhost")) {
+                    long now = System.currentTimeMillis();
+                    String urlStr = (uri != null) ? uri.toString() : "";
+                    // Suppress duplicate rapid intent launches for the exact same URL within 2.5 seconds
+                    if (urlStr.equals(lastExternalIntentUrl) && (now - lastExternalIntentTime < 2500)) {
+                        return true;
+                    }
+                    lastExternalIntentUrl = urlStr;
+                    lastExternalIntentTime = now;
+
                     try {
                         Intent browserIntent = new Intent(Intent.ACTION_VIEW, uri);
                         startActivity(browserIntent);
@@ -306,7 +318,7 @@ public class MainActivity extends AppCompatActivity {
         // High-precision session hook that parses epoch ms in JS and dispatches to Android
         String jsHook =
                 "(function() {" +
-                "  window.__STUDYROOM_NATIVE_VERSION = '1.0.6';" +
+                "  window.__STUDYROOM_NATIVE_VERSION = '1.0.7';" +
                 "  if (window._studyRoomHookInstalled) return;" +
                 "  window._studyRoomHookInstalled = true;" +
                 "  function updateSwipeRefreshState() {" +
@@ -478,7 +490,7 @@ public class MainActivity extends AppCompatActivity {
 
         @JavascriptInterface
         public String getAppVersion() {
-            return "1.0.6";
+            return "1.0.7";
         }
 
         @JavascriptInterface

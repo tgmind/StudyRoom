@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { useAuthContext } from "@/components/auth/AuthProvider";
 import { Modal } from "@/components/ui/Modal";
@@ -32,6 +32,7 @@ export const LAUNCH_UPDATE_STORAGE_KEY = "studyroom_stable_app_v1_0_3_announceme
 export function LaunchAnnouncementModal() {
   const [isOpen, setIsOpen] = useState(false);
   const [downloadState, setDownloadState] = useState<"idle" | "downloading" | "downloaded">("idle");
+  const isDownloadingRef = useRef(false);
   const [envInfo, setEnvInfo] = useState<AppEnvironmentInfo>({
     isNativeApp: false,
     isPwa: false,
@@ -109,6 +110,8 @@ export function LaunchAnnouncementModal() {
   };
 
   const handleDownloadApp = () => {
+    if (isDownloadingRef.current) return;
+    isDownloadingRef.current = true;
     setDownloadState("downloading");
     const filename = `StudyRoom-${latestRelease.version}.apk`;
     triggerApkDirectDownload(latestRelease.apkDownloadUrl, filename);
@@ -128,6 +131,7 @@ export function LaunchAnnouncementModal() {
 
     setTimeout(() => {
       setIsOpen(false);
+      isDownloadingRef.current = false;
     }, 3000);
   };
 
@@ -276,7 +280,7 @@ export function LaunchAnnouncementModal() {
               <button
                 type="button"
                 onClick={handleDownloadApp}
-                disabled={downloadState === "downloading"}
+                disabled={downloadState !== "idle"}
                 className="w-full font-black text-xs sm:text-sm py-3.5 px-4 rounded-xl bg-gradient-to-r from-violet-600 via-indigo-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white shadow-lg shadow-violet-500/25 flex items-center justify-center space-x-2 active:scale-[0.98] transition-all disabled:opacity-75"
               >
                 {downloadState === "downloading" ? (

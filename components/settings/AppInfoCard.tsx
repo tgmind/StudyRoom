@@ -36,6 +36,7 @@ export function AppInfoCard() {
   });
 
   const [downloadState, setDownloadState] = useState<"idle" | "downloading" | "downloaded">("idle");
+  const isDownloadingRef = React.useRef(false);
 
   useEffect(() => {
     // Detect environment on client mount
@@ -56,6 +57,8 @@ export function AppInfoCard() {
   const isOutdatedNative = envInfo.isNativeApp && !isLatestNative;
 
   const handleDirectDownload = () => {
+    if (isDownloadingRef.current) return;
+    isDownloadingRef.current = true;
     setDownloadState("downloading");
     const filename = `StudyRoom-${latestRelease.version}.apk`;
     triggerApkDirectDownload(latestRelease.apkDownloadUrl, filename);
@@ -66,6 +69,7 @@ export function AppInfoCard() {
 
     setTimeout(() => {
       setDownloadState("idle");
+      isDownloadingRef.current = false;
     }, 5000);
   };
 
@@ -162,7 +166,7 @@ export function AppInfoCard() {
           <button
             type="button"
             onClick={handleDirectDownload}
-            disabled={downloadState === "downloading"}
+            disabled={downloadState !== "idle"}
             className="w-full flex items-center justify-center space-x-2 py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-zinc-950 font-black text-xs sm:text-sm shadow-md active:scale-[0.98] transition-all touch-manipulation disabled:opacity-75"
           >
             {downloadState === "downloading" ? (
@@ -202,7 +206,7 @@ export function AppInfoCard() {
           <button
             type="button"
             onClick={handleDirectDownload}
-            disabled={downloadState === "downloading"}
+            disabled={downloadState !== "idle"}
             className="w-full flex items-center justify-center space-x-2 py-2.5 px-4 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-extrabold text-xs sm:text-sm shadow-md shadow-violet-950/40 active:scale-[0.98] transition-all touch-manipulation disabled:opacity-75"
           >
             {downloadState === "downloading" ? (
