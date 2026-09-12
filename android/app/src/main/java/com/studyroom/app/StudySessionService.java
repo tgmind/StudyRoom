@@ -143,7 +143,7 @@ public class StudySessionService extends Service {
             lastFocus = "";
 
             String formattedAccrued = formatDuration(accrued);
-            String title = "Break in Progress — Recharge";
+            String title = "Break in progress";
             String subtext = "Accrued Study: " + formattedAccrued + " • 1-hour break limit";
 
             Notification notification = buildModernNotification(title, subtext, breakStartTimeMs, true, accrued);

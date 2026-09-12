@@ -66,6 +66,7 @@ public class MainActivity extends AppCompatActivity {
     private String baseUrl;
     private long lastBackPressedTime = 0;
     private boolean isActivityVisible = false;
+    private boolean isResumePending = false;
 
     private File pendingInstallApkFile = null;
     private final ExecutorService downloadExecutor = Executors.newSingleThreadExecutor();
@@ -104,6 +105,7 @@ public class MainActivity extends AppCompatActivity {
             webView.restoreState(savedInstanceState);
         }
 
+        cleanupDownloadedApks();
         handleIncomingIntent(getIntent());
     }
 
@@ -116,22 +118,75 @@ public class MainActivity extends AppCompatActivity {
 
     private void handleIncomingIntent(Intent intent) {
         if (intent != null && StudySessionService.ACTION_RESUME_STUDY.equals(intent.getAction())) {
+            isResumePending = true;
             if (webView != null) {
-                // Programmatically trigger Resume in web app
-                webView.evaluateJavascript(
-                        "(function() {" +
-                        "  var btns = document.querySelectorAll('button');" +
-                        "  for (var i = 0; i < btns.length; i++) {" +
-                        "    if (btns[i].textContent && btns[i].textContent.trim() === 'Resume') {" +
-                        "      btns[i].click();" +
-                        "      break;" +
-                        "    }" +
-                        "  }" +
-                        "})();",
-                        null
-                );
+                String currentUrl = webView.getUrl();
+                if (currentUrl == null || !currentUrl.contains("/room")) {
+                    webView.loadUrl(baseUrl + "/room");
+                }
+                dispatchResumeSessionWithRetry();
             }
         }
+    }
+
+    private void dispatchResumeSessionWithRetry() {
+        if (webView == null) return;
+        webView.evaluateJavascript(
+                "(function() {" +
+                "  var attempts = 0;" +
+                "  var maxAttempts = 35;" + // 35 * 200ms = 7 seconds
+                "  var poller = setInterval(function() {" +
+                "    attempts++;" +
+                "    try {" +
+                "      if (window.__studyRoomResumeSession && typeof window.__studyRoomResumeSession === 'function') {" +
+                "        window.__studyRoomResumeSession();" +
+                "        if (window.AndroidBridge && window.AndroidBridge.onResumeTriggered) {" +
+                "          window.AndroidBridge.onResumeTriggered();" +
+                "        }" +
+                "        clearInterval(poller);" +
+                "        return;" +
+                "      }" +
+                "      var btns = document.querySelectorAll('button');" +
+                "      for (var i = 0; i < btns.length; i++) {" +
+                "        var txt = (btns[i].innerText || btns[i].textContent || '').trim();" +
+                "        if (txt === 'Resume' || txt.includes('Resume')) {" +
+                "          btns[i].click();" +
+                "          if (window.AndroidBridge && window.AndroidBridge.onResumeTriggered) {" +
+                "            window.AndroidBridge.onResumeTriggered();" +
+                "          }" +
+                "          clearInterval(poller);" +
+                "          return;" +
+                "        }" +
+                "      }" +
+                "    } catch (e) {}" +
+                "    if (attempts >= maxAttempts) {" +
+                "      clearInterval(poller);" +
+                "    }" +
+                "  }, 200);" +
+                "})();",
+                null
+        );
+    }
+
+    private void cleanupDownloadedApks() {
+        downloadExecutor.execute(() -> {
+            try {
+                File downloadsDir = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
+                if (downloadsDir == null) {
+                    downloadsDir = new File(getFilesDir(), "Download");
+                }
+                if (downloadsDir.exists() && downloadsDir.isDirectory()) {
+                    File[] files = downloadsDir.listFiles();
+                    if (files != null) {
+                        for (File file : files) {
+                            if (file != null && file.isFile() && file.getName().toLowerCase().endsWith(".apk")) {
+                                file.delete();
+                            }
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+        });
     }
 
     private void setupPermissionLaunchers() {
@@ -249,7 +304,7 @@ public class MainActivity extends AppCompatActivity {
 
         // Custom User-Agent tag for detection
         String existingUa = settings.getUserAgentString();
-        settings.setUserAgentString(existingUa + " StudyRoom-Android/1.0.8");
+        settings.setUserAgentString(existingUa + " StudyRoom-Android/1.0.9");
 
         // Native bridge for live notification chronometer
         webView.addJavascriptInterface(new WebAppInterface(), "AndroidBridge");
@@ -295,6 +350,11 @@ public class MainActivity extends AppCompatActivity {
 
                 // Inject session observer
                 injectSessionStateHook(view);
+
+                if (isResumePending) {
+                    isResumePending = false;
+                    dispatchResumeSessionWithRetry();
+                }
             }
 
             @Override
@@ -350,7 +410,7 @@ public class MainActivity extends AppCompatActivity {
         // High-precision session hook that parses epoch ms in JS and dispatches to Android
         String jsHook =
                 "(function() {" +
-                "  window.__STUDYROOM_NATIVE_VERSION = '1.0.8';" +
+                "  window.__STUDYROOM_NATIVE_VERSION = '1.0.9';" +
                 "  if (window._studyRoomHookInstalled) return;" +
                 "  window._studyRoomHookInstalled = true;" +
                 "  function updateSwipeRefreshState() {" +
@@ -522,7 +582,12 @@ public class MainActivity extends AppCompatActivity {
 
         @JavascriptInterface
         public String getAppVersion() {
-            return "1.0.8";
+            return "1.0.9";
+        }
+
+        @JavascriptInterface
+        public void onResumeTriggered() {
+            isResumePending = false;
         }
 
         @JavascriptInterface
@@ -627,7 +692,7 @@ public class MainActivity extends AppCompatActivity {
                 connection.setInstanceFollowRedirects(true);
                 connection.setConnectTimeout(15000);
                 connection.setReadTimeout(30000);
-                connection.setRequestProperty("User-Agent", "StudyRoom-Android/1.0.8");
+                connection.setRequestProperty("User-Agent", "StudyRoom-Android/1.0.9");
                 connection.connect();
 
                 // Handle HTTP redirects (GitHub releases 302/307 to AWS S3)
@@ -646,7 +711,7 @@ public class MainActivity extends AppCompatActivity {
                     connection.setInstanceFollowRedirects(true);
                     connection.setConnectTimeout(15000);
                     connection.setReadTimeout(30000);
-                    connection.setRequestProperty("User-Agent", "StudyRoom-Android/1.0.8");
+                    connection.setRequestProperty("User-Agent", "StudyRoom-Android/1.0.9");
                     connection.connect();
                     responseCode = connection.getResponseCode();
                     redirectCount++;
@@ -666,6 +731,16 @@ public class MainActivity extends AppCompatActivity {
                 }
                 if (!downloadsDir.exists()) {
                     downloadsDir.mkdirs();
+                } else {
+                    // Purge stale apk files before writing fresh package
+                    File[] oldFiles = downloadsDir.listFiles();
+                    if (oldFiles != null) {
+                        for (File f : oldFiles) {
+                            if (f != null && f.isFile() && f.getName().toLowerCase().endsWith(".apk")) {
+                                f.delete();
+                            }
+                        }
+                    }
                 }
 
                 File apkFile = new File(downloadsDir, targetFilename);

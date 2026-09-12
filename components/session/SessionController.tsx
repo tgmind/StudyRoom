@@ -86,6 +86,15 @@ export const SessionController = memo(function SessionController({
     }
   };
 
+  React.useEffect(() => {
+    if (isBreak) {
+      (window as unknown as { __studyRoomResumeSession?: () => Promise<void> }).__studyRoomResumeSession = handleResume;
+      return () => {
+        delete (window as unknown as { __studyRoomResumeSession?: () => Promise<void> }).__studyRoomResumeSession;
+      };
+    }
+  }, [isBreak, onResumeSession]);
+
   return (
     <div className="w-full bg-zinc-900/70 border border-zinc-800/90 rounded-2xl p-4 sm:p-5 shadow-xl space-y-4 backdrop-blur-md">
       {/* Session Timer */}
