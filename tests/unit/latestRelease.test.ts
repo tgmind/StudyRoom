@@ -4,6 +4,7 @@ import {
   compareSemver,
   isAppUpToDate,
   getAppEnvironmentInfo,
+  downloadAndInstallApkInApp,
   DEFAULT_RELEASE_VERSION,
 } from "@/lib/app/latestRelease";
 
@@ -125,6 +126,45 @@ describe("latestRelease utility functions", () => {
       expect(info.isPwa).toBe(false);
       expect(info.installedVersion).toBeNull();
       expect(info.platformLabel).toBe("Web Browser");
+    });
+  });
+
+  describe("downloadAndInstallApkInApp", () => {
+    it("calls AndroidBridge.downloadAndInstallApk and registers progress callback when bridge is available", () => {
+      const mockDownload = vi.fn();
+      (window as any).AndroidBridge = {
+        downloadAndInstallApk: mockDownload,
+      };
+
+      const progressSpy = vi.fn();
+      const result = downloadAndInstallApkInApp(
+        "https://example.com/StudyRoom.apk",
+        "StudyRoom-test.apk",
+        progressSpy
+      );
+
+      expect(result).toBe(true);
+      expect(mockDownload).toHaveBeenCalledWith(
+        "https://example.com/StudyRoom.apk",
+        "StudyRoom-test.apk"
+      );
+
+      // Verify global hook was installed
+      expect(typeof (window as any).__onApkProgress).toBe("function");
+      (window as any).__onApkProgress(50, "Downloading 50%");
+      expect(progressSpy).toHaveBeenCalledWith(50, "Downloading 50%");
+
+      delete (window as any).AndroidBridge;
+      delete (window as any).__onApkProgress;
+    });
+
+    it("returns false when AndroidBridge is not present (fallback mode)", () => {
+      delete (window as any).AndroidBridge;
+      const result = downloadAndInstallApkInApp(
+        "https://example.com/StudyRoom.apk",
+        "StudyRoom-test.apk"
+      );
+      expect(result).toBe(false);
     });
   });
 });

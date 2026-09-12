@@ -12,6 +12,8 @@ import android.net.NetworkRequest;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.provider.Settings;
 import android.view.View;
 import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
@@ -32,10 +34,19 @@ import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
+import androidx.core.content.FileProvider;
 import androidx.core.splashscreen.SplashScreen;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
 import org.json.JSONObject;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -47,6 +58,7 @@ public class MainActivity extends AppCompatActivity {
     private ValueCallback<Uri[]> fileChooserCallback;
     private ActivityResultLauncher<Intent> fileChooserLauncher;
     private ActivityResultLauncher<String> notificationPermissionLauncher;
+    private ActivityResultLauncher<Intent> installPermissionLauncher;
 
     private ConnectivityManager connectivityManager;
     private ConnectivityManager.NetworkCallback networkCallback;
@@ -54,6 +66,9 @@ public class MainActivity extends AppCompatActivity {
     private String baseUrl;
     private long lastBackPressedTime = 0;
     private boolean isActivityVisible = false;
+
+    private File pendingInstallApkFile = null;
+    private final ExecutorService downloadExecutor = Executors.newSingleThreadExecutor();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -124,6 +139,23 @@ public class MainActivity extends AppCompatActivity {
                 new ActivityResultContracts.RequestPermission(),
                 isGranted -> {
                     // Handled gracefully
+                }
+        );
+
+        installPermissionLauncher = registerForActivityResult(
+                new ActivityResultContracts.StartActivityForResult(),
+                result -> {
+                    if (pendingInstallApkFile != null) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            if (getPackageManager().canRequestPackageInstalls()) {
+                                File toInstall = pendingInstallApkFile;
+                                pendingInstallApkFile = null;
+                                initiateApkInstallation(toInstall);
+                            } else {
+                                Toast.makeText(MainActivity.this, "Installation permission not granted", Toast.LENGTH_SHORT).show();
+                            }
+                        }
+                    }
                 }
         );
 
@@ -217,7 +249,7 @@ public class MainActivity extends AppCompatActivity {
 
         // Custom User-Agent tag for detection
         String existingUa = settings.getUserAgentString();
-        settings.setUserAgentString(existingUa + " StudyRoom-Android/1.0.7");
+        settings.setUserAgentString(existingUa + " StudyRoom-Android/1.0.8");
 
         // Native bridge for live notification chronometer
         webView.addJavascriptInterface(new WebAppInterface(), "AndroidBridge");
@@ -318,7 +350,7 @@ public class MainActivity extends AppCompatActivity {
         // High-precision session hook that parses epoch ms in JS and dispatches to Android
         String jsHook =
                 "(function() {" +
-                "  window.__STUDYROOM_NATIVE_VERSION = '1.0.7';" +
+                "  window.__STUDYROOM_NATIVE_VERSION = '1.0.8';" +
                 "  if (window._studyRoomHookInstalled) return;" +
                 "  window._studyRoomHookInstalled = true;" +
                 "  function updateSwipeRefreshState() {" +
@@ -490,7 +522,7 @@ public class MainActivity extends AppCompatActivity {
 
         @JavascriptInterface
         public String getAppVersion() {
-            return "1.0.7";
+            return "1.0.8";
         }
 
         @JavascriptInterface
@@ -500,6 +532,11 @@ public class MainActivity extends AppCompatActivity {
                     swipeRefreshLayout.setEnabled(enabled);
                 }
             });
+        }
+
+        @JavascriptInterface
+        public void downloadAndInstallApk(final String downloadUrl, final String filename) {
+            startInAppApkDownload(downloadUrl, filename);
         }
 
         @JavascriptInterface
@@ -564,10 +601,206 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    public void startInAppApkDownload(final String downloadUrl, final String filename) {
+        if (downloadUrl == null || downloadUrl.trim().isEmpty()) {
+            dispatchDownloadError("Invalid download URL provided.");
+            return;
+        }
+
+        final String targetFilename = (filename != null && !filename.trim().isEmpty())
+                ? filename
+                : "StudyRoom-update.apk";
+
+        runOnUiThread(() -> {
+            Toast.makeText(MainActivity.this, "Downloading update in-app...", Toast.LENGTH_SHORT).show();
+        });
+
+        downloadExecutor.execute(() -> {
+            HttpURLConnection connection = null;
+            InputStream input = null;
+            FileOutputStream output = null;
+            try {
+                dispatchDownloadProgress(0, "Connecting to update server...");
+
+                URL url = new URL(downloadUrl);
+                connection = (HttpURLConnection) url.openConnection();
+                connection.setInstanceFollowRedirects(true);
+                connection.setConnectTimeout(15000);
+                connection.setReadTimeout(30000);
+                connection.setRequestProperty("User-Agent", "StudyRoom-Android/1.0.8");
+                connection.connect();
+
+                // Handle HTTP redirects (GitHub releases 302/307 to AWS S3)
+                int responseCode = connection.getResponseCode();
+                int redirectCount = 0;
+                while ((responseCode == HttpURLConnection.HTTP_MOVED_TEMP
+                        || responseCode == HttpURLConnection.HTTP_MOVED_PERM
+                        || responseCode == HttpURLConnection.HTTP_SEE_OTHER
+                        || responseCode == 307
+                        || responseCode == 308) && redirectCount < 5) {
+                    String newUrl = connection.getHeaderField("Location");
+                    if (newUrl == null) break;
+                    connection.disconnect();
+                    url = new URL(newUrl);
+                    connection = (HttpURLConnection) url.openConnection();
+                    connection.setInstanceFollowRedirects(true);
+                    connection.setConnectTimeout(15000);
+                    connection.setReadTimeout(30000);
+                    connection.setRequestProperty("User-Agent", "StudyRoom-Android/1.0.8");
+                    connection.connect();
+                    responseCode = connection.getResponseCode();
+                    redirectCount++;
+                }
+
+                if (responseCode != HttpURLConnection.HTTP_OK) {
+                    dispatchDownloadError("Download failed (HTTP " + responseCode + ")");
+                    return;
+                }
+
+                long fileLength = connection.getContentLengthLong();
+                input = connection.getInputStream();
+
+                File downloadsDir = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
+                if (downloadsDir == null) {
+                    downloadsDir = new File(getFilesDir(), "Download");
+                }
+                if (!downloadsDir.exists()) {
+                    downloadsDir.mkdirs();
+                }
+
+                File apkFile = new File(downloadsDir, targetFilename);
+                if (apkFile.exists()) {
+                    apkFile.delete();
+                }
+
+                output = new FileOutputStream(apkFile);
+
+                byte[] data = new byte[8192];
+                long total = 0;
+                int count;
+                long lastProgressTime = 0;
+
+                while ((count = input.read(data)) != -1) {
+                    total += count;
+                    output.write(data, 0, count);
+
+                    if (fileLength > 0) {
+                        int percent = (int) (total * 100 / fileLength);
+                        long now = System.currentTimeMillis();
+                        if (now - lastProgressTime >= 150 || percent == 100) {
+                            lastProgressTime = now;
+                            dispatchDownloadProgress(percent, "Downloading... " + percent + "%");
+                        }
+                    }
+                }
+
+                output.flush();
+                output.close();
+                output = null;
+                input.close();
+                input = null;
+
+                dispatchDownloadProgress(100, "Download complete. Opening installer...");
+
+                runOnUiThread(() -> initiateApkInstallation(apkFile));
+
+            } catch (Exception e) {
+                dispatchDownloadError("Download error: " + e.getMessage());
+            } finally {
+                try {
+                    if (output != null) output.close();
+                    if (input != null) input.close();
+                    if (connection != null) connection.disconnect();
+                } catch (Exception ignored) {}
+            }
+        });
+    }
+
+    public void initiateApkInstallation(final File apkFile) {
+        if (apkFile == null || !apkFile.exists() || apkFile.length() == 0) {
+            Toast.makeText(this, "Downloaded APK is invalid or not found", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                if (!getPackageManager().canRequestPackageInstalls()) {
+                    pendingInstallApkFile = apkFile;
+                    Toast.makeText(this, "Please allow 'Install unknown apps' to complete update", Toast.LENGTH_LONG).show();
+                    Intent permissionIntent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES)
+                            .setData(Uri.parse("package:" + getPackageName()));
+                    if (installPermissionLauncher != null) {
+                        installPermissionLauncher.launch(permissionIntent);
+                    } else {
+                        startActivity(permissionIntent);
+                    }
+                    return;
+                }
+            }
+
+            Uri apkUri = FileProvider.getUriForFile(
+                    MainActivity.this,
+                    getPackageName() + ".fileprovider",
+                    apkFile
+            );
+
+            Intent installIntent = new Intent(Intent.ACTION_VIEW);
+            installIntent.setDataAndType(apkUri, "application/vnd.android.package-archive");
+            installIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            installIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+
+            startActivity(installIntent);
+        } catch (Exception e) {
+            Toast.makeText(this, "Unable to launch package installer: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void dispatchDownloadProgress(int percent, String status) {
+        runOnUiThread(() -> {
+            if (webView != null && !isFinishing() && !isDestroyed()) {
+                webView.evaluateJavascript(
+                        "(function() {" +
+                        "  try {" +
+                        "    if (window.__onApkProgress) window.__onApkProgress(" + percent + ", " + JSONObject.quote(status) + ");" +
+                        "  } catch(e) {}" +
+                        "})();",
+                        null
+                );
+            }
+        });
+    }
+
+    private void dispatchDownloadError(String errorMessage) {
+        runOnUiThread(() -> {
+            Toast.makeText(MainActivity.this, errorMessage, Toast.LENGTH_SHORT).show();
+            if (webView != null && !isFinishing() && !isDestroyed()) {
+                webView.evaluateJavascript(
+                        "(function() {" +
+                        "  try {" +
+                        "    if (window.__onApkError) window.__onApkError(" + JSONObject.quote(errorMessage) + ");" +
+                        "  } catch(e) {}" +
+                        "})();",
+                        null
+                );
+            }
+        });
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
         isActivityVisible = true;
+
+        if (pendingInstallApkFile != null) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                if (getPackageManager().canRequestPackageInstalls()) {
+                    File toInstall = pendingInstallApkFile;
+                    pendingInstallApkFile = null;
+                    initiateApkInstallation(toInstall);
+                }
+            }
+        }
+
         if (webView != null) {
             webView.onResume();
             // Trigger instant real-time synchronization across Web layers
@@ -612,6 +845,11 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
+        if (downloadExecutor != null && !downloadExecutor.isShutdown()) {
+            try {
+                downloadExecutor.shutdownNow();
+            } catch (Exception ignored) {}
+        }
         if (connectivityManager != null && networkCallback != null) {
             try {
                 connectivityManager.unregisterNetworkCallback(networkCallback);

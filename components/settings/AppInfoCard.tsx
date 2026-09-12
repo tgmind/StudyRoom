@@ -16,6 +16,7 @@ import {
   ReleaseInfo,
   AppEnvironmentInfo,
   fetchLatestApkRelease,
+  downloadAndInstallApkInApp,
   triggerApkDirectDownload,
   getAppEnvironmentInfo,
   isAppUpToDate,
@@ -36,6 +37,9 @@ export function AppInfoCard() {
   });
 
   const [downloadState, setDownloadState] = useState<"idle" | "downloading" | "downloaded">("idle");
+  const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
+  const [downloadStatusText, setDownloadStatusText] = useState<string>("");
+  const [isNativeHandled, setIsNativeHandled] = useState(false);
   const isDownloadingRef = React.useRef(false);
 
   useEffect(() => {
@@ -60,17 +64,51 @@ export function AppInfoCard() {
     if (isDownloadingRef.current) return;
     isDownloadingRef.current = true;
     setDownloadState("downloading");
+    setDownloadProgress(0);
+    setDownloadStatusText("Starting in-app download...");
+
     const filename = `StudyRoom-${latestRelease.version}.apk`;
-    triggerApkDirectDownload(latestRelease.apkDownloadUrl, filename);
 
-    setTimeout(() => {
-      setDownloadState("downloaded");
-    }, 400);
+    const handledNatively = downloadAndInstallApkInApp(
+      latestRelease.apkDownloadUrl,
+      filename,
+      (percent, status) => {
+        setDownloadProgress(percent);
+        if (status) setDownloadStatusText(status);
+        if (percent >= 100) {
+          setDownloadState("downloaded");
+          setTimeout(() => {
+            setDownloadState("idle");
+            setDownloadProgress(null);
+            setIsNativeHandled(false);
+            isDownloadingRef.current = false;
+          }, 4000);
+        }
+      },
+      () => {
+        setDownloadState("idle");
+        setDownloadProgress(null);
+        setIsNativeHandled(false);
+        isDownloadingRef.current = false;
+      }
+    );
 
-    setTimeout(() => {
-      setDownloadState("idle");
-      isDownloadingRef.current = false;
-    }, 5000);
+    setIsNativeHandled(handledNatively);
+
+    // Fallback for Web browser & PWA when not handled natively
+    if (!handledNatively) {
+      triggerApkDirectDownload(latestRelease.apkDownloadUrl, filename);
+
+      setTimeout(() => {
+        setDownloadState("downloaded");
+      }, 400);
+
+      setTimeout(() => {
+        setDownloadState("idle");
+        setDownloadProgress(null);
+        isDownloadingRef.current = false;
+      }, 5000);
+    }
   };
 
   const displayVersion = envInfo.installedVersion
@@ -157,8 +195,8 @@ export function AppInfoCard() {
                 New Version {latestRelease.version} Available
               </p>
               <p className="text-[10px] sm:text-[11px] text-amber-300/80 mt-0.5 leading-relaxed">
-                Your current app is on v{envInfo.installedVersion}. Update directly through the browser
-                to get the newest notification panel timer and stability improvements.
+                Your current app is on v{envInfo.installedVersion}. Downloads in-app and launches the
+                update installer without leaving StudyRoom.
               </p>
             </div>
           </div>
@@ -167,22 +205,36 @@ export function AppInfoCard() {
             type="button"
             onClick={handleDirectDownload}
             disabled={downloadState !== "idle"}
-            className="w-full flex items-center justify-center space-x-2 py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-zinc-950 font-black text-xs sm:text-sm shadow-md active:scale-[0.98] transition-all touch-manipulation disabled:opacity-75"
+            className="w-full relative overflow-hidden flex items-center justify-center space-x-2 py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-zinc-950 font-black text-xs sm:text-sm shadow-md active:scale-[0.98] transition-all touch-manipulation disabled:opacity-85"
           >
+            {downloadProgress !== null && downloadProgress > 0 && downloadProgress < 100 && (
+              <span
+                className="absolute left-0 top-0 bottom-0 bg-amber-400/40 pointer-events-none transition-all duration-200"
+                style={{ width: `${downloadProgress}%` }}
+              />
+            )}
             {downloadState === "downloading" ? (
               <>
-                <Loader2 className="w-4 h-4 animate-spin text-zinc-950" />
-                <span>Starting Download...</span>
+                <Loader2 className="w-4 h-4 animate-spin text-zinc-950 relative z-10" />
+                <span className="relative z-10">
+                  {isNativeHandled && downloadProgress !== null && downloadProgress > 0
+                    ? `Downloading In-App (${downloadProgress}%)`
+                    : "Starting Download..."}
+                </span>
               </>
             ) : downloadState === "downloaded" ? (
               <>
                 <CheckCircle2 className="w-4 h-4 text-zinc-950" />
-                <span>Download Started! Check Notification Shade</span>
+                <span>
+                  {isNativeHandled
+                    ? "Launching Update Installer..."
+                    : "Download Started! Check Notification Shade"}
+                </span>
               </>
             ) : (
               <>
                 <DownloadCloud className="w-4 h-4 text-zinc-950" />
-                <span>Update to {latestRelease.version} (Direct APK)</span>
+                <span>Update to {latestRelease.version}</span>
               </>
             )}
           </button>

@@ -5,9 +5,9 @@ export interface ReleaseInfo {
   publishedAt?: string;
 }
 
-export const DEFAULT_RELEASE_VERSION = "v1.0.7";
+export const DEFAULT_RELEASE_VERSION = "v1.0.8";
 export const DEFAULT_APK_DOWNLOAD_URL =
-  "https://github.com/tgmind/StudyRoom/releases/download/v1.0.7/StudyRoom-v1.0.7.apk";
+  "https://github.com/tgmind/StudyRoom/releases/download/v1.0.8/StudyRoom-v1.0.8.apk";
 
 /**
  * Detects if the user is running inside an installed PWA or Native Android App.
@@ -264,3 +264,42 @@ export function triggerApkDirectDownload(downloadUrl: string, filename = "StudyR
     }
   }, 1000);
 }
+
+/**
+ * Initiates an in-app APK download and automated installation on native Android.
+ * If running in a standard web browser or iOS PWA, falls back smoothly to direct browser file download.
+ * Returns true if handled natively in-app, or false if handled via browser download fallback.
+ */
+export function downloadAndInstallApkInApp(
+  downloadUrl: string,
+  filename = "StudyRoom.apk",
+  onProgress?: (percent: number, status?: string) => void,
+  onError?: (error: string) => void
+): boolean {
+  if (typeof window === "undefined" || !downloadUrl) return false;
+
+  const bridge = (window as unknown as {
+    AndroidBridge?: {
+      downloadAndInstallApk?: (url: string, fname: string) => void;
+    };
+  }).AndroidBridge;
+
+  if (bridge && typeof bridge.downloadAndInstallApk === "function") {
+    // Bind global native progress callbacks
+    (window as unknown as {
+      __onApkProgress?: (percent: number, status?: string) => void;
+      __onApkError?: (error: string) => void;
+    }).__onApkProgress = onProgress;
+
+    (window as unknown as {
+      __onApkProgress?: (percent: number, status?: string) => void;
+      __onApkError?: (error: string) => void;
+    }).__onApkError = onError;
+
+    bridge.downloadAndInstallApk(downloadUrl, filename);
+    return true;
+  }
+
+  return false;
+}
+

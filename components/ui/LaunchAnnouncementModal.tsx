@@ -23,6 +23,7 @@ import {
   ReleaseInfo,
   AppEnvironmentInfo,
   fetchLatestApkRelease,
+  downloadAndInstallApkInApp,
   triggerApkDirectDownload,
   getAppEnvironmentInfo,
 } from "@/lib/app/latestRelease";
@@ -32,6 +33,7 @@ export const LAUNCH_UPDATE_STORAGE_KEY = "studyroom_stable_app_v1_0_3_announceme
 export function LaunchAnnouncementModal() {
   const [isOpen, setIsOpen] = useState(false);
   const [downloadState, setDownloadState] = useState<"idle" | "downloading" | "downloaded">("idle");
+  const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const isDownloadingRef = useRef(false);
   const [envInfo, setEnvInfo] = useState<AppEnvironmentInfo>({
     isNativeApp: false,
@@ -113,13 +115,31 @@ export function LaunchAnnouncementModal() {
     if (isDownloadingRef.current) return;
     isDownloadingRef.current = true;
     setDownloadState("downloading");
+    setDownloadProgress(0);
     const filename = `StudyRoom-${latestRelease.version}.apk`;
-    triggerApkDirectDownload(latestRelease.apkDownloadUrl, filename);
-    triggerHapticFeedback([20, 40]);
 
-    setTimeout(() => {
-      setDownloadState("downloaded");
-    }, 400);
+    const handledNatively = downloadAndInstallApkInApp(
+      latestRelease.apkDownloadUrl,
+      filename,
+      (percent) => {
+        setDownloadProgress(percent);
+        if (percent >= 100) {
+          setDownloadState("downloaded");
+          setTimeout(() => {
+            setIsOpen(false);
+            setDownloadProgress(null);
+            isDownloadingRef.current = false;
+          }, 3000);
+        }
+      },
+      () => {
+        setDownloadState("idle");
+        setDownloadProgress(null);
+        isDownloadingRef.current = false;
+      }
+    );
+
+    triggerHapticFeedback([20, 40]);
 
     // Save acknowledgment so download dismisses gracefully after starting
     try {
@@ -129,10 +149,19 @@ export function LaunchAnnouncementModal() {
       }
     } catch {}
 
-    setTimeout(() => {
-      setIsOpen(false);
-      isDownloadingRef.current = false;
-    }, 3000);
+    if (!handledNatively) {
+      triggerApkDirectDownload(latestRelease.apkDownloadUrl, filename);
+
+      setTimeout(() => {
+        setDownloadState("downloaded");
+      }, 400);
+
+      setTimeout(() => {
+        setIsOpen(false);
+        setDownloadProgress(null);
+        isDownloadingRef.current = false;
+      }, 3000);
+    }
   };
 
   // Prevent rendering when on auth routes
@@ -281,17 +310,27 @@ export function LaunchAnnouncementModal() {
                 type="button"
                 onClick={handleDownloadApp}
                 disabled={downloadState !== "idle"}
-                className="w-full font-black text-xs sm:text-sm py-3.5 px-4 rounded-xl bg-gradient-to-r from-violet-600 via-indigo-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white shadow-lg shadow-violet-500/25 flex items-center justify-center space-x-2 active:scale-[0.98] transition-all disabled:opacity-75"
+                className="w-full relative overflow-hidden font-black text-xs sm:text-sm py-3.5 px-4 rounded-xl bg-gradient-to-r from-violet-600 via-indigo-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white shadow-lg shadow-violet-500/25 flex items-center justify-center space-x-2 active:scale-[0.98] transition-all disabled:opacity-85"
               >
+                {downloadProgress !== null && downloadProgress > 0 && downloadProgress < 100 && (
+                  <span
+                    className="absolute left-0 top-0 bottom-0 bg-white/20 pointer-events-none transition-all duration-200"
+                    style={{ width: `${downloadProgress}%` }}
+                  />
+                )}
                 {downloadState === "downloading" ? (
                   <>
-                    <Loader2 className="w-4 h-4 animate-spin text-white" />
-                    <span>Starting Download...</span>
+                    <Loader2 className="w-4 h-4 animate-spin text-white relative z-10" />
+                    <span className="relative z-10">
+                      {downloadProgress !== null && downloadProgress > 0
+                        ? `Downloading (${downloadProgress}%)`
+                        : "Starting Download..."}
+                    </span>
                   </>
                 ) : downloadState === "downloaded" ? (
                   <>
                     <CheckCircle2 className="w-4 h-4 text-emerald-300" />
-                    <span>Download Started! Check Notifications</span>
+                    <span>Download Ready! Opening Installer...</span>
                   </>
                 ) : (
                   <>
