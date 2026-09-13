@@ -35,11 +35,19 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
+  // Direct bypass for auth callbacks and password resets (recovery sessions must never be redirected)
+  if (pathname.startsWith("/reset-password") || pathname.startsWith("/auth/callback")) {
+    return supabaseResponse;
+  }
+
   // Protected application routes (regular users)
   const protectedRoutes = ["/room", "/leaderboard", "/streak", "/goals", "/history", "/settings", "/guide"];
   const isProtectedRoute = protectedRoutes.some((route) => pathname.startsWith(route));
   const isAdminRoute = pathname.startsWith("/admin");
-  const isAuthRoute = pathname.startsWith("/login") || pathname.startsWith("/signup");
+  const isAuthRoute =
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/signup") ||
+    pathname.startsWith("/forgot-password");
   const isOnboardingRoute = pathname.startsWith("/onboarding");
 
   if (user) {

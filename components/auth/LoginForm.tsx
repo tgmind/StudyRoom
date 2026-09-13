@@ -108,6 +108,14 @@ export function LoginForm() {
 
         <Input
           label="Password"
+          labelRight={
+            <Link
+              href="/forgot-password"
+              className="text-xs text-zinc-400 hover:text-zinc-200 transition-colors font-medium"
+            >
+              Forgot Password?
+            </Link>
+          }
           type="password"
           placeholder="••••••••"
           value={password}

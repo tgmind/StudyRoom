@@ -4,20 +4,26 @@ import { twMerge } from "tailwind-merge";
 
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string;
+  labelRight?: React.ReactNode;
   error?: string;
   hint?: string;
 }
 
 export const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, hint, className, id, ...props }, ref) => {
+  ({ label, labelRight, error, hint, className, id, ...props }, ref) => {
     const inputId = id || (label ? label.toLowerCase().replace(/\s+/g, "-") : undefined);
 
     return (
       <div className="w-full space-y-1.5">
-        {label && (
-          <label htmlFor={inputId} className="block text-xs font-medium text-zinc-300">
-            {label}
-          </label>
+        {(label || labelRight) && (
+          <div className="flex items-center justify-between">
+            {label && (
+              <label htmlFor={inputId} className="block text-xs font-medium text-zinc-300">
+                {label}
+              </label>
+            )}
+            {labelRight}
+          </div>
         )}
         <input
           ref={ref}

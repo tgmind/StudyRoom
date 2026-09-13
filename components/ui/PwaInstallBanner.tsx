@@ -33,8 +33,9 @@ export function PwaInstallBanner() {
   const [isDownloadingApk, setIsDownloadingApk] = useState(false);
   const [downloadSuccessToast, setDownloadSuccessToast] = useState(false);
 
-  // STRICT RULE 1: Only display on Login or Signup pages
-  const isAuthPage = pathname === "/login" || pathname === "/signup";
+  // STRICT RULE 1: Only display on Login, Signup, or Forgot Password pages
+  const isAuthPage =
+    pathname === "/login" || pathname === "/signup" || pathname === "/forgot-password";
 
   // STRICT RULE 2: Never display to logged in users
   const isLoggedIn = Boolean(auth?.user);
