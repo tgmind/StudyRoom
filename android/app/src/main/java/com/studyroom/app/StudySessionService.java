@@ -19,35 +19,21 @@ public class StudySessionService extends Service {
     private static final String TAG = "StudySessionService";
 
     public static final String CHANNEL_ID = "studyroom_live_timer_channel";
+    public static final String CHANNEL_ID_ALERTS = "studyroom_session_alerts_channel";
     public static final int NOTIFICATION_ID = 1001;
 
-    public static final String ACTION_START_STUDY = "com.studyroom.app.START_STUDY";
     public static final String ACTION_START_BREAK = "com.studyroom.app.START_BREAK";
     public static final String ACTION_STOP_SESSION = "com.studyroom.app.STOP_SESSION";
     public static final String ACTION_RESUME_STUDY = "com.studyroom.app.ACTION_RESUME_STUDY";
 
     public static final String EXTRA_START_TIME_MS = "extra_start_time_ms";
-    public static final String EXTRA_FOCUS_NAME = "extra_focus_name";
     public static final String EXTRA_ACCRUED_SECONDS = "extra_accrued_seconds";
 
     // Track active notification state to prevent redundant re-alerting & chronometer oscillation
     private String lastAction = "";
     private long lastBaseTimeMs = 0;
     private long lastAccruedSec = -1;
-    private String lastFocus = "";
     private boolean isForegroundRunning = false;
-
-    public static void startStudySession(Context context, long startTimeMs, String focusName) {
-        try {
-            Intent intent = new Intent(context, StudySessionService.class);
-            intent.setAction(ACTION_START_STUDY);
-            intent.putExtra(EXTRA_START_TIME_MS, startTimeMs);
-            intent.putExtra(EXTRA_FOCUS_NAME, focusName != null ? focusName : "");
-            ContextCompat.startForegroundService(context, intent);
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to start study foreground service: " + e.getMessage());
-        }
-    }
 
     public static void startBreakSession(Context context, long breakStartTimeMs, long accruedSeconds) {
         try {
@@ -89,41 +75,10 @@ public class StudySessionService extends Service {
             lastAction = "";
             lastBaseTimeMs = 0;
             lastAccruedSec = -1;
-            lastFocus = "";
             isForegroundRunning = false;
             stopForeground(true);
             stopSelf();
             return START_NOT_STICKY;
-        }
-
-        if (ACTION_START_STUDY.equals(action)) {
-            long startTimeMs = intent.getLongExtra(EXTRA_START_TIME_MS, System.currentTimeMillis());
-            String focus = intent.getStringExtra(EXTRA_FOCUS_NAME);
-            if (focus == null) focus = "";
-
-            // Deduplication: if already running with matching state and base time within 2s, skip re-posting
-            if (isForegroundRunning && ACTION_START_STUDY.equals(lastAction)
-                    && Math.abs(startTimeMs - lastBaseTimeMs) < 2000
-                    && focus.equals(lastFocus)) {
-                return START_STICKY;
-            }
-
-            lastAction = ACTION_START_STUDY;
-            lastBaseTimeMs = startTimeMs;
-            lastFocus = focus;
-            lastAccruedSec = -1;
-
-            String title = (focus.trim().isEmpty()) ? "Deep Focus Active" : "Studying • " + focus.trim();
-            String subtext = "Live accountability timer ticking in background";
-
-            Notification notification = buildModernNotification(title, subtext, startTimeMs, false, 0);
-            try {
-                startForeground(NOTIFICATION_ID, notification);
-                isForegroundRunning = true;
-            } catch (Exception e) {
-                Log.e(TAG, "startForeground failed: " + e.getMessage());
-            }
-            return START_STICKY;
         }
 
         if (ACTION_START_BREAK.equals(action)) {
@@ -140,7 +95,6 @@ public class StudySessionService extends Service {
             lastAction = ACTION_START_BREAK;
             lastBaseTimeMs = breakStartTimeMs;
             lastAccruedSec = accrued;
-            lastFocus = "";
 
             String formattedAccrued = formatDuration(accrued);
             String title = "Break in progress";
@@ -247,6 +201,7 @@ public class StudySessionService extends Service {
             if (manager != null) {
                 manager.createNotificationChannel(channel);
             }
+            SessionWarningReceiver.ensureAlertNotificationChannel(this);
         }
     }
 

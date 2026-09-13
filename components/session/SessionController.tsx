@@ -92,8 +92,13 @@ export const SessionController = memo(function SessionController({
       return () => {
         delete (window as unknown as { __studyRoomResumeSession?: () => Promise<void> }).__studyRoomResumeSession;
       };
+    } else if (isStudying) {
+      (window as unknown as { __studyRoomTakeBreak?: () => Promise<void> }).__studyRoomTakeBreak = handlePause;
+      return () => {
+        delete (window as unknown as { __studyRoomTakeBreak?: () => Promise<void> }).__studyRoomTakeBreak;
+      };
     }
-  }, [isBreak, onResumeSession]);
+  }, [isBreak, isStudying, onResumeSession, onPauseSession]);
 
   return (
     <div className="w-full bg-zinc-900/70 border border-zinc-800/90 rounded-2xl p-4 sm:p-5 shadow-xl space-y-4 backdrop-blur-md">

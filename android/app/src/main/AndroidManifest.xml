@@ -55,6 +55,11 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
+        <!-- Receiver for 10-minute session expiry warning alarm -->
+        <receiver
+            android:name=".SessionWarningReceiver"
+            android:exported="false" />
+
     </application>
 
 </manifest>

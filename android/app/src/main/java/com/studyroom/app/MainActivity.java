@@ -63,10 +63,13 @@ public class MainActivity extends AppCompatActivity {
     private ConnectivityManager connectivityManager;
     private ConnectivityManager.NetworkCallback networkCallback;
 
+    public static final String ACTION_TRIGGER_BREAK = "com.studyroom.app.ACTION_TRIGGER_BREAK";
+
     private String baseUrl;
     private long lastBackPressedTime = 0;
     private boolean isActivityVisible = false;
     private boolean isResumePending = false;
+    private boolean isBreakPending = false;
 
     private File pendingInstallApkFile = null;
     private final ExecutorService downloadExecutor = Executors.newSingleThreadExecutor();
@@ -117,7 +120,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void handleIncomingIntent(Intent intent) {
-        if (intent != null && StudySessionService.ACTION_RESUME_STUDY.equals(intent.getAction())) {
+        if (intent == null) return;
+
+        if (StudySessionService.ACTION_RESUME_STUDY.equals(intent.getAction())) {
             isResumePending = true;
             if (webView != null) {
                 String currentUrl = webView.getUrl();
@@ -125,6 +130,15 @@ public class MainActivity extends AppCompatActivity {
                     webView.loadUrl(baseUrl + "/room");
                 }
                 dispatchResumeSessionWithRetry();
+            }
+        } else if (ACTION_TRIGGER_BREAK.equals(intent.getAction())) {
+            isBreakPending = true;
+            if (webView != null) {
+                String currentUrl = webView.getUrl();
+                if (currentUrl == null || !currentUrl.contains("/room")) {
+                    webView.loadUrl(baseUrl + "/room");
+                }
+                dispatchTakeBreakWithRetry();
             }
         }
     }
@@ -154,6 +168,39 @@ public class MainActivity extends AppCompatActivity {
                 "          if (window.AndroidBridge && window.AndroidBridge.onResumeTriggered) {" +
                 "            window.AndroidBridge.onResumeTriggered();" +
                 "          }" +
+                "          clearInterval(poller);" +
+                "          return;" +
+                "        }" +
+                "      }" +
+                "    } catch (e) {}" +
+                "    if (attempts >= maxAttempts) {" +
+                "      clearInterval(poller);" +
+                "    }" +
+                "  }, 200);" +
+                "})();",
+                null
+        );
+    }
+
+    private void dispatchTakeBreakWithRetry() {
+        if (webView == null) return;
+        webView.evaluateJavascript(
+                "(function() {" +
+                "  var attempts = 0;" +
+                "  var maxAttempts = 35;" + // 35 * 200ms = 7 seconds
+                "  var poller = setInterval(function() {" +
+                "    attempts++;" +
+                "    try {" +
+                "      if (window.__studyRoomTakeBreak && typeof window.__studyRoomTakeBreak === 'function') {" +
+                "        window.__studyRoomTakeBreak();" +
+                "        clearInterval(poller);" +
+                "        return;" +
+                "      }" +
+                "      var btns = document.querySelectorAll('button');" +
+                "      for (var i = 0; i < btns.length; i++) {" +
+                "        var txt = (btns[i].innerText || btns[i].textContent || '').trim();" +
+                "        if (txt === 'Pause' || txt.includes('Pause')) {" +
+                "          btns[i].click();" +
                 "          clearInterval(poller);" +
                 "          return;" +
                 "        }" +
@@ -304,7 +351,7 @@ public class MainActivity extends AppCompatActivity {
 
         // Custom User-Agent tag for detection
         String existingUa = settings.getUserAgentString();
-        settings.setUserAgentString(existingUa + " StudyRoom-Android/1.0.9");
+        settings.setUserAgentString(existingUa + " StudyRoom-Android/1.0.10");
 
         // Native bridge for live notification chronometer
         webView.addJavascriptInterface(new WebAppInterface(), "AndroidBridge");
@@ -354,6 +401,11 @@ public class MainActivity extends AppCompatActivity {
                 if (isResumePending) {
                     isResumePending = false;
                     dispatchResumeSessionWithRetry();
+                }
+
+                if (isBreakPending) {
+                    isBreakPending = false;
+                    dispatchTakeBreakWithRetry();
                 }
             }
 
@@ -410,7 +462,7 @@ public class MainActivity extends AppCompatActivity {
         // High-precision session hook that parses epoch ms in JS and dispatches to Android
         String jsHook =
                 "(function() {" +
-                "  window.__STUDYROOM_NATIVE_VERSION = '1.0.9';" +
+                "  window.__STUDYROOM_NATIVE_VERSION = '1.0.10';" +
                 "  if (window._studyRoomHookInstalled) return;" +
                 "  window._studyRoomHookInstalled = true;" +
                 "  function updateSwipeRefreshState() {" +
@@ -461,16 +513,22 @@ public class MainActivity extends AppCompatActivity {
                 "        if (!isNaN(t) && t > 0) breakStartMs = t;" +
                 "      }" +
                 "      var studyStartMs = 0;" +
+                "      var studyAccruedSec = 0;" +
                 "      if (studyObj) {" +
                 "        var rawTime = studyObj.lastResumedAt || studyObj.sessionStartTime;" +
                 "        if (rawTime) {" +
                 "          var st = new Date(rawTime).getTime();" +
                 "          if (!isNaN(st) && st > 0) studyStartMs = st;" +
                 "        }" +
+                "        var snapSec = (typeof studyObj.snapshotSeconds === 'number') ? studyObj.snapshotSeconds : ((typeof studyObj.accruedSeconds === 'number') ? studyObj.accruedSeconds : 0);" +
+                "        var elapsedSinceResume = (studyStartMs > 0) ? Math.max(0, Math.floor((Date.now() - studyStartMs) / 1000)) : 0;" +
+                "        studyAccruedSec = snapSec + elapsedSinceResume;" +
                 "      }" +
                 "      var accruedSec = 0;" +
                 "      if (brkObj && typeof brkObj.accruedSeconds === 'number') {" +
                 "        accruedSec = Math.floor(brkObj.accruedSeconds);" +
+                "      } else {" +
+                "        accruedSec = studyAccruedSec;" +
                 "      }" +
                 "      var focusText = (studyObj && studyObj.focus) ? String(studyObj.focus) : '';" +
                 "      if (window.AndroidBridge && window.AndroidBridge.onSessionStateResolved) {" +
@@ -582,7 +640,7 @@ public class MainActivity extends AppCompatActivity {
 
         @JavascriptInterface
         public String getAppVersion() {
-            return "1.0.9";
+            return "1.0.10";
         }
 
         @JavascriptInterface
@@ -611,15 +669,18 @@ public class MainActivity extends AppCompatActivity {
                 if (isFinishing() || isDestroyed()) return;
 
                 if (isBreak && breakStartMs > 0) {
+                    SessionAlarmManager.cancelWarningAlarm(MainActivity.this);
                     StudySessionService.startBreakSession(MainActivity.this, breakStartMs, accruedSeconds);
                     return;
                 }
 
                 if (isStudy && studyStartMs > 0) {
-                    StudySessionService.startStudySession(MainActivity.this, studyStartMs, focusText);
+                    StudySessionService.stopSession(MainActivity.this);
+                    SessionAlarmManager.scheduleWarningAlarm(MainActivity.this, accruedSeconds);
                     return;
                 }
 
+                SessionAlarmManager.cancelWarningAlarm(MainActivity.this);
                 StudySessionService.stopSession(MainActivity.this);
             });
         }
@@ -631,6 +692,7 @@ public class MainActivity extends AppCompatActivity {
                 if (isFinishing() || isDestroyed()) return;
                 try {
                     if (breakJson != null && !breakJson.trim().isEmpty() && !breakJson.equals("{}")) {
+                        SessionAlarmManager.cancelWarningAlarm(MainActivity.this);
                         JSONObject obj = new JSONObject(breakJson);
                         long accrued = obj.optLong("accruedSeconds", 0);
                         String iso = obj.optString("breakStartedAt");
@@ -646,20 +708,22 @@ public class MainActivity extends AppCompatActivity {
                     }
 
                     if (studyJson != null && !studyJson.trim().isEmpty() && !studyJson.equals("{}")) {
+                        StudySessionService.stopSession(MainActivity.this);
                         JSONObject obj = new JSONObject(studyJson);
-                        String focus = obj.optString("focus", "");
-                        long startMs = System.currentTimeMillis();
+                        long snap = obj.optLong("snapshotSeconds", obj.optLong("accruedSeconds", 0));
                         String iso = obj.optString("lastResumedAt", obj.optString("sessionStartTime", ""));
+                        long elapsed = 0;
                         if (!iso.isEmpty()) {
                             try {
                                 java.time.Instant inst = java.time.Instant.parse(iso);
-                                startMs = inst.toEpochMilli();
+                                elapsed = Math.max(0, (System.currentTimeMillis() - inst.toEpochMilli()) / 1000);
                             } catch (Exception ignored) {}
                         }
-                        StudySessionService.startStudySession(MainActivity.this, startMs, focus);
+                        SessionAlarmManager.scheduleWarningAlarm(MainActivity.this, snap + elapsed);
                         return;
                     }
 
+                    SessionAlarmManager.cancelWarningAlarm(MainActivity.this);
                     StudySessionService.stopSession(MainActivity.this);
                 } catch (Exception ignored) {}
             });
@@ -692,7 +756,7 @@ public class MainActivity extends AppCompatActivity {
                 connection.setInstanceFollowRedirects(true);
                 connection.setConnectTimeout(15000);
                 connection.setReadTimeout(30000);
-                connection.setRequestProperty("User-Agent", "StudyRoom-Android/1.0.9");
+                connection.setRequestProperty("User-Agent", "StudyRoom-Android/1.0.10");
                 connection.connect();
 
                 // Handle HTTP redirects (GitHub releases 302/307 to AWS S3)
@@ -711,7 +775,7 @@ public class MainActivity extends AppCompatActivity {
                     connection.setInstanceFollowRedirects(true);
                     connection.setConnectTimeout(15000);
                     connection.setReadTimeout(30000);
-                    connection.setRequestProperty("User-Agent", "StudyRoom-Android/1.0.9");
+                    connection.setRequestProperty("User-Agent", "StudyRoom-Android/1.0.10");
                     connection.connect();
                     responseCode = connection.getResponseCode();
                     redirectCount++;

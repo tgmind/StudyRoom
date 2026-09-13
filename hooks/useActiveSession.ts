@@ -27,6 +27,7 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
   const [isSessionLimitNoticeOpen, setIsSessionLimitNoticeOpen] = useState(false);
   const [savedStudySecondsOnLimit, setSavedStudySecondsOnLimit] = useState(0);
   const isAutoTerminatingLimitRef = useRef(false);
+  const hasTriggeredTenMinWarningRef = useRef(false);
 
   const onStatusChangeRef = useRef(onStatusChange);
   useEffect(() => {
@@ -227,6 +228,7 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
   useEffect(() => {
     if (currentStatus !== "studying" && currentStatus !== "break") {
       isAutoTerminatingLimitRef.current = false;
+      hasTriggeredTenMinWarningRef.current = false;
       return;
     }
 
@@ -239,6 +241,21 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
         currentAccrued = calculateMemberElapsedStudySeconds(profile, serverNow);
       } else {
         currentAccrued = calculateActiveStudySeconds(blocks, serverNow);
+      }
+
+      // 10-Minute Expiry Warning (at 2h 50m / 10,200 seconds accrued study)
+      if (currentAccrued >= 10200 && currentAccrued < MAX_SESSION_STUDY_SECONDS) {
+        if (!hasTriggeredTenMinWarningRef.current) {
+          hasTriggeredTenMinWarningRef.current = true;
+          if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+            try {
+              new Notification("⏳ 10 Minutes Left in Study Session", {
+                body: "Your 3-hour study session will automatically end in 10 minutes. Wrap up your goals or take a break to save your streak!",
+                icon: "/icon-192.png",
+              });
+            } catch {}
+          }
+        }
       }
 
       if (currentAccrued >= MAX_SESSION_STUDY_SECONDS) {
@@ -305,6 +322,7 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
             sessionStartTime: profile.session_start_time || new Date().toISOString(),
             lastResumedAt: profile.last_resumed_at || new Date().toISOString(),
             snapshotSeconds: profile.active_study_seconds_snapshot || 0,
+            accruedSeconds: profile.active_study_seconds_snapshot || 0,
           })
         );
       } catch {}
@@ -318,7 +336,7 @@ export function useActiveSession(profile: UserProfile | null, onStatusChange?: (
 
   // Check if an offline user had an expired break that ended while offline / in background
   useEffect(() => {
-    if (typeof window === "undefined" || !profile || currentStatus === "break") return;
+    if (typeof window === "undefined" || !profile || currentStatus !== "offline") return;
     if (dismissedBreakExpiryRef.current) return;
 
     // 1. Authoritative Server Check: Profile indicates last session ended due to expired break
