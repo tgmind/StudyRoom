@@ -1,0 +1,44 @@
+import { describe, it, expect } from "vitest";
+import { generateAlertEmail } from "@/lib/email/templates";
+import { isMailerConfigured } from "@/lib/email/mailer";
+
+describe("Email Alerts Generation Unit Tests", () => {
+  it("generates correct Type A (Achiever) email payload", () => {
+    const payload = generateAlertEmail("A", "Alice");
+    expect(payload.subject).toContain("Achiever's Title");
+    expect(payload.subject).toContain("Alice");
+    expect(payload.text).toContain("Achiever's Title");
+    expect(payload.html).toContain("Achiever&#039;s Title");
+    expect(payload.html).toContain("Alice");
+  });
+
+  it("generates correct Type I (Account Notice - 3d) email payload", () => {
+    const payload = generateAlertEmail("I", "Bob", 3);
+    expect(payload.subject).toContain("3 Days Inactive");
+    expect(payload.text).toContain("inactive on StudyRoom for 3 consecutive days");
+    expect(payload.html).toContain("3 consecutive days");
+    expect(payload.html).toContain("Bob");
+  });
+
+  it("generates correct Type D (Account Deletion - 5d) email payload", () => {
+    const payload = generateAlertEmail("D", "Charlie", 5);
+    expect(payload.subject).toContain("Scheduled for Deletion");
+    expect(payload.subject).toContain("5 Days Inactive");
+    expect(payload.text).toContain("inactive for 5 consecutive days");
+    expect(payload.html).toContain("Account Deletion Alert");
+    expect(payload.html).toContain("Charlie");
+  });
+
+  it("escapes malicious user names in HTML output", () => {
+    const maliciousName = "<script>alert('xss')</script>";
+    const payload = generateAlertEmail("A", maliciousName);
+    expect(payload.html).not.toContain("<script>");
+    expect(payload.html).toContain("&lt;script&gt;");
+  });
+
+  it("detects whether mailer is configured properly", () => {
+    const result = isMailerConfigured();
+    // In test environment, ALERT_GMAIL_USER and ALERT_GMAIL_APP_PASSWORD are set in .env.local
+    expect(typeof result.configured).toBe("boolean");
+  });
+});

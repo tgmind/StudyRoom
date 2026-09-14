@@ -23,7 +23,9 @@ import {
   BookOpen,
   Coffee,
   Wifi,
+  Bell,
 } from "lucide-react";
+import { AdminAlertsHub } from "@/components/admin/AdminAlertsHub";
 
 type StatusFilter = "all" | "studying" | "break" | "offline";
 
@@ -43,6 +45,7 @@ export default function AdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
+  const [adminSection, setAdminSection] = useState<"members" | "alerts">("members");
   const [, setClockTick] = useState(0);
 
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -367,8 +370,40 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* Platform Stats Overview */}
-        <div className="space-y-2">
+        {/* Section Navigation Tabs */}
+        <div className="flex items-center space-x-2 bg-zinc-900/90 p-1 rounded-xl border border-zinc-800 w-fit">
+          <button
+            type="button"
+            onClick={() => setAdminSection("members")}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${
+              adminSection === "members"
+                ? "bg-zinc-100 text-zinc-950 shadow-sm"
+                : "text-zinc-400 hover:text-zinc-200"
+            }`}
+          >
+            <Users className="w-3.5 h-3.5" />
+            <span>Members & Supervision</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setAdminSection("alerts")}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${
+              adminSection === "alerts"
+                ? "bg-indigo-600 text-white shadow-sm"
+                : "text-zinc-400 hover:text-zinc-200"
+            }`}
+          >
+            <Bell className="w-3.5 h-3.5" />
+            <span>Alerts & Retention Hub</span>
+          </button>
+        </div>
+
+        {adminSection === "alerts" ? (
+          <AdminAlertsHub adminEmail={user.email} />
+        ) : (
+          <>
+            {/* Platform Stats Overview */}
+            <div className="space-y-2">
           <div className="flex items-center justify-between">
             <h2 className="text-[10px] font-black uppercase tracking-wider text-zinc-400">
               Live Platform Overview
@@ -520,7 +555,9 @@ export default function AdminPage() {
             </div>
           )}
         </div>
-      </main>
+      </>
+    )}
+  </main>
 
       {/* Sign Out Confirmation Modal */}
       <Modal
