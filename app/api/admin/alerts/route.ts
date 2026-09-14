@@ -431,6 +431,80 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // B. Update Student Email Directly
+    if (action === "update_user_email") {
+      const { user_id, email } = body;
+      if (!user_id || !email) {
+        return NextResponse.json({ error: "user_id and email are required" }, { status: 400 });
+      }
+
+      const cleanEmail = String(email).trim().toLowerCase();
+      if (!cleanEmail.includes("@") || !cleanEmail.includes(".") || cleanEmail.includes("@student.studyroom")) {
+        return NextResponse.json({ error: "Please provide a valid, authentic email address." }, { status: 400 });
+      }
+
+      try {
+        const { error: rpcErr } = await (auth.supabase as unknown as RpcCaller).rpc("rpc_admin_update_user_email", {
+          p_user_id: user_id,
+          p_email: cleanEmail,
+          p_admin_email: auth.user?.email || "studyaliveapp@gmail.com",
+        });
+
+        if (rpcErr) {
+          const { error: updateErr } = await (auth.supabase as any)
+            .from("users")
+            .update({ email: cleanEmail })
+            .eq("id", user_id);
+
+          if (updateErr) {
+            throw updateErr;
+          }
+        }
+
+        return NextResponse.json({
+          success: true,
+          user_id,
+          email: cleanEmail,
+          message: "Student email updated successfully.",
+        });
+      } catch (err: any) {
+        return NextResponse.json({ error: err?.message || "Failed to update email" }, { status: 500 });
+      }
+    }
+
+    // C. Sync All Emails from Supabase Auth
+    if (action === "sync_auth_emails") {
+      let syncedCount = 0;
+      let syncError: string | null = null;
+
+      try {
+        const { data, error } = await (auth.supabase as unknown as RpcCaller).rpc("rpc_admin_sync_auth_emails", {
+          p_admin_email: auth.user?.email || "studyaliveapp@gmail.com",
+        });
+        if (!error) {
+          syncedCount = (data as any)?.synced_count ?? 0;
+        } else if (error) {
+          syncError = error.message;
+        }
+      } catch (err: any) {
+        syncError = err?.message;
+      }
+
+      if (syncError) {
+        return NextResponse.json({
+          success: false,
+          error: "To sync emails directly from auth.users, execute the SQL migration in your Supabase SQL Editor.",
+          details: syncError,
+        }, { status: 400 });
+      }
+
+      return NextResponse.json({
+        success: true,
+        syncedCount,
+        message: "Successfully synchronized member emails from Supabase Authentication.",
+      });
+    }
+
     // Check mailer setup for email dispatch actions
     const mailerConfig = isMailerConfigured();
     if (!mailerConfig.configured) {

@@ -23,6 +23,9 @@ import {
   BarChart3,
   TrendingUp,
   RotateCcw,
+  Pencil,
+  Users,
+  Check,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -152,6 +155,15 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
   const [resettingAlerts, setResettingAlerts] = useState(false);
   const [resetFeedback, setResetFeedback] = useState<{ message: string; type: "success" | "error" } | null>(null);
+
+  // Student Email Edit state
+  const [editingStudent, setEditingStudent] = useState<{ userId: string; userName: string; email: string } | null>(null);
+  const [editEmailInput, setEditEmailInput] = useState("");
+  const [savingEmail, setSavingEmail] = useState(false);
+  const [editEmailError, setEditEmailError] = useState<string | null>(null);
+
+  // Sync Auth Emails state
+  const [syncingAuth, setSyncingAuth] = useState(false);
 
   // Migration requirement prompt
   const [needsMigration, setNeedsMigration] = useState(false);
@@ -855,6 +867,109 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
     }
   };
 
+  // Open inline email editor for student
+  const handleOpenEditEmail = (userId: string, userName: string, currentEmail: string) => {
+    setEditingStudent({ userId, userName, email: currentEmail || "" });
+    setEditEmailInput(currentEmail || "");
+    setEditEmailError(null);
+  };
+
+  // Save student email directly to Supabase users table
+  const handleSaveEmail = async () => {
+    if (!editingStudent) return;
+    const clean = editEmailInput.trim().toLowerCase();
+    if (!clean || !clean.includes("@") || !clean.includes(".")) {
+      setEditEmailError("Please enter a valid, authentic email address.");
+      return;
+    }
+    if (clean.includes("@student.studyroom")) {
+      setEditEmailError("Placeholder domains (@student.studyroom) are not allowed.");
+      return;
+    }
+
+    setSavingEmail(true);
+    setEditEmailError(null);
+
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch("/api/admin/alerts", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          action: "update_user_email",
+          user_id: editingStudent.userId,
+          email: clean,
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.error || "Failed to update student email.");
+      }
+
+      // Update in candidates state
+      setCandidates((prev) =>
+        prev.map((c) =>
+          c.user_id === editingStudent.userId ? { ...c, user_email: clean } : c
+        )
+      );
+
+      // Update in allUsers state
+      setAllUsers((prev) =>
+        prev.map((u) =>
+          u.id === editingStudent.userId ? { ...u, email: clean } : u
+        )
+      );
+
+      setResetFeedback({
+        type: "success",
+        message: `Successfully updated email for ${editingStudent.userName} to ${clean}`,
+      });
+
+      setEditingStudent(null);
+    } catch (err: any) {
+      setEditEmailError(err.message || "Failed to update email.");
+    } finally {
+      setSavingEmail(false);
+    }
+  };
+
+  // Synchronize all member emails from Supabase Auth
+  const handleSyncAuthEmails = async () => {
+    setSyncingAuth(true);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch("/api/admin/alerts", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          action: "sync_auth_emails",
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.error || "Failed to sync emails from auth.users");
+      }
+
+      setResetFeedback({
+        type: "success",
+        message: json.message || "Member emails successfully synchronized from auth.",
+      });
+
+      // Refetch data
+      await fetchData();
+    } catch (err: any) {
+      setResetFeedback({
+        type: "error",
+        message: err.message || "Failed to sync emails from auth.",
+      });
+    } finally {
+      setSyncingAuth(false);
+    }
+  };
+
+
   // Helper for type badges (supports compact mobile layout)
   const renderTypeBadge = (type: AlertType, compact = false) => {
     switch (type) {
@@ -940,6 +1055,18 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
           >
             <RefreshCw className={`w-3.5 h-3.5 mr-1.5 shrink-0 ${refreshing ? "animate-spin" : ""}`} />
             <span>Scan</span>
+          </Button>
+
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleSyncAuthEmails}
+            isLoading={syncingAuth}
+            className="flex-1 sm:flex-initial border-zinc-700 hover:bg-zinc-800 justify-center whitespace-nowrap text-xs text-zinc-300"
+            title="Sync all student emails directly from Supabase Authentication into student records"
+          >
+            <Users className={`w-3.5 h-3.5 mr-1.5 text-zinc-400 shrink-0 ${syncingAuth ? "animate-spin" : ""}`} />
+            <span>Sync Auth</span>
           </Button>
 
           <Button
@@ -1473,12 +1600,22 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
                                     <span title="Achiever Title Active">👑</span>
                                   )}
                                 </div>
-                                <div className="text-[11px] text-zinc-500 font-mono">
-                                  {candidate.user_email ? (
-                                    candidate.user_email
-                                  ) : (
-                                    <span className="text-amber-500 font-sans font-medium text-[10px]">⚠️ No Email on File</span>
-                                  )}
+                                <div className="flex items-center space-x-1.5 text-[11px] text-zinc-500 font-mono">
+                                  <span>
+                                    {candidate.user_email ? (
+                                      candidate.user_email
+                                    ) : (
+                                      <span className="text-amber-500 font-sans font-medium text-[10px]">⚠️ No Email on File</span>
+                                    )}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenEditEmail(candidate.user_id, candidate.user_name, candidate.user_email)}
+                                    className="text-zinc-500 hover:text-indigo-400 p-0.5 rounded hover:bg-zinc-800 transition shrink-0"
+                                    title={`Edit email for ${candidate.user_name}`}
+                                  >
+                                    <Pencil className="w-3 h-3" />
+                                  </button>
                                 </div>
                               </div>
                             </div>
@@ -1657,12 +1794,25 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
                                   <span className="shrink-0" title="Achiever Title">👑</span>
                                 )}
                               </div>
-                              <div className="text-[10px] sm:text-[11px] text-zinc-500 font-mono truncate">
-                                {candidate.user_email ? (
-                                  candidate.user_email
-                                ) : (
-                                  <span className="text-amber-500 font-sans font-medium text-[9px]">⚠️ No Email on File</span>
-                                )}
+                              <div className="flex items-center space-x-1.5 text-[10px] sm:text-[11px] text-zinc-500 font-mono min-w-0">
+                                <span className="truncate">
+                                  {candidate.user_email ? (
+                                    candidate.user_email
+                                  ) : (
+                                    <span className="text-amber-500 font-sans font-medium text-[9px]">⚠️ No Email on File</span>
+                                  )}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenEditEmail(candidate.user_id, candidate.user_name, candidate.user_email);
+                                  }}
+                                  className="text-zinc-500 hover:text-indigo-400 p-0.5 rounded hover:bg-zinc-800 transition shrink-0"
+                                  title={`Edit email for ${candidate.user_name}`}
+                                >
+                                  <Pencil className="w-2.5 h-2.5" />
+                                </button>
                               </div>
                             </div>
                           </div>
@@ -1995,13 +2145,21 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
                       {sent} total sent
                     </span>
                   </div>
-                  <div className="mb-1.5 text-zinc-400">
+                  <div className="mb-1.5 text-zinc-400 flex items-center space-x-1.5">
                     <span className="text-zinc-500">Signup Email: </span>
                     {selectedUser.email ? (
                       <span className="text-zinc-200 font-mono font-medium">{selectedUser.email}</span>
                     ) : (
                       <span className="text-amber-400 font-medium">⚠️ No authentic email found on file</span>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEditEmail(selectedUser.id, selectedUser.display_name, selectedUser.email)}
+                      className="text-zinc-500 hover:text-indigo-400 p-0.5 rounded hover:bg-zinc-800 transition shrink-0"
+                      title={`Edit email for ${selectedUser.display_name}`}
+                    >
+                      <Pencil className="w-3 h-3" />
+                    </button>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap text-zinc-400">
                     <span className="text-emerald-400">🏆 Achiever: {c.A}</span>
@@ -2370,6 +2528,82 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
             >
               <RotateCcw className="w-3.5 h-3.5 mr-1.5 shrink-0" />
               <span>Confirm &amp; Reset to 0</span>
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* 11. INLINE EDIT STUDENT EMAIL MODAL */}
+      <Modal
+        isOpen={!!editingStudent}
+        onClose={() => {
+          if (!savingEmail) setEditingStudent(null);
+        }}
+        title="Update Email Address"
+        subtitle={editingStudent ? `Assign authentic email for ${editingStudent.userName}` : "Edit student email"}
+        maxWidth="md"
+      >
+        <div className="space-y-4">
+          <div className="p-3 bg-zinc-950/80 border border-zinc-800/80 rounded-xl space-y-1">
+            <div className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">
+              Student Profile
+            </div>
+            <div className="text-sm font-bold text-zinc-100 flex items-center space-x-2">
+              <span>{editingStudent?.userName}</span>
+            </div>
+            <div className="text-[10px] text-zinc-500 font-mono">
+              ID: {editingStudent?.userId}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+              Authentic Email Address <span className="text-rose-400">*</span>
+            </label>
+            <input
+              type="email"
+              value={editEmailInput}
+              onChange={(e) => setEditEmailInput(e.target.value)}
+              placeholder="e.g. amitkumar@gmail.com"
+              className="w-full text-xs bg-zinc-950 border border-zinc-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg p-2.5 text-zinc-200 placeholder-zinc-600 outline-none font-mono"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleSaveEmail();
+                }
+              }}
+            />
+            <p className="text-[11px] text-zinc-500 mt-1.5">
+              Email alerts will be sent directly to this address. Fake or placeholder domains are blocked.
+            </p>
+          </div>
+
+          {editEmailError && (
+            <div className="p-2.5 bg-rose-950/40 border border-rose-900/60 rounded-lg text-rose-300 text-xs flex items-center space-x-2">
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+              <span>{editEmailError}</span>
+            </div>
+          )}
+
+          <div className="flex justify-end space-x-2 pt-2 border-t border-zinc-800/80">
+            <Button
+              variant="ghost"
+              disabled={savingEmail}
+              onClick={() => setEditingStudent(null)}
+              className="text-xs"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              disabled={savingEmail || !editEmailInput.trim()}
+              isLoading={savingEmail}
+              onClick={handleSaveEmail}
+              className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold"
+            >
+              <Check className="w-3.5 h-3.5 mr-1.5 shrink-0" />
+              <span>Save Email</span>
             </Button>
           </div>
         </div>

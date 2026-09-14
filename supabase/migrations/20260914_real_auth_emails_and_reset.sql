@@ -339,3 +339,80 @@ SET total_alerts_sent = 0,
     alert_counts = '{"A":0,"W":0,"I":0,"D":0}'::jsonb,
     last_alert_sent_at = NULL,
     last_alert_type = NULL;
+
+-- ------------------------------------------------------------
+-- 7. RPC: rpc_admin_sync_auth_emails (Backfill/Sync from auth.users)
+-- ------------------------------------------------------------
+DROP FUNCTION IF EXISTS public.rpc_admin_sync_auth_emails(TEXT) CASCADE;
+CREATE OR REPLACE FUNCTION public.rpc_admin_sync_auth_emails(p_admin_email TEXT DEFAULT NULL)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth, pg_temp
+AS $$
+DECLARE
+  v_updated_count INTEGER := 0;
+BEGIN
+  IF NOT public.check_is_admin() AND (p_admin_email IS NULL OR LOWER(TRIM(p_admin_email)) NOT IN ('studyaliveapp@gmail.com', 'sa@admin.tg')) THEN
+    RAISE EXCEPTION 'Unauthorized: Caller is not an administrator';
+  END IF;
+
+  WITH updated AS (
+    UPDATE public.users u
+    SET email = au.email
+    FROM auth.users au
+    WHERE au.id = u.id
+      AND au.email IS NOT NULL
+      AND TRIM(au.email) <> ''
+      AND (u.email IS NULL OR u.email <> au.email)
+    RETURNING u.id
+  )
+  SELECT COUNT(*) INTO v_updated_count FROM updated;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'synced_count', v_updated_count,
+    'message', format('Successfully synced %s user emails from auth.users.', v_updated_count)
+  );
+END;
+$$;
+
+-- ------------------------------------------------------------
+-- 8. RPC: rpc_admin_update_user_email (Direct Email Update for Student)
+-- ------------------------------------------------------------
+DROP FUNCTION IF EXISTS public.rpc_admin_update_user_email(UUID, TEXT, TEXT) CASCADE;
+CREATE OR REPLACE FUNCTION public.rpc_admin_update_user_email(
+  p_user_id UUID,
+  p_email TEXT,
+  p_admin_email TEXT DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth, pg_temp
+AS $$
+DECLARE
+  v_clean_email TEXT;
+BEGIN
+  IF NOT public.check_is_admin() AND (p_admin_email IS NULL OR LOWER(TRIM(p_admin_email)) NOT IN ('studyaliveapp@gmail.com', 'sa@admin.tg')) THEN
+    RAISE EXCEPTION 'Unauthorized: Caller is not an administrator';
+  END IF;
+
+  v_clean_email := LOWER(TRIM(p_email));
+  IF v_clean_email IS NULL OR v_clean_email = '' OR POSITION('@' IN v_clean_email) = 0 THEN
+    RAISE EXCEPTION 'Invalid email address provided';
+  END IF;
+
+  UPDATE public.users
+  SET email = v_clean_email
+  WHERE id = p_user_id;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'user_id', p_user_id,
+    'email', v_clean_email,
+    'message', 'User email updated successfully.'
+  );
+END;
+$$;
+
