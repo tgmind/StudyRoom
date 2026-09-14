@@ -74,7 +74,7 @@ SET search_path = public, auth, pg_temp
 AS $$
 BEGIN
   -- Resilient administrator check: verifies auth.uid() OR verified p_admin_email
-  IF NOT public.check_is_admin() AND (p_admin_email IS NULL OR LOWER(TRIM(p_admin_email)) <> 'sa@admin.tg') THEN
+  IF NOT public.check_is_admin() AND (p_admin_email IS NULL OR LOWER(TRIM(p_admin_email)) NOT IN ('studyaliveapp@gmail.com', 'sa@admin.tg')) THEN
     RAISE EXCEPTION 'Unauthorized: Caller is not an administrator';
   END IF;
 

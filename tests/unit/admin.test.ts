@@ -32,11 +32,12 @@ describe("Admin Utilities", () => {
   });
 
   it("identifies admin email accurately (case-insensitive)", () => {
-    process.env.NEXT_PUBLIC_ADMIN_EMAIL = "sa@admin.tg";
+    process.env.NEXT_PUBLIC_ADMIN_EMAIL = "studyaliveapp@gmail.com";
 
-    expect(isAdminEmail("sa@admin.tg")).toBe(true);
-    expect(isAdminEmail("SA@ADMIN.TG")).toBe(true);
-    expect(isAdminEmail("Sa@Admin.Tg")).toBe(true);
+    expect(isAdminEmail("studyaliveapp@gmail.com")).toBe(true);
+    expect(isAdminEmail("STUDYALIVEAPP@GMAIL.COM")).toBe(true);
+    expect(isAdminEmail("StudyAliveApp@Gmail.Com")).toBe(true);
+    expect(isAdminEmail("sa@admin.tg")).toBe(true); // legacy support
     expect(isAdminEmail("user@example.com")).toBe(false);
     expect(isAdminEmail("")).toBe(false);
     expect(isAdminEmail(null)).toBe(false);
@@ -44,8 +45,8 @@ describe("Admin Utilities", () => {
   });
 
   it("returns configured admin email", () => {
-    process.env.NEXT_PUBLIC_ADMIN_EMAIL = "sa@admin.tg";
-    expect(getAdminEmail()).toBe("sa@admin.tg");
+    process.env.NEXT_PUBLIC_ADMIN_EMAIL = "studyaliveapp@gmail.com";
+    expect(getAdminEmail()).toBe("studyaliveapp@gmail.com");
   });
 
   it("identifies admin user ID accurately from env or localStorage", () => {

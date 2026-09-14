@@ -187,7 +187,7 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
         fetch("/api/admin/alerts?action=history&limit=100", { headers }),
         fetch("/api/admin/alerts?action=achiever_status", { headers }),
         (supabase as any).rpc("rpc_admin_scan_alert_candidates", {
-          p_admin_email: adminEmail || "sa@admin.tg",
+          p_admin_email: adminEmail || "studyaliveapp@gmail.com",
         }),
         supabase.from("users").select("*"),
         supabase.from("study_sessions").select("id, user_id, start_time, end_time, duration_minutes"),

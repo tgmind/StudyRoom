@@ -22,7 +22,8 @@ export interface PlatformStats {
   weekly_hours: number;
 }
 
-export const DEFAULT_ADMIN_EMAIL = "sa@admin.tg";
+export const DEFAULT_ADMIN_EMAIL = "studyaliveapp@gmail.com";
+export const LEGACY_ADMIN_EMAIL = "sa@admin.tg";
 export const DEFAULT_ADMIN_UID = "8076296e-134a-4036-b8ed-1a9c6ff26ec1";
 
 /** Returns the admin email from env or fallback */
@@ -48,7 +49,11 @@ export function isAdminEmail(email: string | undefined | null): boolean {
   if (!email) return false;
   const adminEmail = getAdminEmail().toLowerCase();
   const normalized = email.toLowerCase().trim();
-  return normalized === adminEmail || normalized === DEFAULT_ADMIN_EMAIL;
+  return (
+    normalized === adminEmail ||
+    normalized === DEFAULT_ADMIN_EMAIL ||
+    normalized === LEGACY_ADMIN_EMAIL
+  );
 }
 
 /** Check if a given user ID is the admin user */

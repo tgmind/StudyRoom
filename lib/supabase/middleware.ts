@@ -9,7 +9,7 @@ export async function updateSession(request: NextRequest) {
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co";
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder-anon-key";
-  const adminEmail = (process.env.NEXT_PUBLIC_ADMIN_EMAIL || "sa@admin.tg").toLowerCase();
+  const adminEmail = (process.env.NEXT_PUBLIC_ADMIN_EMAIL || "studyaliveapp@gmail.com").toLowerCase();
   const adminUid = (process.env.NEXT_PUBLIC_ADMIN_USER_ID || "8076296e-134a-4036-b8ed-1a9c6ff26ec1").toLowerCase();
 
   const supabase = createServerClient<Database>(supabaseUrl, supabaseAnonKey, {
@@ -54,6 +54,7 @@ export async function updateSession(request: NextRequest) {
     const userEmail = (user.email || "").toLowerCase();
     const isKnownAdmin =
       userEmail === adminEmail ||
+      userEmail === "studyaliveapp@gmail.com" ||
       userEmail === "sa@admin.tg" ||
       user.id === adminUid;
 

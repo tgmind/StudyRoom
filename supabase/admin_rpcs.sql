@@ -14,7 +14,7 @@ ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFA
 UPDATE public.users
 SET is_admin = TRUE
 WHERE id IN (
-  SELECT id FROM auth.users WHERE LOWER(email) = 'sa@admin.tg'
+  SELECT id FROM auth.users WHERE LOWER(email) IN ('studyaliveapp@gmail.com', 'sa@admin.tg')
 );
 
 -- Prevent unauthorized users from modifying is_admin
@@ -72,7 +72,7 @@ BEGIN
   END IF;
 
   SELECT email INTO v_email FROM auth.users WHERE id = auth.uid();
-  IF v_email IS NOT NULL AND LOWER(v_email) = 'sa@admin.tg' THEN
+  IF v_email IS NOT NULL AND LOWER(v_email) IN ('studyaliveapp@gmail.com', 'sa@admin.tg') THEN
     -- Auto-flag is_admin in public.users
     PERFORM set_config('studyroom.internal_admin_update', 'true', true);
     UPDATE public.users SET is_admin = TRUE WHERE id = auth.uid();
