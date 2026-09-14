@@ -133,6 +133,8 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
   const [isDirectAlertOpen, setIsDirectAlertOpen] = useState(false);
   const [directSelectedUserId, setDirectSelectedUserId] = useState<string>("");
   const [directAlertType, setDirectAlertType] = useState<AlertType>("W");
+  const [sendingDirectAlert, setSendingDirectAlert] = useState(false);
+  const [sendingToStudentFromPreview, setSendingToStudentFromPreview] = useState(false);
 
   // Modals state
   const [previewCandidate, setPreviewCandidate] = useState<AlertCandidate | null>(null);
@@ -771,20 +773,40 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
     }
   };
 
+  // Platform users available for Direct Alert (fallback to candidates if allUsers is loading)
+  const selectableUsers = useMemo<PlatformUserOption[]>(() => {
+    if (allUsers.length > 0) return allUsers;
+    return candidates.map((c) => ({
+      id: c.user_id,
+      display_name: c.user_name,
+      email: c.user_email,
+      avatar_url: null,
+      current_status: "offline",
+      has_achiever_badge: c.has_achiever_badge,
+      last_offline_at: c.last_active_at || null,
+      created_at: c.last_active_at,
+      weekly_minutes: c.past_week_study_minutes,
+      total_minutes: c.total_study_minutes,
+      total_alerts_sent: c.total_alerts_sent || 0,
+      alert_counts: c.alert_counts || { A: 0, W: 0, I: 0, D: 0 },
+    }));
+  }, [allUsers, candidates]);
+
   // Direct Alert to Any Member
   const handleOpenDirectAlert = (user?: PlatformUserOption) => {
     if (user) {
       setDirectSelectedUserId(user.id);
       setDirectAlertType(user.has_achiever_badge ? "A" : "W");
-    } else if (allUsers.length > 0) {
-      setDirectSelectedUserId(allUsers[0].id);
+    } else if (selectableUsers.length > 0) {
+      setDirectSelectedUserId(selectableUsers[0].id);
       setDirectAlertType("W");
     }
     setIsDirectAlertOpen(true);
   };
 
-  const handleSendDirectAlert = async () => {
-    const targetUser = allUsers.find((u) => u.id === directSelectedUserId);
+  // Preview Direct Alert in the live preview modal
+  const handlePreviewDirectAlert = () => {
+    const targetUser = selectableUsers.find((u) => u.id === (directSelectedUserId || selectableUsers[0]?.id));
     if (!targetUser) return;
 
     const email = (targetUser.email && !targetUser.email.includes("@student.studyroom")) ? targetUser.email.trim() : "";
@@ -806,6 +828,108 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
 
     setPreviewCandidate(tempCandidate);
     setIsDirectAlertOpen(false);
+  };
+
+  // Send Direct Alert Immediately to Student
+  const handleSendDirectAlertNow = async () => {
+    const targetUser = selectableUsers.find((u) => u.id === (directSelectedUserId || selectableUsers[0]?.id));
+    if (!targetUser) return;
+
+    const email = (targetUser.email && !targetUser.email.includes("@student.studyroom")) ? targetUser.email.trim() : "";
+    if (!email) {
+      alert("Cannot send alert: Student has no authentic email address on file.");
+      return;
+    }
+
+    setSendingDirectAlert(true);
+    try {
+      const tempCandidate: AlertCandidate = {
+        candidate_id: `DIRECT-${targetUser.id}-${Date.now()}`,
+        user_id: targetUser.id,
+        user_name: targetUser.display_name,
+        user_email: email,
+        alert_type: directAlertType,
+        consecutive_inactive_days: 0,
+        reason: `Direct ${directAlertType} alert dispatched by administrator`,
+        last_active_at: new Date().toISOString(),
+        last_alert_sent_at: null,
+        has_achiever_badge: targetUser.has_achiever_badge,
+        total_study_minutes: targetUser.total_minutes,
+        past_week_study_minutes: targetUser.weekly_minutes,
+      };
+
+      const headers = await getAuthHeaders();
+      const res = await fetch("/api/admin/alerts", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          action: "send_batch",
+          candidates: [tempCandidate],
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.error || "Failed to send alert email");
+      }
+
+      const sendResult = json.results?.[0];
+      if (sendResult && !sendResult.success) {
+        throw new Error(sendResult.error || "Failed to deliver email.");
+      }
+
+      setResetFeedback({
+        type: "success",
+        message: `Alert email successfully sent to ${targetUser.display_name} (${email})!`,
+      });
+
+      setIsDirectAlertOpen(false);
+      await fetchData();
+    } catch (err: any) {
+      alert(err?.message || "Failed to send alert email.");
+    } finally {
+      setSendingDirectAlert(false);
+    }
+  };
+
+  // Dispatch Alert to Student from Interactive Live Preview Modal
+  const handleDispatchFromPreview = async () => {
+    if (!previewCandidate || !previewCandidate.user_email) return;
+
+    setSendingToStudentFromPreview(true);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch("/api/admin/alerts", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          action: "send_batch",
+          candidates: [previewCandidate],
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.error || "Failed to dispatch alert email");
+      }
+
+      const sendResult = json.results?.[0];
+      if (sendResult && !sendResult.success) {
+        throw new Error(sendResult.error || "Failed to deliver email.");
+      }
+
+      setResetFeedback({
+        type: "success",
+        message: `Alert email successfully delivered to ${previewCandidate.user_name} (${previewCandidate.user_email})!`,
+      });
+
+      setPreviewCandidate(null);
+      await fetchData();
+    } catch (err: any) {
+      setTestErrorMessage(err?.message || "Failed to dispatch alert email.");
+    } finally {
+      setSendingToStudentFromPreview(false);
+    }
   };
 
   // Reset all alert counts and clear history across the platform
@@ -2121,11 +2245,11 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
               Select Student / Member:
             </label>
             <select
-              value={directSelectedUserId}
+              value={directSelectedUserId || selectableUsers[0]?.id || ""}
               onChange={(e) => setDirectSelectedUserId(e.target.value)}
               className="w-full bg-zinc-900 border border-zinc-700 text-zinc-200 text-xs rounded-xl p-2.5 focus:outline-none focus:border-indigo-500"
             >
-              {allUsers.map((u) => (
+              {selectableUsers.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.display_name} {u.has_achiever_badge ? "👑" : ""} ({u.current_status}) — Past Week: {(u.weekly_minutes / 60).toFixed(1)}h
                 </option>
@@ -2133,7 +2257,7 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
             </select>
 
             {(() => {
-              const selectedUser = allUsers.find((u) => u.id === (directSelectedUserId || allUsers[0]?.id));
+              const selectedUser = selectableUsers.find((u) => u.id === (directSelectedUserId || selectableUsers[0]?.id));
               if (!selectedUser) return null;
               const sent = selectedUser.total_alerts_sent || 0;
               const c = selectedUser.alert_counts || { A: 0, W: 0, I: 0, D: 0 };
@@ -2246,24 +2370,43 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
             </div>
           </div>
 
-          <div className="flex justify-end space-x-2 pt-2">
-            <Button variant="ghost" onClick={() => setIsDirectAlertOpen(false)}>
+          <div className="flex flex-col sm:flex-row justify-end space-y-2 sm:space-y-0 sm:space-x-2 pt-3 border-t border-zinc-800/80">
+            <Button
+              variant="ghost"
+              disabled={sendingDirectAlert}
+              onClick={() => setIsDirectAlertOpen(false)}
+              className="text-xs"
+            >
               Cancel
             </Button>
             {(() => {
-              const selectedUser = allUsers.find((u) => u.id === (directSelectedUserId || allUsers[0]?.id));
+              const selectedUser = selectableUsers.find((u) => u.id === (directSelectedUserId || selectableUsers[0]?.id));
               const hasEmail = Boolean(selectedUser?.email);
               return (
-                <Button
-                  variant="primary"
-                  disabled={!hasEmail}
-                  onClick={handleSendDirectAlert}
-                  className="bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-40 disabled:cursor-not-allowed"
-                  title={!hasEmail ? "Cannot send alert: Student has no email on file" : ""}
-                >
-                  <Eye className="w-3.5 h-3.5 mr-1.5" />
-                  <span>Preview &amp; Send</span>
-                </Button>
+                <div className="flex items-center space-x-2 w-full sm:w-auto justify-end">
+                  <Button
+                    variant="secondary"
+                    disabled={!hasEmail || sendingDirectAlert}
+                    onClick={handlePreviewDirectAlert}
+                    className="border-zinc-700 text-zinc-200 hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed text-xs flex-1 sm:flex-initial"
+                    title={!hasEmail ? "Cannot preview alert: Student has no email on file" : "Preview how this email appears to student"}
+                  >
+                    <Eye className="w-3.5 h-3.5 mr-1.5" />
+                    <span>Preview Email</span>
+                  </Button>
+
+                  <Button
+                    variant="primary"
+                    disabled={!hasEmail || sendingDirectAlert}
+                    isLoading={sendingDirectAlert}
+                    onClick={handleSendDirectAlertNow}
+                    className="bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-40 disabled:cursor-not-allowed text-xs font-semibold flex-1 sm:flex-initial"
+                    title={!hasEmail ? "Cannot send alert: Student has no email on file" : "Send verified alert email directly to student"}
+                  >
+                    <Send className="w-3.5 h-3.5 mr-1.5" />
+                    <span>Send Alert Now</span>
+                  </Button>
+                </div>
               );
             })()}
           </div>
@@ -2364,6 +2507,40 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
                 dangerouslySetInnerHTML={{ __html: previewEmailContent.html }}
               />
             </div>
+            {/* Dispatch Action Footer */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-zinc-800">
+              <div className="text-xs text-zinc-400">
+                <span>Target Student: </span>
+                <strong className="text-zinc-200">{previewCandidate.user_name}</strong>
+                {previewCandidate.user_email ? (
+                  <span className="font-mono text-zinc-300 ml-1.5">({previewCandidate.user_email})</span>
+                ) : (
+                  <span className="text-amber-400 ml-1.5 font-medium">⚠️ No email on file</span>
+                )}
+              </div>
+
+              <div className="flex items-center space-x-2 w-full sm:w-auto justify-end">
+                <Button
+                  variant="ghost"
+                  disabled={sendingToStudentFromPreview}
+                  onClick={() => setPreviewCandidate(null)}
+                  className="text-xs"
+                >
+                  Close
+                </Button>
+                <Button
+                  variant="primary"
+                  disabled={!previewCandidate.user_email || sendingToStudentFromPreview}
+                  isLoading={sendingToStudentFromPreview}
+                  onClick={handleDispatchFromPreview}
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-4"
+                  title={!previewCandidate.user_email ? "Cannot send: Student has no email on file" : `Send alert to ${previewCandidate.user_name}`}
+                >
+                  <Send className="w-3.5 h-3.5 mr-1.5" />
+                  <span>Dispatch Alert to {previewCandidate.user_name}</span>
+                </Button>
+              </div>
+            </div>
           </div>
         </Modal>
       )}
@@ -2374,8 +2551,16 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
         onClose={() => {
           if (!batchInProgress) setIsBatchModalOpen(false);
         }}
-        title="Dispatch Selected Alerts"
-        subtitle={`Sending emails to ${selectedIds.size} recipient(s)`}
+        title={
+          candidates.find((c) => selectedIds.has(c.candidate_id)) && selectedIds.size === 1
+            ? `Send Alert to ${candidates.find((c) => selectedIds.has(c.candidate_id))?.user_name}`
+            : "Dispatch Selected Alerts"
+        }
+        subtitle={
+          candidates.find((c) => selectedIds.has(c.candidate_id)) && selectedIds.size === 1
+            ? `Sending verified alert to ${candidates.find((c) => selectedIds.has(c.candidate_id))?.user_email}`
+            : `Sending emails to ${selectedIds.size} recipient(s)`
+        }
         maxWidth="2xl"
       >
         <div className="space-y-4">
@@ -2435,10 +2620,14 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
                   variant="primary"
                   onClick={handleStartBatchDispatch}
                   isLoading={batchInProgress}
-                  className="bg-indigo-600 hover:bg-indigo-500 text-white"
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs"
                 >
                   <Send className="w-3.5 h-3.5 mr-1.5" />
-                  <span>Start Sending</span>
+                  <span>
+                    {selectedIds.size === 1
+                      ? "Send Alert Now"
+                      : `Start Batch Dispatch (${selectedIds.size})`}
+                  </span>
                 </Button>
               </div>
             </>

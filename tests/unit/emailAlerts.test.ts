@@ -70,4 +70,22 @@ describe("Email Alerts Generation Unit Tests", () => {
     expect(isInvalidRecipient("ritesh@gmail.com")).toBe(false);
     expect(isInvalidRecipient("student@outlook.com")).toBe(false);
   });
+
+  it("successfully dispatches an alert email through authenticated Gmail SMTP", async () => {
+    const { sendAlertEmail } = await import("@/lib/email/mailer");
+    const res = await sendAlertEmail({
+      to: "studyaliveapp@gmail.com",
+      name: "Admin Live Verification",
+      type: "W",
+      consecutiveDays: 0,
+      weeklyHours: 10,
+      isTest: true,
+    });
+    if (!res.success) {
+      console.error("sendAlertEmail failed with error:", res.error);
+    }
+    expect(res.success).toBe(true);
+    expect(res.messageId).toBeDefined();
+  }, 15000);
 });
+

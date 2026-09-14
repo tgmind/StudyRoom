@@ -590,9 +590,10 @@ export async function POST(request: NextRequest) {
         const status = sendResult.success ? "sent" : "failed";
         const errorMsg = sendResult.error || null;
 
-        // Log result in database
+        // Log result in database (Try RPC first, fallback to direct table insertion)
+        let loggedViaRpc = false;
         try {
-          await (auth.supabase as unknown as RpcCaller).rpc("rpc_admin_log_alert_result", {
+          const { error: rpcLogErr } = await (auth.supabase as unknown as RpcCaller).rpc("rpc_admin_log_alert_result", {
             p_user_id: user_id,
             p_user_name: user_name,
             p_user_email: cleanEmail,
@@ -602,8 +603,53 @@ export async function POST(request: NextRequest) {
             p_reason: reason || "",
             p_error_message: errorMsg,
           });
-        } catch (dbErr) {
-          console.error("Failed to log alert in db:", dbErr);
+          if (!rpcLogErr) {
+            loggedViaRpc = true;
+          }
+        } catch {
+          loggedViaRpc = false;
+        }
+
+        if (!loggedViaRpc) {
+          try {
+            await (auth.supabase as any).from("user_alerts").insert({
+              user_id,
+              user_name,
+              user_email: cleanEmail,
+              alert_type,
+              status,
+              consecutive_inactive_days: consecutive_inactive_days || 0,
+              reason: reason || "",
+              error_message: errorMsg,
+              sent_at: status === "sent" ? new Date().toISOString() : null,
+            });
+
+            if (status === "sent") {
+              const { data: userData } = await (auth.supabase as any)
+                .from("users")
+                .select("total_alerts_sent, alert_counts")
+                .eq("id", user_id)
+                .maybeSingle();
+
+              const prevCounts = userData?.alert_counts || { A: 0, W: 0, I: 0, D: 0 };
+              const updatedCounts = {
+                ...prevCounts,
+                [alert_type]: (prevCounts[alert_type] || 0) + 1,
+              };
+
+              await (auth.supabase as any)
+                .from("users")
+                .update({
+                  total_alerts_sent: (userData?.total_alerts_sent || 0) + 1,
+                  alert_counts: updatedCounts,
+                  last_alert_sent_at: new Date().toISOString(),
+                  last_alert_type: alert_type,
+                })
+                .eq("id", user_id);
+            }
+          } catch (dbErr) {
+            console.error("Direct table log failed:", dbErr);
+          }
         }
 
         results.push({

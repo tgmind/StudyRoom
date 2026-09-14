@@ -416,3 +416,82 @@ BEGIN
 END;
 $$;
 
+-- ------------------------------------------------------------
+-- 9. RPC: rpc_admin_log_alert_result (Audit Log & Auto-Increment)
+-- ------------------------------------------------------------
+DROP FUNCTION IF EXISTS public.rpc_admin_log_alert_result(UUID, TEXT, TEXT, TEXT, TEXT, INTEGER, TEXT, TEXT) CASCADE;
+CREATE OR REPLACE FUNCTION public.rpc_admin_log_alert_result(
+  p_user_id UUID,
+  p_user_name TEXT,
+  p_user_email TEXT,
+  p_alert_type TEXT,
+  p_status TEXT,
+  p_consecutive_days INTEGER DEFAULT 0,
+  p_reason TEXT DEFAULT '',
+  p_error_message TEXT DEFAULT NULL
+)
+RETURNS UUID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth, pg_temp
+AS $$
+DECLARE
+  v_new_id UUID;
+  v_current_counts JSONB;
+  v_type_count INTEGER;
+BEGIN
+  -- Insert into audit log
+  INSERT INTO public.user_alerts (
+    user_id,
+    user_name,
+    user_email,
+    alert_type,
+    status,
+    consecutive_inactive_days,
+    reason,
+    error_message,
+    sent_at
+  )
+  VALUES (
+    p_user_id,
+    p_user_name,
+    p_user_email,
+    p_alert_type,
+    p_status,
+    p_consecutive_days,
+    p_reason,
+    p_error_message,
+    CASE WHEN p_status = 'sent' THEN NOW() ELSE NULL END
+  )
+  RETURNING id INTO v_new_id;
+
+  -- If successfully sent, update user's aggregated alert counters
+  IF p_status = 'sent' THEN
+    PERFORM set_config('studyroom.internal_badge_update', 'true', true);
+
+    SELECT COALESCE(alert_counts, '{"A":0,"W":0,"I":0,"D":0}'::jsonb)
+    INTO v_current_counts
+    FROM public.users
+    WHERE id = p_user_id;
+
+    IF v_current_counts IS NULL THEN
+      v_current_counts := '{"A":0,"W":0,"I":0,"D":0}'::jsonb;
+    END IF;
+
+    v_type_count := COALESCE((v_current_counts->>p_alert_type)::INTEGER, 0) + 1;
+    v_current_counts := jsonb_set(v_current_counts, ARRAY[p_alert_type], to_jsonb(v_type_count));
+
+    UPDATE public.users
+    SET
+      total_alerts_sent = COALESCE(total_alerts_sent, 0) + 1,
+      alert_counts = v_current_counts,
+      last_alert_sent_at = NOW(),
+      last_alert_type = p_alert_type
+    WHERE id = p_user_id;
+  END IF;
+
+  RETURN v_new_id;
+END;
+$$;
+
+

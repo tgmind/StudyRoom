@@ -89,9 +89,15 @@ export async function sendAlertEmail({
   isTest = false,
 }: SendAlertParams): Promise<SendAlertResult> {
   try {
-    const fromName = process.env.ALERT_FROM_NAME?.trim() || "StudyRoom";
-    const user = process.env.ALERT_GMAIL_USER!.trim();
+    const { configured, user, reason } = isMailerConfigured();
+    if (!configured || !user) {
+      return {
+        success: false,
+        error: reason || "Email transport is not configured.",
+      };
+    }
 
+    const fromName = process.env.ALERT_FROM_NAME?.trim() || "StudyRoom";
     const template = generateAlertEmail(type, name, consecutiveDays, weeklyHours);
     const transporter = getTransporter();
 

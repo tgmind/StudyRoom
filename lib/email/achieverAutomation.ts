@@ -294,7 +294,7 @@ export async function processWeeklyAchieverAutomation(options?: {
   // 7. Log success in database & increment counts
   try {
     if (winnerId) {
-      await rpcClient.rpc("rpc_admin_log_alert_result", {
+      const { error: rpcLogErr } = await rpcClient.rpc("rpc_admin_log_alert_result", {
         p_user_id: winnerId,
         p_user_name: winnerName,
         p_user_email: winnerEmail,
@@ -304,6 +304,21 @@ export async function processWeeklyAchieverAutomation(options?: {
         p_reason: `Weekly Achiever Title: Week of ${weekKey}`,
         p_error_message: null,
       });
+
+      if (rpcLogErr && typeof (rpcClient as any).from === "function") {
+        // Direct table fallback
+        await (rpcClient as any).from("user_alerts").insert({
+          user_id: winnerId,
+          user_name: winnerName,
+          user_email: winnerEmail,
+          alert_type: "A",
+          status: "sent",
+          consecutive_inactive_days: 0,
+          reason: `Weekly Achiever Title: Week of ${weekKey}`,
+          error_message: null,
+          sent_at: new Date().toISOString(),
+        });
+      }
     }
   } catch (dbErr) {
     console.warn("Could not log alert result to database:", dbErr);
