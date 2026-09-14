@@ -51,4 +51,10 @@ describe("Email Alerts Generation Unit Tests", () => {
     // In test environment, ALERT_GMAIL_USER and ALERT_GMAIL_APP_PASSWORD are set in .env.local
     expect(typeof result.configured).toBe("boolean");
   });
+
+  it("points email CTA buttons to https://studyalive.netlify.app/room", () => {
+    const payload = generateAlertEmail("A", "Ritesh");
+    expect(payload.html).toContain("https://studyalive.netlify.app/room");
+    expect(payload.text).toContain("https://studyalive.netlify.app/room");
+  });
 });

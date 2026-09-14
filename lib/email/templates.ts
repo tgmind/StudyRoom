@@ -22,7 +22,7 @@ export function getAppUrl(): string {
   if (process.env.VERCEL_URL) {
     return `https://${process.env.VERCEL_URL.replace(/\/+$/, "")}`;
   }
-  return "https://studyroom.app";
+  return "https://studyalive.netlify.app";
 }
 
 /**
