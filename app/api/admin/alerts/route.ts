@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { isMailerConfigured, sendAlertEmail } from "@/lib/email/mailer";
 import { AlertType } from "@/lib/email/templates";
-import { isAdminEmail, isAdminUserId } from "@/hooks/useAdmin";
+import { isAdminEmail, isAdminUserId } from "@/lib/admin";
 import { processWeeklyAchieverAutomation, isMondayInTimezone, getMondayDateString } from "@/lib/email/achieverAutomation";
 import { getWeekStartTimestamp } from "@/lib/time/format";
 
