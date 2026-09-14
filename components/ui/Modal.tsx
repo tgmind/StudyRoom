@@ -14,7 +14,20 @@ interface ModalProps {
   closeOnBackdropClick?: boolean;
   hideCloseButton?: boolean;
   disableEscape?: boolean;
+  maxWidth?: "sm" | "md" | "lg" | "xl" | "2xl" | "3xl" | "4xl" | "5xl" | "full";
 }
+
+const maxWidthClasses: Record<string, string> = {
+  sm: "max-w-sm",
+  md: "max-w-md",
+  lg: "max-w-lg",
+  xl: "max-w-xl",
+  "2xl": "max-w-2xl",
+  "3xl": "max-w-3xl",
+  "4xl": "max-w-4xl",
+  "5xl": "max-w-5xl",
+  full: "max-w-[95vw]",
+};
 
 export function Modal({
   isOpen,
@@ -26,6 +39,7 @@ export function Modal({
   closeOnBackdropClick = true,
   hideCloseButton = false,
   disableEscape = false,
+  maxWidth = "lg",
 }: ModalProps) {
   const [mounted, setMounted] = useState(false);
 
@@ -90,7 +104,7 @@ export function Modal({
       }}
     >
       <div
-        className={`w-full max-w-lg bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col ${
+        className={`w-full ${maxWidthClasses[maxWidth] || "max-w-lg"} bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col ${
           fullScreenMobile
             ? "h-full max-h-[92vh] sm:h-auto sm:max-h-[85vh]"
             : "max-h-[90vh]"

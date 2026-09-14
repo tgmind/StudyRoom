@@ -463,6 +463,30 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
     return { total, aCount, wCount, iCount, dCount, sentCount };
   }, [candidates, history]);
 
+  // Active Achiever resolution: Uses RPC status or instant client fallback from users
+  const activeAchiever = useMemo(() => {
+    if (achieverStatus?.achiever) return achieverStatus.achiever;
+    const fromUsers = allUsers.find((u) => u.has_achiever_badge);
+    if (fromUsers) {
+      return {
+        user_id: fromUsers.id,
+        display_name: fromUsers.display_name,
+        email: `${fromUsers.display_name.toLowerCase().replace(/[^a-z0-9]/g, "")}@student.studyroom`,
+        has_achiever_badge: true,
+      };
+    }
+    const fromCand = candidates.find((c) => c.has_achiever_badge || c.alert_type === "A");
+    if (fromCand) {
+      return {
+        user_id: fromCand.user_id,
+        display_name: fromCand.user_name,
+        email: fromCand.user_email,
+        has_achiever_badge: true,
+      };
+    }
+    return null;
+  }, [achieverStatus, allUsers, candidates]);
+
   // Selection helpers
   const handleToggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -919,10 +943,10 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
           </div>
 
           <div className="text-xs text-zinc-300 flex items-center gap-2 flex-wrap">
-            {achieverStatus?.achiever ? (
+            {activeAchiever ? (
               <span>
-                Current Achiever: <strong className="text-amber-300">{achieverStatus.achiever.display_name}</strong>{" "}
-                <span className="font-mono text-zinc-400">({achieverStatus.achiever.email})</span>
+                Current Achiever: <strong className="text-amber-300">{activeAchiever.display_name}</strong>{" "}
+                <span className="font-mono text-zinc-400">({activeAchiever.email})</span>
               </span>
             ) : (
               <span className="text-zinc-400">Evaluating previous week top performer...</span>
@@ -953,6 +977,32 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          {activeAchiever && (
+            <button
+              type="button"
+              onClick={() => {
+                const cand: AlertCandidate = {
+                  candidate_id: `ACHIEVER-${activeAchiever.user_id}-${Date.now()}`,
+                  user_id: activeAchiever.user_id,
+                  user_name: activeAchiever.display_name,
+                  user_email: activeAchiever.email,
+                  alert_type: "A",
+                  consecutive_inactive_days: 0,
+                  reason: "Weekly Leaderboard Champion (Achiever Title)",
+                  last_active_at: new Date().toISOString(),
+                  last_alert_sent_at: null,
+                  has_achiever_badge: true,
+                  total_study_minutes: 0,
+                  past_week_study_minutes: 0,
+                };
+                setPreviewCandidate(cand);
+              }}
+              className="px-3 py-2 rounded-lg text-xs font-semibold border border-amber-500/30 text-amber-300 hover:bg-amber-950/40 flex items-center space-x-1.5 transition-all"
+            >
+              <Eye className="w-3.5 h-3.5" />
+              <span>Preview Achiever Email</span>
+            </button>
+          )}
           <button
             onClick={() => handleRunWeeklyAchiever(false)}
             disabled={processingAchiever || !mailerConfig?.configured}
@@ -1042,13 +1092,14 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
             </div>
           </div>
 
-          {/* 5. CANDIDATES TABLE */}
+          {/* 5. CANDIDATES CONTAINER (Responsive Desktop Table + Mobile Cards) */}
           <div className="border border-zinc-800/80 rounded-xl overflow-hidden bg-zinc-900/30">
-            <div className="overflow-x-auto">
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-left text-xs text-zinc-300">
-                <thead className="bg-zinc-900/80 text-zinc-400 border-b border-zinc-800 font-semibold uppercase text-[10px] tracking-wider">
+                <thead className="bg-zinc-900/90 text-zinc-400 border-b border-zinc-800 font-bold uppercase text-[10px] tracking-wider">
                   <tr>
-                    <th className="p-3 w-10 text-center">
+                    <th className="py-3.5 px-4 w-12 text-center">
                       <input
                         type="checkbox"
                         checked={
@@ -1056,28 +1107,28 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
                           filteredCandidates.length > 0
                         }
                         onChange={handleSelectAllFiltered}
-                        className="rounded bg-zinc-800 border-zinc-700 text-indigo-600 focus:ring-0 cursor-pointer"
+                        className="rounded bg-zinc-800 border-zinc-700 text-indigo-600 focus:ring-0 cursor-pointer w-4 h-4"
                       />
                     </th>
-                    <th className="p-3">Student</th>
-                    <th className="p-3">Alert Trigger</th>
-                    <th className="p-3">Activity &amp; Weekly Record</th>
-                    <th className="p-3">Alerts History</th>
-                    <th className="p-3">Last Active</th>
-                    <th className="p-3 text-right">Actions</th>
+                    <th className="py-3.5 px-4">Student</th>
+                    <th className="py-3.5 px-4 whitespace-nowrap">Alert Trigger</th>
+                    <th className="py-3.5 px-4">Activity &amp; Weekly Record</th>
+                    <th className="py-3.5 px-4 whitespace-nowrap">Alerts History</th>
+                    <th className="py-3.5 px-4 whitespace-nowrap">Last Active</th>
+                    <th className="py-3.5 px-4 text-right whitespace-nowrap">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-800/60">
                   {loading ? (
                     <tr>
-                      <td colSpan={7} className="p-8 text-center text-zinc-500">
+                      <td colSpan={7} className="py-12 text-center text-zinc-500">
                         <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-zinc-400" />
                         Scanning students, inactivity records &amp; weekly performance...
                       </td>
                     </tr>
                   ) : filteredCandidates.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="p-8 text-center text-zinc-500">
+                      <td colSpan={7} className="py-12 text-center text-zinc-500">
                         No students currently match this filter. Everything is up to date!
                       </td>
                     </tr>
@@ -1091,21 +1142,21 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
                             isSelected ? "bg-indigo-950/20" : ""
                           }`}
                         >
-                          <td className="p-3 text-center">
+                          <td className="py-3.5 px-4 text-center">
                             <input
                               type="checkbox"
                               checked={isSelected}
                               onChange={() => handleToggleSelect(candidate.candidate_id)}
-                              className="rounded bg-zinc-800 border-zinc-700 text-indigo-600 focus:ring-0 cursor-pointer"
+                              className="rounded bg-zinc-800 border-zinc-700 text-indigo-600 focus:ring-0 cursor-pointer w-4 h-4"
                             />
                           </td>
-                          <td className="p-3">
-                            <div className="flex items-center space-x-2.5">
-                              <div className="w-7 h-7 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center font-bold text-[11px] text-zinc-200">
+                          <td className="py-3.5 px-4">
+                            <div className="flex items-center space-x-3">
+                              <div className="w-8 h-8 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center font-bold text-xs text-zinc-200 shrink-0">
                                 {candidate.user_name.charAt(0).toUpperCase()}
                               </div>
                               <div>
-                                <div className="font-semibold text-zinc-100 flex items-center space-x-1">
+                                <div className="font-semibold text-zinc-100 flex items-center space-x-1.5 text-xs">
                                   <span>{candidate.user_name}</span>
                                   {candidate.has_achiever_badge && (
                                     <span title="Achiever Title Active">👑</span>
@@ -1117,20 +1168,20 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
                               </div>
                             </div>
                           </td>
-                          <td className="p-3">{renderTypeBadge(candidate.alert_type)}</td>
-                          <td className="p-3">
-                            <div className="space-y-0.5">
+                          <td className="py-3.5 px-4 whitespace-nowrap">{renderTypeBadge(candidate.alert_type)}</td>
+                          <td className="py-3.5 px-4">
+                            <div className="space-y-1">
                               <div className="text-zinc-200 font-medium">
                                 {candidate.reason}
                               </div>
-                              <div className="text-[11px] text-zinc-500 flex items-center space-x-2">
-                                <span>Past Week: {(candidate.past_week_study_minutes / 60).toFixed(1)}h</span>
+                              <div className="text-[11px] text-zinc-400 flex items-center space-x-2 whitespace-nowrap">
+                                <span>Past Week: <strong className="text-zinc-200">{(candidate.past_week_study_minutes / 60).toFixed(1)}h</strong></span>
                                 <span>&bull;</span>
-                                <span>All-time: {(candidate.total_study_minutes / 60).toFixed(1)}h</span>
+                                <span>All-time: <strong className="text-zinc-200">{(candidate.total_study_minutes / 60).toFixed(1)}h</strong></span>
                               </div>
                             </div>
                           </td>
-                          <td className="p-3">
+                          <td className="py-3.5 px-4 whitespace-nowrap">
                             {candidate.total_alerts_sent && candidate.total_alerts_sent > 0 ? (
                               <div className="space-y-1">
                                 <div className="flex items-center space-x-1">
@@ -1174,16 +1225,16 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
                                 </div>
                               </div>
                             ) : (
-                              <span className="text-xs text-zinc-500">0 sent</span>
+                              <span className="text-xs text-zinc-500 font-medium">0 sent</span>
                             )}
                           </td>
-                          <td className="p-3 text-zinc-400">
+                          <td className="py-3.5 px-4 whitespace-nowrap text-zinc-400 font-medium">
                             {new Date(candidate.last_active_at).toLocaleDateString("en-IN", {
                               day: "numeric",
                               month: "short",
                             })}
                           </td>
-                          <td className="p-3 text-right">
+                          <td className="py-3.5 px-4 text-right whitespace-nowrap">
                             <div className="inline-flex items-center space-x-1.5">
                               <Button
                                 variant="ghost"
@@ -1193,7 +1244,7 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
                                   setTestSuccessMessage(null);
                                   setTestErrorMessage(null);
                                 }}
-                                className="h-8 px-2 text-zinc-300 hover:text-white"
+                                className="h-8 px-2 text-zinc-300 hover:text-white border border-zinc-800"
                                 title="Live Preview"
                               >
                                 <Eye className="w-3.5 h-3.5 mr-1" />
@@ -1209,9 +1260,9 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
                                   setBatchResults([]);
                                   setIsBatchModalOpen(true);
                                 }}
-                                className="h-8 px-2.5 text-xs border-zinc-700 hover:border-zinc-600"
+                                className="h-8 px-2.5 text-xs border-indigo-500/30 text-indigo-300 hover:bg-indigo-950/30"
                               >
-                                <Send className="w-3 h-3 mr-1" />
+                                <Send className="w-3 h-3 mr-1 text-indigo-400" />
                                 <span>Send</span>
                               </Button>
                             </div>
@@ -1223,42 +1274,188 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
                 </tbody>
               </table>
             </div>
+
+            {/* Mobile Card List View */}
+            <div className="block md:hidden">
+              {/* Mobile Select All Header */}
+              {filteredCandidates.length > 0 && (
+                <div className="p-3 bg-zinc-900/90 border-b border-zinc-800 flex items-center justify-between">
+                  <label className="flex items-center space-x-2 cursor-pointer text-xs text-zinc-300 font-semibold">
+                    <input
+                      type="checkbox"
+                      checked={
+                        selectedIds.size === filteredCandidates.length &&
+                        filteredCandidates.length > 0
+                      }
+                      onChange={handleSelectAllFiltered}
+                      className="rounded bg-zinc-800 border-zinc-700 text-indigo-600 focus:ring-0 w-4 h-4"
+                    />
+                    <span>Select All ({filteredCandidates.length})</span>
+                  </label>
+                  {selectedIds.size > 0 && (
+                    <span className="text-[11px] font-bold text-indigo-400">
+                      {selectedIds.size} Selected
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {loading ? (
+                <div className="p-8 text-center text-zinc-500">
+                  <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-zinc-400" />
+                  Scanning students &amp; activity...
+                </div>
+              ) : filteredCandidates.length === 0 ? (
+                <div className="p-8 text-center text-zinc-500 text-xs">
+                  No students currently match this filter.
+                </div>
+              ) : (
+                <div className="divide-y divide-zinc-800/80">
+                  {filteredCandidates.map((candidate) => {
+                    const isSelected = selectedIds.has(candidate.candidate_id);
+                    return (
+                      <div
+                        key={candidate.candidate_id}
+                        className={`p-3.5 space-y-3 transition-colors ${
+                          isSelected ? "bg-indigo-950/20" : "bg-transparent"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center space-x-2.5">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => handleToggleSelect(candidate.candidate_id)}
+                              className="rounded bg-zinc-800 border-zinc-700 text-indigo-600 focus:ring-0 w-4 h-4 shrink-0 mt-0.5"
+                            />
+                            <div className="w-8 h-8 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center font-bold text-xs text-zinc-200 shrink-0">
+                              {candidate.user_name.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                              <div className="font-semibold text-zinc-100 flex items-center space-x-1 text-xs">
+                                <span>{candidate.user_name}</span>
+                                {candidate.has_achiever_badge && <span>👑</span>}
+                              </div>
+                              <div className="text-[11px] text-zinc-500 font-mono">
+                                {candidate.user_email}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="shrink-0">{renderTypeBadge(candidate.alert_type)}</div>
+                        </div>
+
+                        <div className="bg-zinc-950/70 p-2.5 rounded-lg border border-zinc-800/80 space-y-2">
+                          <div className="text-xs text-zinc-200 font-medium">
+                            {candidate.reason}
+                          </div>
+                          <div className="flex items-center justify-between text-[11px] text-zinc-400">
+                            <span>Past Week: <strong className="text-zinc-200">{(candidate.past_week_study_minutes / 60).toFixed(1)}h</strong></span>
+                            <span>&bull;</span>
+                            <span>All-time: <strong className="text-zinc-200">{(candidate.total_study_minutes / 60).toFixed(1)}h</strong></span>
+                            <span>&bull;</span>
+                            <span>{new Date(candidate.last_active_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</span>
+                          </div>
+                        </div>
+
+                        {candidate.total_alerts_sent && candidate.total_alerts_sent > 0 ? (
+                          <div className="flex items-center gap-1.5 flex-wrap text-[10px]">
+                            <span className="text-zinc-400">{candidate.total_alerts_sent} sent:</span>
+                            {(candidate.alert_counts?.A || 0) > 0 && (
+                              <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                                🏆 {candidate.alert_counts?.A}
+                              </span>
+                            )}
+                            {(candidate.alert_counts?.W || 0) > 0 && (
+                              <span className="px-1.5 py-0.5 rounded bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+                                📊 {candidate.alert_counts?.W}
+                              </span>
+                            )}
+                            {(candidate.alert_counts?.I || 0) > 0 && (
+                              <span className="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                                ⚠️ {candidate.alert_counts?.I}
+                              </span>
+                            )}
+                            {(candidate.alert_counts?.D || 0) > 0 && (
+                              <span className="px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-300 border border-rose-500/30">
+                                🚨 {candidate.alert_counts?.D}
+                              </span>
+                            )}
+                          </div>
+                        ) : null}
+
+                        <div className="flex items-center gap-2 pt-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setPreviewCandidate(candidate);
+                              setTestSuccessMessage(null);
+                              setTestErrorMessage(null);
+                            }}
+                            className="flex-1 h-8 text-xs text-zinc-300 hover:text-white border border-zinc-800"
+                          >
+                            <Eye className="w-3.5 h-3.5 mr-1" />
+                            <span>Preview</span>
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => {
+                              setSelectedIds(new Set([candidate.candidate_id]));
+                              setBatchFinished(false);
+                              setBatchResults([]);
+                              setIsBatchModalOpen(true);
+                            }}
+                            className="flex-1 h-8 text-xs border-indigo-500/40 text-indigo-300 hover:bg-indigo-950/40"
+                          >
+                            <Send className="w-3 h-3 mr-1 text-indigo-400" />
+                            <span>Send Alert</span>
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       ) : (
-        /* 6. SENT HISTORY TAB */
+        /* 6. SENT HISTORY TAB (Responsive Desktop Table + Mobile Cards) */
         <div className="border border-zinc-800 rounded-xl overflow-hidden bg-zinc-900/30">
           <div className="p-3 bg-zinc-900/80 border-b border-zinc-800 flex items-center justify-between">
             <h3 className="text-xs font-semibold text-zinc-300">Recent Dispatches (Last 50)</h3>
             <span className="text-[11px] text-zinc-500">Auto-logged from database</span>
           </div>
-          <div className="overflow-x-auto">
+
+          {/* Desktop History Table */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-left text-xs text-zinc-300">
               <thead className="bg-zinc-900/60 text-zinc-400 border-b border-zinc-800 uppercase text-[10px] tracking-wider">
                 <tr>
-                  <th className="p-3">Student</th>
-                  <th className="p-3">Alert Type</th>
-                  <th className="p-3">Status</th>
-                  <th className="p-3">Trigger Reason</th>
-                  <th className="p-3">Date Dispatched</th>
+                  <th className="py-3 px-4">Student</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Alert Type</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Status</th>
+                  <th className="py-3 px-4">Trigger Reason</th>
+                  <th className="py-3 px-4 whitespace-nowrap">Date Dispatched</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800/60">
                 {history.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="p-8 text-center text-zinc-500">
+                    <td colSpan={5} className="py-12 text-center text-zinc-500">
                       No alert history recorded yet.
                     </td>
                   </tr>
                 ) : (
                   history.map((item) => (
                     <tr key={item.id} className="hover:bg-zinc-800/30">
-                      <td className="p-3 font-medium text-zinc-200">
+                      <td className="py-3 px-4 font-medium text-zinc-200">
                         <div>{item.user_name}</div>
                         <div className="text-[11px] text-zinc-500 font-mono">{item.user_email}</div>
                       </td>
-                      <td className="p-3">{renderTypeBadge(item.alert_type)}</td>
-                      <td className="p-3">
+                      <td className="py-3 px-4 whitespace-nowrap">{renderTypeBadge(item.alert_type)}</td>
+                      <td className="py-3 px-4 whitespace-nowrap">
                         {item.status === "sent" ? (
                           <span className="inline-flex items-center space-x-1 text-emerald-400 font-semibold">
                             <CheckCircle2 className="w-3.5 h-3.5" />
@@ -1271,8 +1468,8 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
                           </span>
                         )}
                       </td>
-                      <td className="p-3 text-zinc-400">{item.reason}</td>
-                      <td className="p-3 text-zinc-400">
+                      <td className="py-3 px-4 text-zinc-400">{item.reason}</td>
+                      <td className="py-3 px-4 text-zinc-400 whitespace-nowrap">
                         {item.sent_at
                           ? new Date(item.sent_at).toLocaleString("en-IN", {
                               day: "numeric",
@@ -1288,6 +1485,53 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
               </tbody>
             </table>
           </div>
+
+          {/* Mobile History Cards */}
+          <div className="block md:hidden divide-y divide-zinc-800/80">
+            {history.length === 0 ? (
+              <div className="p-8 text-center text-zinc-500 text-xs">
+                No alert history recorded yet.
+              </div>
+            ) : (
+              history.map((item) => (
+                <div key={item.id} className="p-3.5 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="font-semibold text-zinc-200 text-xs">{item.user_name}</div>
+                      <div className="text-[11px] text-zinc-500 font-mono">{item.user_email}</div>
+                    </div>
+                    <div>{renderTypeBadge(item.alert_type)}</div>
+                  </div>
+                  <div className="text-xs text-zinc-300">{item.reason}</div>
+                  <div className="flex items-center justify-between text-[11px] text-zinc-500 pt-1">
+                    <div>
+                      {item.status === "sent" ? (
+                        <span className="inline-flex items-center space-x-1 text-emerald-400 font-semibold">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Sent Successfully</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center space-x-1 text-rose-400 font-semibold">
+                          <AlertCircle className="w-3.5 h-3.5" />
+                          <span>Failed</span>
+                        </span>
+                      )}
+                    </div>
+                    <span>
+                      {item.sent_at
+                        ? new Date(item.sent_at).toLocaleString("en-IN", {
+                            day: "numeric",
+                            month: "short",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })
+                        : "—"}
+                    </span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </div>
       )}
 
@@ -1297,6 +1541,7 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
         onClose={() => setIsDirectAlertOpen(false)}
         title="Direct Alert to Member"
         subtitle="Select any platform member to send an instant customized alert based on past performance"
+        maxWidth="2xl"
       >
         <div className="space-y-4">
           <div>
@@ -1432,16 +1677,18 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
           onClose={() => setPreviewCandidate(null)}
           title={`Email Preview: ${previewEmailContent.subject}`}
           subtitle={`Message for ${previewCandidate.user_name} (${previewCandidate.user_email})`}
+          maxWidth="4xl"
         >
           <div className="space-y-4">
             {/* Device Frame Switcher & Test Action Bar */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-zinc-900 rounded-xl border border-zinc-800">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 p-3 bg-zinc-900 rounded-xl border border-zinc-800">
               <div className="flex items-center space-x-2">
                 <button
+                  type="button"
                   onClick={() => setPreviewDevice("desktop")}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center space-x-1.5 transition-colors ${
                     previewDevice === "desktop"
-                      ? "bg-zinc-800 text-white"
+                      ? "bg-zinc-800 text-white shadow-sm"
                       : "text-zinc-400 hover:text-white"
                   }`}
                 >
@@ -1449,10 +1696,11 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
                   <span>Desktop</span>
                 </button>
                 <button
+                  type="button"
                   onClick={() => setPreviewDevice("mobile")}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center space-x-1.5 transition-colors ${
                     previewDevice === "mobile"
-                      ? "bg-zinc-800 text-white"
+                      ? "bg-zinc-800 text-white shadow-sm"
                       : "text-zinc-400 hover:text-white"
                   }`}
                 >
@@ -1461,16 +1709,16 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
                 </button>
               </div>
 
-              {/* Instant Test Email Input */}
-              <div className="flex items-center space-x-2">
-                <div className="relative">
+              {/* Instant Test Email Input Bar */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <div className="relative flex-1 sm:w-64">
                   <Mail className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-500" />
                   <input
                     type="email"
                     value={testEmailAddress}
                     onChange={(e) => setTestEmailAddress(e.target.value)}
                     placeholder="Your email address"
-                    className="bg-zinc-950 border border-zinc-700 text-zinc-200 text-xs rounded-lg pl-7 pr-2.5 py-1.5 focus:outline-none focus:border-indigo-500 w-52"
+                    className="w-full bg-zinc-950 border border-zinc-700 text-zinc-200 text-xs rounded-lg pl-7 pr-2.5 py-1.5 focus:outline-none focus:border-indigo-500"
                   />
                 </div>
                 <Button
@@ -1479,7 +1727,7 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
                   onClick={handleSendTest}
                   isLoading={sendingTest}
                   disabled={!testEmailAddress}
-                  className="bg-emerald-600 hover:bg-emerald-500 text-white border-none h-8 text-xs whitespace-nowrap"
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white border-none h-8 text-xs shrink-0 whitespace-nowrap px-3.5 font-semibold shadow-sm"
                 >
                   <Zap className="w-3 h-3 mr-1" />
                   <span>Send Test to Me</span>
@@ -1504,15 +1752,15 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
             {/* Rendered Mockup Container */}
             <div
               className={`mx-auto transition-all bg-slate-950 border border-zinc-800 rounded-xl overflow-hidden shadow-2xl ${
-                previewDevice === "mobile" ? "max-w-[380px]" : "max-w-full"
+                previewDevice === "mobile" ? "max-w-[400px]" : "w-full"
               }`}
             >
-              <div className="p-2 bg-zinc-900 border-b border-zinc-800 text-[11px] text-zinc-400 flex items-center justify-between">
+              <div className="p-2.5 bg-zinc-900 border-b border-zinc-800 text-[11px] text-zinc-400 flex items-center justify-between">
                 <span>From: StudyRoom &lt;studyaliveapp@gmail.com&gt;</span>
                 <span>To: {previewCandidate.user_email}</span>
               </div>
               <div
-                className="max-h-[500px] overflow-y-auto"
+                className="max-h-[580px] overflow-y-auto"
                 dangerouslySetInnerHTML={{ __html: previewEmailContent.html }}
               />
             </div>
@@ -1528,6 +1776,7 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
         }}
         title="Dispatch Selected Alerts"
         subtitle={`Sending emails to ${selectedIds.size} recipient(s)`}
+        maxWidth="2xl"
       >
         <div className="space-y-4">
           {!batchFinished ? (

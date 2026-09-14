@@ -297,8 +297,8 @@ export default function AdminPage() {
   return (
     <div className="flex-1 flex flex-col min-h-screen bg-[#090a0f] text-zinc-100 pb-16">
       {/* Admin Header Bar */}
-      <header className="sticky top-0 z-50 w-full bg-zinc-950/95 backdrop-blur-xl border-b border-rose-500/20 px-4 py-3">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
+      <header className="sticky top-0 z-50 w-full bg-zinc-950/95 backdrop-blur-xl border-b border-rose-500/20 px-3 sm:px-6 py-3">
+        <div className="w-full max-w-[1500px] 2xl:max-w-[1720px] mx-auto flex items-center justify-between">
           <div className="flex items-center space-x-2.5">
             <div className="p-2 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-400">
               <Shield className="w-4 h-4" />
@@ -349,7 +349,7 @@ export default function AdminPage() {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 w-full max-w-4xl px-3.5 sm:px-6 py-4 mx-auto space-y-4">
+      <main className="flex-1 w-full max-w-[1500px] 2xl:max-w-[1720px] px-3 sm:px-6 lg:px-8 py-5 mx-auto space-y-5">
         {/* Notifications */}
         {error && (
           <div className="p-3 bg-rose-950/40 border border-rose-800/80 rounded-xl text-xs font-medium text-rose-200 flex items-center space-x-2 animate-in fade-in">
