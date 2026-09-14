@@ -26,6 +26,7 @@ import {
   Pencil,
   Users,
   Check,
+  Database,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -149,9 +150,31 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
   const [batchInProgress, setBatchInProgress] = useState(false);
   const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0 });
   const [batchResults, setBatchResults] = useState<
-    Array<{ candidate_id: string; user_name: string; success: boolean; error?: string }>
+    Array<{
+      candidate_id: string;
+      user_name: string;
+      user_email?: string;
+      alert_type?: string;
+      success: boolean;
+      emailSent?: boolean;
+      dbLogged?: boolean;
+      error?: string;
+      emailError?: string;
+      dbError?: string;
+    }>
   >([]);
+  const [batchSummary, setBatchSummary] = useState<{
+    totalRequested: number;
+    totalSent: number;
+    totalLogged: number;
+    totalFailed: number;
+    totalDbErrors: number;
+    hasConstraintViolation: boolean;
+  } | null>(null);
   const [batchFinished, setBatchFinished] = useState(false);
+  const [copiedConstraintSql, setCopiedConstraintSql] = useState(false);
+  const [constraintWarning, setConstraintWarning] = useState<string | null>(null);
+  const [directAlertError, setDirectAlertError] = useState<string | null>(null);
 
   // Reset alert counts state
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
@@ -734,6 +757,7 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
     setBatchInProgress(true);
     setBatchFinished(false);
     setBatchResults([]);
+    setBatchSummary(null);
     setBatchProgress({ current: 0, total: selectedList.length });
 
     try {
@@ -753,13 +777,35 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
       }
 
       setBatchResults(
-        json.results.map((r: any) => ({
+        (json.results || []).map((r: any) => ({
           candidate_id: r.candidate_id,
           user_name: r.user_name,
+          user_email: r.user_email,
+          alert_type: r.alert_type,
           success: r.success,
+          emailSent: r.emailSent,
+          dbLogged: r.dbLogged,
           error: r.error,
+          emailError: r.emailError,
+          dbError: r.dbError,
         }))
       );
+
+      setBatchSummary({
+        totalRequested: json.totalRequested || selectedList.length,
+        totalSent: json.totalSent || 0,
+        totalLogged: json.totalLogged || 0,
+        totalFailed: json.totalFailed || 0,
+        totalDbErrors: json.totalDbErrors || 0,
+        hasConstraintViolation: Boolean(json.hasConstraintViolation),
+      });
+
+      if (json.hasConstraintViolation) {
+        setConstraintWarning(
+          "PostgreSQL table check constraint on user_alerts requires an update to allow Weekly Review (Type W). Emails were delivered to students via Gmail SMTP, but could not be logged in database history until the constraint is updated."
+        );
+      }
+
       setBatchProgress({ current: selectedList.length, total: selectedList.length });
       setBatchFinished(true);
 
@@ -794,6 +840,7 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
 
   // Direct Alert to Any Member
   const handleOpenDirectAlert = (user?: PlatformUserOption) => {
+    setDirectAlertError(null);
     if (user) {
       setDirectSelectedUserId(user.id);
       setDirectAlertType(user.has_achiever_badge ? "A" : "W");
@@ -837,11 +884,12 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
 
     const email = (targetUser.email && !targetUser.email.includes("@student.studyroom")) ? targetUser.email.trim() : "";
     if (!email) {
-      alert("Cannot send alert: Student has no authentic email address on file.");
+      setDirectAlertError("Cannot send alert: Student has no authentic email address on file.");
       return;
     }
 
     setSendingDirectAlert(true);
+    setDirectAlertError(null);
     try {
       const tempCandidate: AlertCandidate = {
         candidate_id: `DIRECT-${targetUser.id}-${Date.now()}`,
@@ -874,8 +922,18 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
       }
 
       const sendResult = json.results?.[0];
-      if (sendResult && !sendResult.success) {
-        throw new Error(sendResult.error || "Failed to deliver email.");
+      if (sendResult && !sendResult.emailSent) {
+        throw new Error(sendResult.emailError || sendResult.error || "Failed to deliver email.");
+      }
+
+      if (sendResult && sendResult.emailSent && !sendResult.dbLogged) {
+        setResetFeedback({
+          type: "error",
+          message: `Alert email delivered to ${targetUser.display_name} (${email}), but database audit logging failed (${sendResult.dbError}). Run the SQL constraint update in Supabase SQL editor to fix.`,
+        });
+        setIsDirectAlertOpen(false);
+        await fetchData();
+        return;
       }
 
       setResetFeedback({
@@ -886,7 +944,7 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
       setIsDirectAlertOpen(false);
       await fetchData();
     } catch (err: any) {
-      alert(err?.message || "Failed to send alert email.");
+      setDirectAlertError(err?.message || "Failed to send alert email.");
     } finally {
       setSendingDirectAlert(false);
     }
@@ -897,6 +955,7 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
     if (!previewCandidate || !previewCandidate.user_email) return;
 
     setSendingToStudentFromPreview(true);
+    setTestErrorMessage(null);
     try {
       const headers = await getAuthHeaders();
       const res = await fetch("/api/admin/alerts", {
@@ -914,8 +973,18 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
       }
 
       const sendResult = json.results?.[0];
-      if (sendResult && !sendResult.success) {
-        throw new Error(sendResult.error || "Failed to deliver email.");
+      if (sendResult && !sendResult.emailSent) {
+        throw new Error(sendResult.emailError || sendResult.error || "Failed to deliver email.");
+      }
+
+      if (sendResult && sendResult.emailSent && !sendResult.dbLogged) {
+        setResetFeedback({
+          type: "error",
+          message: `Alert email delivered to ${previewCandidate.user_name} (${previewCandidate.user_email}), but database audit log failed: ${sendResult.dbError}`,
+        });
+        setPreviewCandidate(null);
+        await fetchData();
+        return;
       }
 
       setResetFeedback({
@@ -1245,6 +1314,43 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
           >
             ✕
           </button>
+        </div>
+      )}
+
+      {/* DATABASE CONSTRAINT DIAGNOSTICS WARNING BANNER */}
+      {constraintWarning && (
+        <div className="p-3.5 rounded-xl border border-amber-800 bg-amber-950/40 text-xs text-amber-200 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2 font-semibold text-amber-300">
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>Database Constraint Notice: Table Check Update Required</span>
+            </div>
+            <button
+              onClick={() => setConstraintWarning(null)}
+              className="text-zinc-400 hover:text-zinc-200 text-xs ml-3"
+            >
+              ✕
+            </button>
+          </div>
+          <p className="text-amber-200/90 leading-relaxed">
+            {constraintWarning}
+          </p>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 p-2 rounded bg-black/40 border border-amber-900/50">
+            <code className="text-[10px] text-zinc-300 font-mono break-all select-all">
+              ALTER TABLE public.user_alerts DROP CONSTRAINT IF EXISTS user_alerts_alert_type_check; ALTER TABLE public.user_alerts ADD CONSTRAINT user_alerts_alert_type_check CHECK (alert_type IN (&apos;A&apos;, &apos;I&apos;, &apos;D&apos;, &apos;W&apos;));
+            </code>
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard.writeText("ALTER TABLE public.user_alerts DROP CONSTRAINT IF EXISTS user_alerts_alert_type_check;\nALTER TABLE public.user_alerts ADD CONSTRAINT user_alerts_alert_type_check CHECK (alert_type IN ('A', 'I', 'D', 'W'));");
+                setCopiedConstraintSql(true);
+                setTimeout(() => setCopiedConstraintSql(false), 2500);
+              }}
+              className="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 rounded border border-amber-500/30 font-semibold text-[10px] shrink-0"
+            >
+              {copiedConstraintSql ? "Copied!" : "Copy SQL Fix"}
+            </button>
+          </div>
         </div>
       )}
 
@@ -2370,6 +2476,28 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
             </div>
           </div>
 
+          {directAlertError && (
+            <div className="p-3 bg-rose-950/40 border border-rose-800/80 rounded-xl text-rose-200 text-xs space-y-1.5">
+              <div className="flex items-center space-x-2 font-semibold text-rose-300">
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>Alert Dispatch Issue</span>
+              </div>
+              <p className="text-rose-200/90 leading-relaxed font-mono text-[11px] break-words">
+                {directAlertError}
+              </p>
+              {directAlertError.includes("user_alerts_alert_type_check") && (
+                <div className="mt-2 p-2 bg-black/40 rounded-lg border border-amber-900/50 text-amber-200 text-[11px] space-y-1.5">
+                  <p className="font-semibold text-amber-300">
+                    Fix: PostgreSQL check constraint on user_alerts needs to allow Type W
+                  </p>
+                  <code className="block bg-zinc-950 p-1.5 rounded text-[10px] text-zinc-300 font-mono break-all">
+                    ALTER TABLE public.user_alerts DROP CONSTRAINT IF EXISTS user_alerts_alert_type_check; ALTER TABLE public.user_alerts ADD CONSTRAINT user_alerts_alert_type_check CHECK (alert_type IN (&apos;A&apos;, &apos;I&apos;, &apos;D&apos;, &apos;W&apos;));
+                  </code>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="flex flex-col sm:flex-row justify-end space-y-2 sm:space-y-0 sm:space-x-2 pt-3 border-t border-zinc-800/80">
             <Button
               variant="ghost"
@@ -2634,31 +2762,114 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
           ) : (
             /* Results after completion */
             <div className="space-y-4">
-              <div className="p-3 bg-emerald-950/30 border border-emerald-800 rounded-xl flex items-center space-x-3 text-emerald-300 text-xs">
-                <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0" />
-                <div>
-                  <p className="font-bold">Batch Dispatch Completed!</p>
-                  <p className="text-emerald-400">
-                    Successfully sent{" "}
-                    {batchResults.filter((r) => r.success).length} of {batchResults.length} emails.
-                  </p>
+              {/* Dynamic Status Header */}
+              {batchSummary && batchSummary.totalFailed === 0 && batchSummary.totalDbErrors === 0 ? (
+                <div className="p-3 bg-emerald-950/30 border border-emerald-800 rounded-xl flex items-center space-x-3 text-emerald-300 text-xs">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+                  <div>
+                    <p className="font-bold">Batch Dispatch Completed!</p>
+                    <p className="text-emerald-400">
+                      Successfully delivered and logged {batchSummary.totalSent} of {batchSummary.totalRequested} alert emails.
+                    </p>
+                  </div>
                 </div>
-              </div>
+              ) : batchSummary && batchSummary.totalDbErrors > 0 && batchSummary.totalFailed === 0 ? (
+                <div className="p-3.5 bg-amber-950/40 border border-amber-800 rounded-xl space-y-2 text-amber-200 text-xs">
+                  <div className="flex items-center space-x-3">
+                    <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0" />
+                    <div>
+                      <p className="font-bold text-amber-300">All Emails Sent via SMTP · Database Log Pending</p>
+                      <p className="text-amber-200/90">
+                        Delivered <strong>{batchSummary.totalSent} of {batchSummary.totalRequested}</strong> alert emails to student inboxes, but <strong>{batchSummary.totalDbErrors}</strong> records could not be recorded in database history.
+                      </p>
+                    </div>
+                  </div>
+                  {batchSummary.hasConstraintViolation && (
+                    <div className="mt-2 p-2.5 bg-black/40 rounded-lg border border-amber-900/60 text-[11px] space-y-1.5">
+                      <p className="font-semibold text-amber-300 flex items-center">
+                        <Database className="w-3.5 h-3.5 mr-1 text-amber-400" />
+                        Supabase Constraint Update Required for Weekly Review (Type W)
+                      </p>
+                      <p className="text-zinc-400 leading-relaxed">
+                        PostgreSQL rejected Type W alerts because the table check constraint on <code className="text-amber-300 font-mono">user_alerts</code> only allows (&apos;A&apos;, &apos;I&apos;, &apos;D&apos;). Run this quick 2-line SQL in your Supabase SQL Editor:
+                      </p>
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 bg-zinc-950 p-2 rounded font-mono text-[10px] text-zinc-300">
+                        <code className="break-all select-all">ALTER TABLE public.user_alerts DROP CONSTRAINT IF EXISTS user_alerts_alert_type_check; ALTER TABLE public.user_alerts ADD CONSTRAINT user_alerts_alert_type_check CHECK (alert_type IN (&apos;A&apos;, &apos;I&apos;, &apos;D&apos;, &apos;W&apos;));</code>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText("ALTER TABLE public.user_alerts DROP CONSTRAINT IF EXISTS user_alerts_alert_type_check;\nALTER TABLE public.user_alerts ADD CONSTRAINT user_alerts_alert_type_check CHECK (alert_type IN ('A', 'I', 'D', 'W'));");
+                            setCopiedConstraintSql(true);
+                            setTimeout(() => setCopiedConstraintSql(false), 2500);
+                          }}
+                          className="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 rounded border border-amber-500/30 text-[10px] font-sans font-semibold shrink-0"
+                        >
+                          {copiedConstraintSql ? "Copied!" : "Copy SQL Fix"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="p-3 bg-rose-950/30 border border-rose-800 rounded-xl flex items-center space-x-3 text-rose-200 text-xs">
+                  <AlertCircle className="w-5 h-5 text-rose-400 flex-shrink-0" />
+                  <div>
+                    <p className="font-bold text-rose-300">Batch Dispatch Encountered Issues</p>
+                    <p className="text-rose-300/90">
+                      {batchResults.filter((r) => r.emailSent).length} sent, {batchResults.filter((r) => !r.emailSent).length} failed delivery.
+                    </p>
+                  </div>
+                </div>
+              )}
 
-              <div className="max-h-48 overflow-y-auto border border-zinc-800 rounded-lg divide-y divide-zinc-800 text-xs">
+              {/* Per-candidate detail list */}
+              <div className="max-h-60 overflow-y-auto border border-zinc-800 rounded-lg divide-y divide-zinc-800 text-xs">
                 {batchResults.map((res) => (
-                  <div key={res.candidate_id} className="p-2.5 flex items-center justify-between">
-                    <span className="text-zinc-200">{res.user_name}</span>
-                    {res.success ? (
-                      <span className="text-emerald-400 font-semibold flex items-center space-x-1">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        <span>Sent</span>
-                      </span>
-                    ) : (
-                      <span className="text-rose-400 font-semibold flex items-center space-x-1" title={res.error}>
-                        <AlertCircle className="w-3.5 h-3.5" />
-                        <span>Failed</span>
-                      </span>
+                  <div key={res.candidate_id} className="p-2.5 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <span className="text-zinc-200 font-medium">{res.user_name}</span>
+                        {res.alert_type && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 font-mono">
+                            Type {res.alert_type}
+                          </span>
+                        )}
+                        {res.user_email && (
+                          <span className="text-[11px] text-zinc-500 font-sans">
+                            ({res.user_email})
+                          </span>
+                        )}
+                      </div>
+                      <div>
+                        {res.emailSent && res.dbLogged ? (
+                          <span className="text-emerald-400 font-semibold flex items-center space-x-1">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>Sent &amp; Logged</span>
+                          </span>
+                        ) : res.emailSent && !res.dbLogged ? (
+                          <span className="text-amber-400 font-semibold flex items-center space-x-1" title={res.dbError}>
+                            <AlertTriangle className="w-3.5 h-3.5" />
+                            <span>Sent (DB Log Failed)</span>
+                          </span>
+                        ) : (
+                          <span className="text-rose-400 font-semibold flex items-center space-x-1" title={res.error}>
+                            <AlertCircle className="w-3.5 h-3.5" />
+                            <span>Delivery Failed</span>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Detailed error callout */}
+                    {res.dbError && (
+                      <p className="text-[10px] text-amber-400/90 bg-amber-950/30 p-1.5 rounded border border-amber-900/40 font-mono break-all">
+                        Database Log Issue: {res.dbError}
+                      </p>
+                    )}
+                    {!res.emailSent && (res.emailError || res.error) && (
+                      <p className="text-[10px] text-rose-400/90 bg-rose-950/30 p-1.5 rounded border border-rose-900/40 break-all">
+                        Delivery Error: {res.emailError || res.error}
+                      </p>
                     )}
                   </div>
                 ))}

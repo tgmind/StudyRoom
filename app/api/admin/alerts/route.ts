@@ -571,13 +571,17 @@ export async function POST(request: NextRequest) {
             user_email: cleanEmail,
             alert_type,
             success: false,
+            emailSent: false,
+            dbLogged: false,
             error: "Cannot send alert: Student has no authentic signup email registered.",
+            emailError: "No authentic signup email registered.",
+            dbError: null,
             messageId: null,
           });
           continue;
         }
 
-        // Attempt dispatch
+        // Attempt dispatch via Google SMTP
         const sendResult = await sendAlertEmail({
           to: cleanEmail,
           name: user_name,
@@ -588,9 +592,10 @@ export async function POST(request: NextRequest) {
         });
 
         const status = sendResult.success ? "sent" : "failed";
-        const errorMsg = sendResult.error || null;
+        const emailErrorMsg = sendResult.error || null;
+        let dbLogErr: string | null = null;
 
-        // Log result in database (Try RPC first, fallback to direct table insertion)
+        // 1. Try logging result via RPC
         let loggedViaRpc = false;
         try {
           const { error: rpcLogErr } = await (auth.supabase as unknown as RpcCaller).rpc("rpc_admin_log_alert_result", {
@@ -601,18 +606,22 @@ export async function POST(request: NextRequest) {
             p_status: status,
             p_consecutive_days: consecutive_inactive_days || 0,
             p_reason: reason || "",
-            p_error_message: errorMsg,
+            p_error_message: emailErrorMsg,
           });
           if (!rpcLogErr) {
             loggedViaRpc = true;
+          } else {
+            dbLogErr = rpcLogErr.message || JSON.stringify(rpcLogErr);
           }
-        } catch {
+        } catch (e: any) {
           loggedViaRpc = false;
+          dbLogErr = e?.message || "RPC log call failed";
         }
 
+        // 2. Direct table fallback if RPC didn't log
         if (!loggedViaRpc) {
           try {
-            await (auth.supabase as any).from("user_alerts").insert({
+            const { error: insertErr } = await (auth.supabase as any).from("user_alerts").insert({
               user_id,
               user_name,
               user_email: cleanEmail,
@@ -620,36 +629,57 @@ export async function POST(request: NextRequest) {
               status,
               consecutive_inactive_days: consecutive_inactive_days || 0,
               reason: reason || "",
-              error_message: errorMsg,
+              error_message: emailErrorMsg,
               sent_at: status === "sent" ? new Date().toISOString() : null,
             });
 
-            if (status === "sent") {
-              const { data: userData } = await (auth.supabase as any)
-                .from("users")
-                .select("total_alerts_sent, alert_counts")
-                .eq("id", user_id)
-                .maybeSingle();
-
-              const prevCounts = userData?.alert_counts || { A: 0, W: 0, I: 0, D: 0 };
-              const updatedCounts = {
-                ...prevCounts,
-                [alert_type]: (prevCounts[alert_type] || 0) + 1,
-              };
-
-              await (auth.supabase as any)
-                .from("users")
-                .update({
-                  total_alerts_sent: (userData?.total_alerts_sent || 0) + 1,
-                  alert_counts: updatedCounts,
-                  last_alert_sent_at: new Date().toISOString(),
-                  last_alert_type: alert_type,
-                })
-                .eq("id", user_id);
+            if (insertErr) {
+              dbLogErr = insertErr.message || JSON.stringify(insertErr);
+              console.error("Direct table log failed:", insertErr);
+            } else {
+              dbLogErr = null; // Direct insert succeeded!
             }
-          } catch (dbErr) {
-            console.error("Direct table log failed:", dbErr);
+          } catch (dbErr: any) {
+            console.error("Direct table log exception:", dbErr);
+            dbLogErr = dbErr?.message || "Direct DB insert exception";
           }
+        }
+
+        // 3. Update public.users aggregated stats whenever email was sent via SMTP
+        if (sendResult.success && !loggedViaRpc) {
+          try {
+            const { data: userData } = await (auth.supabase as any)
+              .from("users")
+              .select("total_alerts_sent, alert_counts")
+              .eq("id", user_id)
+              .maybeSingle();
+
+            const prevCounts = userData?.alert_counts || { A: 0, W: 0, I: 0, D: 0 };
+            const updatedCounts = {
+              ...prevCounts,
+              [alert_type]: (prevCounts[alert_type] || 0) + 1,
+            };
+
+            await (auth.supabase as any)
+              .from("users")
+              .update({
+                total_alerts_sent: (userData?.total_alerts_sent || 0) + 1,
+                alert_counts: updatedCounts,
+                last_alert_sent_at: new Date().toISOString(),
+                last_alert_type: alert_type,
+              })
+              .eq("id", user_id);
+          } catch (statErr) {
+            console.error("Failed to update user aggregated counts:", statErr);
+          }
+        }
+
+        const isFullySuccessful = sendResult.success && !dbLogErr;
+        let formattedError: string | null = null;
+        if (!sendResult.success) {
+          formattedError = emailErrorMsg || "Email delivery failed via SMTP";
+        } else if (dbLogErr) {
+          formattedError = `Email delivered to inbox, but DB audit log failed: ${dbLogErr}`;
         }
 
         results.push({
@@ -658,22 +688,65 @@ export async function POST(request: NextRequest) {
           user_name,
           user_email: cleanEmail,
           alert_type,
-          success: sendResult.success,
-          error: errorMsg,
+          success: isFullySuccessful,
+          emailSent: sendResult.success,
+          dbLogged: !dbLogErr,
+          error: formattedError,
+          emailError: emailErrorMsg,
+          dbError: dbLogErr,
           messageId: sendResult.messageId,
         });
       }
 
-      const totalSent = results.filter((r) => r.success).length;
-      const totalFailed = results.filter((r) => !r.success).length;
+      const totalSent = results.filter((r) => r.emailSent).length;
+      const totalLogged = results.filter((r) => r.dbLogged).length;
+      const totalFailed = results.filter((r) => !r.emailSent).length;
+      const totalDbErrors = results.filter((r) => Boolean(r.dbError)).length;
+      const hasConstraintViolation = results.some((r) =>
+        r.dbError?.includes("user_alerts_alert_type_check") ||
+        r.error?.includes("user_alerts_alert_type_check")
+      );
 
       return NextResponse.json({
-        success: true,
+        success: totalFailed === 0 && totalDbErrors === 0,
+        hasErrors: totalFailed > 0 || totalDbErrors > 0,
+        hasConstraintViolation,
         totalRequested: candidates.length,
         totalSent,
+        totalLogged,
         totalFailed,
+        totalDbErrors,
         results,
       });
+    }
+
+    // D. Repair Alert Constraints via RPC
+    if (action === "repair_constraints") {
+      try {
+        const { data, error } = await (auth.supabase as unknown as RpcCaller).rpc("rpc_admin_repair_alert_constraints", {
+          p_admin_email: auth.user?.email || "studyaliveapp@gmail.com",
+        });
+
+        if (error) {
+          return NextResponse.json({
+            success: false,
+            error: error.message,
+            sqlFix: `ALTER TABLE public.user_alerts DROP CONSTRAINT IF EXISTS user_alerts_alert_type_check;\nALTER TABLE public.user_alerts ADD CONSTRAINT user_alerts_alert_type_check CHECK (alert_type IN ('A', 'I', 'D', 'W'));`
+          }, { status: 400 });
+        }
+
+        return NextResponse.json({
+          success: true,
+          message: "Database alert constraints verified and repaired successfully.",
+          data,
+        });
+      } catch (err: any) {
+        return NextResponse.json({
+          success: false,
+          error: err?.message || "Failed to execute constraint repair",
+          sqlFix: `ALTER TABLE public.user_alerts DROP CONSTRAINT IF EXISTS user_alerts_alert_type_check;\nALTER TABLE public.user_alerts ADD CONSTRAINT user_alerts_alert_type_check CHECK (alert_type IN ('A', 'I', 'D', 'W'));`
+        }, { status: 500 });
+      }
     }
 
     // D. Process Monday Achiever Email (Manual or Automated)

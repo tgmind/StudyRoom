@@ -9,6 +9,25 @@
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS email TEXT;
 CREATE INDEX IF NOT EXISTS idx_users_email ON public.users(email);
 
+-- Ensure user_alerts table exists and allows Type 'W' (Weekly Review)
+CREATE TABLE IF NOT EXISTS public.user_alerts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  user_name TEXT,
+  user_email TEXT,
+  alert_type TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  consecutive_inactive_days INTEGER DEFAULT 0,
+  reason TEXT,
+  error_message TEXT,
+  sent_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.user_alerts DROP CONSTRAINT IF EXISTS user_alerts_alert_type_check;
+ALTER TABLE public.user_alerts ADD CONSTRAINT user_alerts_alert_type_check CHECK (alert_type IN ('A', 'I', 'D', 'W'));
+
+
 -- Backfill real signup emails directly from auth.users
 UPDATE public.users u
 SET email = au.email

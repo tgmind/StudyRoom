@@ -87,5 +87,31 @@ describe("Email Alerts Generation Unit Tests", () => {
     expect(res.success).toBe(true);
     expect(res.messageId).toBeDefined();
   }, 15000);
+
+  it("checks dispatch to gpintalk@gmail.com and amitkumarkushawaha66@gmail.com", async () => {
+    const { sendAlertEmail } = await import("@/lib/email/mailer");
+    const res1 = await sendAlertEmail({
+      to: "gpintalk@gmail.com",
+      name: "RvS",
+      type: "W",
+      consecutiveDays: 0,
+      weeklyHours: 0,
+      isTest: true,
+    });
+    console.log("TEST RvS RESULT:", res1);
+
+    const res2 = await sendAlertEmail({
+      to: "amitkumarkushawaha66@gmail.com",
+      name: "Amit",
+      type: "W",
+      consecutiveDays: 0,
+      weeklyHours: 1.2,
+      isTest: true,
+    });
+    console.log("TEST Amit RESULT:", res2);
+
+    expect(res1.success).toBe(true);
+    expect(res2.success).toBe(true);
+  }, 20000);
 });
 
