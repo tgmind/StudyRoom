@@ -11,37 +11,49 @@ type RpcCaller = {
 };
 
 async function verifyAdmin(request: NextRequest) {
-  const supabase = await createClient();
-  let user = null;
+  try {
+    const supabase = await createClient();
+    let user = null;
 
-  // 1. Check Bearer token from header (for mobile/client-side fetch)
-  const authHeader = request.headers.get("Authorization");
-  if (authHeader?.startsWith("Bearer ")) {
-    const token = authHeader.substring(7).trim();
-    if (token) {
-      const { data } = await supabase.auth.getUser(token);
-      user = data?.user ?? null;
+    // 1. Check Bearer token from header (for mobile/client-side fetch)
+    const authHeader = request.headers.get("Authorization");
+    if (authHeader?.startsWith("Bearer ")) {
+      const token = authHeader.substring(7).trim();
+      if (token && token !== "undefined" && token !== "null") {
+        try {
+          const { data } = await supabase.auth.getUser(token);
+          user = data?.user ?? null;
+        } catch {
+          // ignore token error
+        }
+      }
     }
-  }
 
-  // 2. Fallback to cookie-based session
-  if (!user) {
-    const { data, error: authError } = await supabase.auth.getUser();
-    if (!authError && data?.user) {
-      user = data.user;
+    // 2. Fallback to cookie-based session
+    if (!user) {
+      try {
+        const { data, error: authError } = await supabase.auth.getUser();
+        if (!authError && data?.user) {
+          user = data.user;
+        }
+      } catch {
+        // ignore cookie error
+      }
     }
-  }
 
-  if (!user) {
-    return { authorized: false, user: null, supabase, error: "Not authenticated" };
-  }
+    if (!user) {
+      return { authorized: false, user: null, supabase, error: "Not authenticated" };
+    }
 
-  const authorized = isAdminEmail(user.email) || isAdminUserId(user.id);
-  if (!authorized) {
-    return { authorized: false, user, supabase, error: "Unauthorized: Administrator privileges required" };
-  }
+    const authorized = isAdminEmail(user.email) || isAdminUserId(user.id);
+    if (!authorized) {
+      return { authorized: false, user, supabase, error: "Unauthorized: Administrator privileges required" };
+    }
 
-  return { authorized: true, user, supabase, error: null };
+    return { authorized: true, user, supabase, error: null };
+  } catch (err: any) {
+    return { authorized: false, user: null, supabase: null as any, error: err?.message || "Auth error" };
+  }
 }
 
 export async function GET(request: NextRequest) {
@@ -60,21 +72,31 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(configStatus);
     }
 
-    // 2. Fetch alert sent history
+    // 2. Fetch alert sent history with graceful direct table fallback
     if (action === "history") {
       const limit = parseInt(searchParams.get("limit") || "50", 10);
-      const { data, error } = await (auth.supabase as unknown as RpcCaller).rpc("rpc_admin_get_alert_history", {
-        p_limit: limit,
-      });
+      let historyList = [];
 
-      if (error) {
-        return NextResponse.json(
-          { error: error.message, needsMigration: error.message.toLowerCase().includes("does not exist") },
-          { status: 500 }
-        );
+      try {
+        const { data, error } = await (auth.supabase as unknown as RpcCaller).rpc("rpc_admin_get_alert_history", {
+          p_limit: limit,
+        });
+        if (!error && Array.isArray(data)) {
+          historyList = data;
+        } else {
+          // Direct table fallback
+          const { data: directData } = await (auth.supabase as any)
+            .from("user_alerts")
+            .select("*")
+            .order("sent_at", { ascending: false })
+            .limit(limit);
+          historyList = directData || [];
+        }
+      } catch {
+        historyList = [];
       }
 
-      return NextResponse.json({ history: data || [] });
+      return NextResponse.json({ history: historyList });
     }
 
     // 3. Fetch weekly achiever status & Monday automation info
@@ -86,68 +108,73 @@ export async function GET(request: NextRequest) {
       const weekStartMs = getWeekStartTimestamp(now, timezone);
       const weekStartIso = new Date(weekStartMs).toISOString();
 
-      // Check if Type A was sent since this Monday
-      const { data: sentAlerts } = await (auth.supabase as unknown as {
-        from: (t: string) => {
-          select: (cols: string) => {
-            eq: (col: string, val: string) => {
-              eq: (col2: string, val2: string) => {
-                gte: (col3: string, val3: string) => Promise<{ data: unknown[] | null; error: Error | null }>;
-              };
-            };
-          };
-        };
-      })
-        .from("user_alerts")
-        .select("id, sent_at, user_name, user_email")
-        .eq("alert_type", "A")
-        .eq("status", "sent")
-        .gte("sent_at", weekStartIso);
+      let alreadySentThisWeek = false;
+      let lastSentAlert = null;
+      let currentAchiever = null;
 
-      const alreadySentThisWeek = Array.isArray(sentAlerts) && sentAlerts.length > 0;
-      const lastSentAlert = alreadySentThisWeek ? sentAlerts[0] : null;
+      try {
+        const { data: sentAlerts } = await (auth.supabase as any)
+          .from("user_alerts")
+          .select("id, sent_at, user_name, user_email")
+          .eq("alert_type", "A")
+          .eq("status", "sent")
+          .gte("sent_at", weekStartIso);
 
-      // Query current achiever from RPC
-      const { data: achieverData } = await (auth.supabase as unknown as RpcCaller).rpc(
-        "rpc_get_current_weekly_achiever",
-        { p_timezone: timezone }
-      );
+        alreadySentThisWeek = Array.isArray(sentAlerts) && sentAlerts.length > 0;
+        lastSentAlert = alreadySentThisWeek ? sentAlerts[0] : null;
+      } catch {
+        // user_alerts query fallback
+      }
+
+      try {
+        const { data: achieverData } = await (auth.supabase as unknown as RpcCaller).rpc(
+          "rpc_get_current_weekly_achiever",
+          { p_timezone: timezone }
+        );
+        if (Array.isArray(achieverData) && achieverData.length > 0) {
+          currentAchiever = achieverData[0];
+        }
+      } catch {
+        // rpc fallback
+      }
 
       return NextResponse.json({
         isMonday,
         weekKey,
         alreadySentThisWeek,
         lastSentAlert,
-        achiever: Array.isArray(achieverData) && achieverData.length > 0 ? achieverData[0] : null,
+        achiever: currentAchiever,
       });
     }
 
     // 4. Fetch per-user alert tracking stats
     if (action === "user_stats") {
-      const { data, error } = await (auth.supabase as unknown as RpcCaller).rpc("rpc_admin_get_user_alert_stats");
-      if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+      try {
+        const { data, error } = await (auth.supabase as unknown as RpcCaller).rpc("rpc_admin_get_user_alert_stats");
+        if (!error && data) {
+          return NextResponse.json({ stats: data });
+        }
+      } catch {
+        // ignore
       }
-      return NextResponse.json({ stats: data || [] });
+      return NextResponse.json({ stats: [] });
     }
 
     // 5. Default: Scan candidates
-    const { data, error } = await (auth.supabase as unknown as RpcCaller).rpc("rpc_admin_scan_alert_candidates", {
-      p_admin_email: auth.user?.email || null,
-    });
-
-    if (error) {
-      return NextResponse.json(
-        {
-          error: error.message,
-          needsMigration: error.message.toLowerCase().includes("does not exist"),
-        },
-        { status: 500 }
-      );
+    let candidateList = [];
+    try {
+      const { data, error } = await (auth.supabase as unknown as RpcCaller).rpc("rpc_admin_scan_alert_candidates", {
+        p_admin_email: auth.user?.email || null,
+      });
+      if (!error && Array.isArray(data)) {
+        candidateList = data;
+      }
+    } catch {
+      // client fallback will supply candidates
     }
 
     return NextResponse.json({
-      candidates: data || [],
+      candidates: candidateList,
       mailerStatus: isMailerConfigured(),
     });
   } catch (err) {

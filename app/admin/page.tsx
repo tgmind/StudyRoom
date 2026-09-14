@@ -371,29 +371,29 @@ export default function AdminPage() {
         )}
 
         {/* Section Navigation Tabs */}
-        <div className="flex items-center space-x-2 bg-zinc-900/90 p-1 rounded-xl border border-zinc-800 w-fit">
+        <div className="flex items-center gap-1.5 bg-zinc-900/90 p-1 rounded-xl border border-zinc-800 w-full sm:w-fit overflow-x-auto scrollbar-none">
           <button
             type="button"
             onClick={() => setAdminSection("members")}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${
+            className={`flex-1 sm:flex-initial px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center space-x-1.5 whitespace-nowrap ${
               adminSection === "members"
                 ? "bg-zinc-100 text-zinc-950 shadow-sm"
                 : "text-zinc-400 hover:text-zinc-200"
             }`}
           >
-            <Users className="w-3.5 h-3.5" />
+            <Users className="w-3.5 h-3.5 shrink-0" />
             <span>Members & Supervision</span>
           </button>
           <button
             type="button"
             onClick={() => setAdminSection("alerts")}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${
+            className={`flex-1 sm:flex-initial px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center space-x-1.5 whitespace-nowrap ${
               adminSection === "alerts"
                 ? "bg-indigo-600 text-white shadow-sm"
                 : "text-zinc-400 hover:text-zinc-200"
             }`}
           >
-            <Bell className="w-3.5 h-3.5" />
+            <Bell className="w-3.5 h-3.5 shrink-0" />
             <span>Alerts & Retention Hub</span>
           </button>
         </div>

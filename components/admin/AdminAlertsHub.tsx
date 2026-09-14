@@ -680,35 +680,47 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
     setIsDirectAlertOpen(false);
   };
 
-  // Helper for type badges
-  const renderTypeBadge = (type: AlertType) => {
+  // Helper for type badges (supports compact mobile layout)
+  const renderTypeBadge = (type: AlertType, compact = false) => {
     switch (type) {
       case "A":
         return (
-          <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/15 border border-emerald-500/30 text-emerald-300">
+          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-bold bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 whitespace-nowrap shrink-0">
             <span>🏆</span>
-            <span>Achiever&apos;s Title</span>
+            <span className={compact ? "inline" : "hidden sm:inline"}>
+              {compact ? "Achiever" : "Achiever's Title"}
+            </span>
+            {!compact && <span className="inline sm:hidden">Achiever</span>}
           </span>
         );
       case "W":
         return (
-          <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-500/15 border border-indigo-500/30 text-indigo-300">
+          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-bold bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 whitespace-nowrap shrink-0">
             <span>📊</span>
-            <span>Weekly Review</span>
+            <span className={compact ? "inline" : "hidden sm:inline"}>
+              {compact ? "Weekly" : "Weekly Review"}
+            </span>
+            {!compact && <span className="inline sm:hidden">Weekly</span>}
           </span>
         );
       case "I":
         return (
-          <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/15 border border-amber-500/30 text-amber-300">
+          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-bold bg-amber-500/15 border border-amber-500/30 text-amber-300 whitespace-nowrap shrink-0">
             <span>⚠️</span>
-            <span>Account Notice (3d)</span>
+            <span className={compact ? "inline" : "hidden sm:inline"}>
+              {compact ? "Notice 3d" : "Account Notice (3d)"}
+            </span>
+            {!compact && <span className="inline sm:hidden">Notice 3d</span>}
           </span>
         );
       case "D":
         return (
-          <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-500/15 border border-rose-500/30 text-rose-300">
+          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-bold bg-rose-500/15 border border-rose-500/30 text-rose-300 whitespace-nowrap shrink-0">
             <span>🚨</span>
-            <span>Deletion Alert (5d)</span>
+            <span className={compact ? "inline" : "hidden sm:inline"}>
+              {compact ? "Deletion 5d" : "Deletion Alert (5d)"}
+            </span>
+            {!compact && <span className="inline sm:hidden">Deletion 5d</span>}
           </span>
         );
     }
@@ -717,11 +729,11 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
   return (
     <div className="space-y-6">
       {/* 1. TOP HEADER & CONTROLS */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-zinc-800">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 pb-2 border-b border-zinc-800">
         <div>
-          <div className="flex items-center space-x-2">
-            <h2 className="text-xl font-bold text-zinc-100 flex items-center space-x-2">
-              <Bell className="w-5 h-5 text-indigo-400" />
+          <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+            <h2 className="text-lg sm:text-xl font-bold text-zinc-100 flex items-center space-x-2">
+              <Bell className="w-5 h-5 text-indigo-400 shrink-0" />
               <span>Alerts &amp; Retention Center</span>
             </h2>
             <span className="px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider rounded-md bg-indigo-500/15 text-indigo-400 border border-indigo-500/30">
@@ -733,15 +745,15 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
           </p>
         </div>
 
-        <div className="flex items-center space-x-2.5">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <Button
             variant="secondary"
             size="sm"
             onClick={() => handleOpenDirectAlert()}
-            className="border-indigo-500/30 text-indigo-300 hover:bg-indigo-950/40"
+            className="flex-1 sm:flex-initial border-indigo-500/30 text-indigo-300 hover:bg-indigo-950/40 justify-center whitespace-nowrap text-xs"
           >
-            <UserPlus className="w-3.5 h-3.5 mr-1.5 text-indigo-400" />
-            <span>Direct Member Alert</span>
+            <UserPlus className="w-3.5 h-3.5 mr-1.5 text-indigo-400 shrink-0" />
+            <span>Direct Alert</span>
           </Button>
 
           <Button
@@ -749,10 +761,10 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
             size="sm"
             onClick={fetchData}
             isLoading={refreshing}
-            className="border-zinc-700 hover:bg-zinc-800"
+            className="flex-1 sm:flex-initial border-zinc-700 hover:bg-zinc-800 justify-center whitespace-nowrap text-xs"
           >
-            <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${refreshing ? "animate-spin" : ""}`} />
-            <span>Scan Candidates</span>
+            <RefreshCw className={`w-3.5 h-3.5 mr-1.5 shrink-0 ${refreshing ? "animate-spin" : ""}`} />
+            <span>Scan</span>
           </Button>
 
           {selectedIds.size > 0 && (
@@ -764,9 +776,9 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
                 setBatchResults([]);
                 setIsBatchModalOpen(true);
               }}
-              className="bg-indigo-600 hover:bg-indigo-500 text-white border-none shadow-indigo-500/20"
+              className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white border-none shadow-indigo-500/20 justify-center whitespace-nowrap text-xs font-semibold"
             >
-              <Send className="w-3.5 h-3.5 mr-1.5" />
+              <Send className="w-3.5 h-3.5 mr-1.5 shrink-0" />
               <span>Dispatch Selected ({selectedIds.size})</span>
             </Button>
           )}
@@ -976,7 +988,7 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
           )}
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto shrink-0">
           {activeAchiever && (
             <button
               type="button"
@@ -997,25 +1009,25 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
                 };
                 setPreviewCandidate(cand);
               }}
-              className="px-3 py-2 rounded-lg text-xs font-semibold border border-amber-500/30 text-amber-300 hover:bg-amber-950/40 flex items-center space-x-1.5 transition-all"
+              className="w-full sm:w-auto justify-center px-3 py-2 rounded-lg text-xs font-semibold border border-amber-500/30 text-amber-300 hover:bg-amber-950/40 flex items-center space-x-1.5 transition-all"
             >
-              <Eye className="w-3.5 h-3.5" />
+              <Eye className="w-3.5 h-3.5 shrink-0" />
               <span>Preview Achiever Email</span>
             </button>
           )}
           <button
             onClick={() => handleRunWeeklyAchiever(false)}
             disabled={processingAchiever || !mailerConfig?.configured}
-            className="px-3 py-2 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1.5 transition-all shadow-sm"
+            className="w-full sm:w-auto justify-center px-3 py-2 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1.5 transition-all shadow-sm"
           >
             {processingAchiever ? (
               <>
-                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                <RefreshCw className="w-3.5 h-3.5 animate-spin shrink-0" />
                 <span>Checking...</span>
               </>
             ) : (
               <>
-                <Zap className="w-3.5 h-3.5" />
+                <Zap className="w-3.5 h-3.5 shrink-0" />
                 <span>Run Monday Check</span>
               </>
             )}
@@ -1027,7 +1039,7 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
       {activeTab !== "history" ? (
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center space-x-1.5 overflow-x-auto pb-1">
+            <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 -mx-1 px-1 sm:mx-0 sm:px-0 scrollbar-none">
               <button
                 onClick={() => setActiveTab("all")}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
@@ -1316,50 +1328,70 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
                     return (
                       <div
                         key={candidate.candidate_id}
-                        className={`p-3.5 space-y-3 transition-colors ${
+                        className={`p-3 sm:p-3.5 space-y-2.5 transition-colors ${
                           isSelected ? "bg-indigo-950/20" : "bg-transparent"
                         }`}
                       >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex items-center space-x-2.5">
+                        {/* Header: Checkbox + Avatar + Name/Email (min-w-0) + Compact Badge */}
+                        <div className="flex items-center justify-between gap-2 min-w-0">
+                          <div className="flex items-center space-x-2.5 min-w-0 flex-1">
                             <input
                               type="checkbox"
                               checked={isSelected}
                               onChange={() => handleToggleSelect(candidate.candidate_id)}
-                              className="rounded bg-zinc-800 border-zinc-700 text-indigo-600 focus:ring-0 w-4 h-4 shrink-0 mt-0.5"
+                              className="rounded bg-zinc-800 border-zinc-700 text-indigo-600 focus:ring-0 w-4 h-4 shrink-0 cursor-pointer"
                             />
                             <div className="w-8 h-8 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center font-bold text-xs text-zinc-200 shrink-0">
                               {candidate.user_name.charAt(0).toUpperCase()}
                             </div>
-                            <div>
-                              <div className="font-semibold text-zinc-100 flex items-center space-x-1 text-xs">
-                                <span>{candidate.user_name}</span>
-                                {candidate.has_achiever_badge && <span>👑</span>}
+                            <div className="min-w-0 flex-1">
+                              <div className="font-semibold text-zinc-100 flex items-center space-x-1 text-xs truncate">
+                                <span className="truncate">{candidate.user_name}</span>
+                                {candidate.has_achiever_badge && (
+                                  <span className="shrink-0" title="Achiever Title">👑</span>
+                                )}
                               </div>
-                              <div className="text-[11px] text-zinc-500 font-mono">
+                              <div className="text-[10px] sm:text-[11px] text-zinc-500 font-mono truncate">
                                 {candidate.user_email}
                               </div>
                             </div>
                           </div>
-                          <div className="shrink-0">{renderTypeBadge(candidate.alert_type)}</div>
+                          <div className="shrink-0">
+                            {renderTypeBadge(candidate.alert_type, true)}
+                          </div>
                         </div>
 
+                        {/* Trigger Reason + Stats Grid */}
                         <div className="bg-zinc-950/70 p-2.5 rounded-lg border border-zinc-800/80 space-y-2">
-                          <div className="text-xs text-zinc-200 font-medium">
+                          <div className="text-xs text-zinc-200 font-medium break-words leading-relaxed">
                             {candidate.reason}
                           </div>
-                          <div className="flex items-center justify-between text-[11px] text-zinc-400">
-                            <span>Past Week: <strong className="text-zinc-200">{(candidate.past_week_study_minutes / 60).toFixed(1)}h</strong></span>
-                            <span>&bull;</span>
-                            <span>All-time: <strong className="text-zinc-200">{(candidate.total_study_minutes / 60).toFixed(1)}h</strong></span>
-                            <span>&bull;</span>
-                            <span>{new Date(candidate.last_active_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</span>
+                          <div className="grid grid-cols-3 gap-1 pt-1.5 border-t border-zinc-800/60 text-[10px] sm:text-[11px]">
+                            <div className="min-w-0">
+                              <span className="text-zinc-500 block text-[9px] uppercase tracking-wider">Past Week</span>
+                              <span className="text-zinc-200 font-bold truncate block">
+                                {(candidate.past_week_study_minutes / 60).toFixed(1)}h
+                              </span>
+                            </div>
+                            <div className="min-w-0 text-center">
+                              <span className="text-zinc-500 block text-[9px] uppercase tracking-wider">All-Time</span>
+                              <span className="text-zinc-200 font-bold truncate block">
+                                {(candidate.total_study_minutes / 60).toFixed(1)}h
+                              </span>
+                            </div>
+                            <div className="min-w-0 text-right">
+                              <span className="text-zinc-500 block text-[9px] uppercase tracking-wider">Active</span>
+                              <span className="text-zinc-300 font-medium truncate block">
+                                {new Date(candidate.last_active_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                              </span>
+                            </div>
                           </div>
                         </div>
 
+                        {/* Prior Sent History Chips */}
                         {candidate.total_alerts_sent && candidate.total_alerts_sent > 0 ? (
                           <div className="flex items-center gap-1.5 flex-wrap text-[10px]">
-                            <span className="text-zinc-400">{candidate.total_alerts_sent} sent:</span>
+                            <span className="text-zinc-400 font-medium">{candidate.total_alerts_sent} sent:</span>
                             {(candidate.alert_counts?.A || 0) > 0 && (
                               <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
                                 🏆 {candidate.alert_counts?.A}
@@ -1383,7 +1415,8 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
                           </div>
                         ) : null}
 
-                        <div className="flex items-center gap-2 pt-1">
+                        {/* Action Buttons */}
+                        <div className="flex items-center gap-2 pt-0.5">
                           <Button
                             variant="ghost"
                             size="sm"
@@ -1392,9 +1425,9 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
                               setTestSuccessMessage(null);
                               setTestErrorMessage(null);
                             }}
-                            className="flex-1 h-8 text-xs text-zinc-300 hover:text-white border border-zinc-800"
+                            className="flex-1 h-8 text-xs text-zinc-300 hover:text-white border border-zinc-800 justify-center"
                           >
-                            <Eye className="w-3.5 h-3.5 mr-1" />
+                            <Eye className="w-3.5 h-3.5 mr-1 shrink-0" />
                             <span>Preview</span>
                           </Button>
                           <Button
@@ -1406,9 +1439,9 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
                               setBatchResults([]);
                               setIsBatchModalOpen(true);
                             }}
-                            className="flex-1 h-8 text-xs border-indigo-500/40 text-indigo-300 hover:bg-indigo-950/40"
+                            className="flex-1 h-8 text-xs border-indigo-500/40 text-indigo-300 hover:bg-indigo-950/40 justify-center"
                           >
-                            <Send className="w-3 h-3 mr-1 text-indigo-400" />
+                            <Send className="w-3 h-3 mr-1 text-indigo-400 shrink-0" />
                             <span>Send Alert</span>
                           </Button>
                         </div>
@@ -1494,16 +1527,16 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
               </div>
             ) : (
               history.map((item) => (
-                <div key={item.id} className="p-3.5 space-y-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="font-semibold text-zinc-200 text-xs">{item.user_name}</div>
-                      <div className="text-[11px] text-zinc-500 font-mono">{item.user_email}</div>
+                <div key={item.id} className="p-3 sm:p-3.5 space-y-2">
+                  <div className="flex items-center justify-between gap-2 min-w-0">
+                    <div className="min-w-0 flex-1">
+                      <div className="font-semibold text-zinc-200 text-xs truncate">{item.user_name}</div>
+                      <div className="text-[10px] sm:text-[11px] text-zinc-500 font-mono truncate">{item.user_email}</div>
                     </div>
-                    <div>{renderTypeBadge(item.alert_type)}</div>
+                    <div className="shrink-0">{renderTypeBadge(item.alert_type, true)}</div>
                   </div>
-                  <div className="text-xs text-zinc-300">{item.reason}</div>
-                  <div className="flex items-center justify-between text-[11px] text-zinc-500 pt-1">
+                  <div className="text-xs text-zinc-300 break-words">{item.reason}</div>
+                  <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-zinc-500 pt-1 border-t border-zinc-800/40">
                     <div>
                       {item.status === "sent" ? (
                         <span className="inline-flex items-center space-x-1 text-emerald-400 font-semibold">
@@ -1517,7 +1550,7 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
                         </span>
                       )}
                     </div>
-                    <span>
+                    <span className="shrink-0">
                       {item.sent_at
                         ? new Date(item.sent_at).toLocaleString("en-IN", {
                             day: "numeric",
@@ -1591,7 +1624,7 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
             <label className="block text-xs font-medium text-zinc-300 mb-1.5">
               Select Alert Type:
             </label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => setDirectAlertType("A")}
