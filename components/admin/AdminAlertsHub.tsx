@@ -19,13 +19,16 @@ import {
   ChevronUp,
   Mail,
   Zap,
+  UserPlus,
+  BarChart3,
+  TrendingUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { generateAlertEmail, AlertType } from "@/lib/email/templates";
 import { createClient } from "@/lib/supabase/client";
 
-interface AlertCandidate {
+export interface AlertCandidate {
   candidate_id: string;
   user_id: string;
   user_name: string;
@@ -37,6 +40,7 @@ interface AlertCandidate {
   last_alert_sent_at: string | null;
   has_achiever_badge: boolean;
   total_study_minutes: number;
+  past_week_study_minutes: number;
 }
 
 interface AlertHistoryItem {
@@ -59,14 +63,26 @@ interface MailerConfigStatus {
   reason?: string;
 }
 
+interface PlatformUserOption {
+  id: string;
+  display_name: string;
+  current_status: string;
+  has_achiever_badge: boolean;
+  last_offline_at: string | null;
+  created_at: string;
+  weekly_minutes: number;
+  total_minutes: number;
+}
+
 interface AdminAlertsHubProps {
   adminEmail?: string;
 }
 
-type TabType = "all" | "A" | "I" | "D" | "history";
+type TabType = "all" | "A" | "W" | "I" | "D" | "history";
 
 export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
   const [candidates, setCandidates] = useState<AlertCandidate[]>([]);
+  const [allUsers, setAllUsers] = useState<PlatformUserOption[]>([]);
   const [history, setHistory] = useState<AlertHistoryItem[]>([]);
   const [mailerConfig, setMailerConfig] = useState<MailerConfigStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -74,6 +90,11 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
   const [activeTab, setActiveTab] = useState<TabType>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // Direct Member Alert Modal state
+  const [isDirectAlertOpen, setIsDirectAlertOpen] = useState(false);
+  const [directSelectedUserId, setDirectSelectedUserId] = useState<string>("");
+  const [directAlertType, setDirectAlertType] = useState<AlertType>("W");
 
   // Modals state
   const [previewCandidate, setPreviewCandidate] = useState<AlertCandidate | null>(null);
@@ -121,15 +142,21 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
     return headers;
   }, [supabase]);
 
-  // Fetch candidates and config
+  // Smart Candidate Scanner: Combines RPC + Client-side Fallback
   const fetchData = useCallback(async () => {
     try {
       setRefreshing(true);
       const headers = await getAuthHeaders();
-      const [candidatesRes, configRes, historyRes] = await Promise.allSettled([
-        fetch("/api/admin/alerts?action=candidates", { headers }),
+
+      // 1. Fetch Mailer Config & History
+      const [configRes, historyRes, rpcRes, usersRes, sessionsRes] = await Promise.allSettled([
         fetch("/api/admin/alerts?action=config", { headers }),
         fetch("/api/admin/alerts?action=history&limit=50", { headers }),
+        (supabase as any).rpc("rpc_admin_scan_alert_candidates", {
+          p_admin_email: adminEmail || "sa@admin.tg",
+        }),
+        supabase.from("users").select("*"),
+        supabase.from("study_sessions").select("id, user_id, start_time, end_time, duration_minutes"),
       ]);
 
       if (configRes.status === "fulfilled" && configRes.value.ok) {
@@ -140,29 +167,177 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
         }
       }
 
-      if (candidatesRes.status === "fulfilled") {
-        const json = await candidatesRes.value.json();
-        if (json.needsMigration) {
-          setNeedsMigration(true);
-        } else if (json.candidates) {
-          setCandidates(json.candidates);
-          setNeedsMigration(false);
-        }
-      }
-
       if (historyRes.status === "fulfilled" && historyRes.value.ok) {
         const histJson = await historyRes.value.json();
         if (histJson.history) {
           setHistory(histJson.history);
         }
       }
+
+      // Check RPC response
+      let candidatesList: AlertCandidate[] = [];
+
+      if (rpcRes.status === "fulfilled" && !rpcRes.value.error && Array.isArray(rpcRes.value.data) && rpcRes.value.data.length > 0) {
+        candidatesList = rpcRes.value.data;
+        setNeedsMigration(false);
+      }
+
+      // 2. Client-side Smart Scanner Fallback
+      // If RPC returned 0 or error, compute candidates directly from users & sessions
+      if (usersRes.status === "fulfilled" && usersRes.value.data) {
+        const rawUsers = usersRes.value.data as any[];
+        const rawSessions = (sessionsRes.status === "fulfilled" && sessionsRes.value.data) ? (sessionsRes.value.data as any[]) : [];
+
+        const now = Date.now();
+        const weekAgo = now - 7 * 86400 * 1000;
+
+        const nonAdmin = rawUsers.filter((u) => !u.is_admin);
+
+        const platformUsersList: PlatformUserOption[] = nonAdmin.map((u) => {
+          const userSessions = rawSessions.filter((s) => s.user_id === u.id);
+          let weekMins = 0;
+          let totalMins = 0;
+          userSessions.forEach((s) => {
+            const mins = s.duration_minutes || 0;
+            totalMins += mins;
+            if (new Date(s.start_time).getTime() >= weekAgo) {
+              weekMins += mins;
+            }
+          });
+
+          return {
+            id: u.id,
+            display_name: u.display_name,
+            current_status: u.current_status,
+            has_achiever_badge: u.has_achiever_badge,
+            last_offline_at: u.last_offline_at,
+            created_at: u.created_at,
+            weekly_minutes: weekMins,
+            total_minutes: totalMins,
+          };
+        });
+
+        setAllUsers(platformUsersList);
+
+        // If RPC didn't return candidates, compute them from the loaded dataset
+        if (candidatesList.length === 0) {
+          const computed: AlertCandidate[] = [];
+
+          nonAdmin.forEach((u) => {
+            const userSessions = rawSessions.filter((s) => s.user_id === u.id);
+            let maxTime: number | null = null;
+            let totalMins = 0;
+            let weekMins = 0;
+
+            userSessions.forEach((s) => {
+              const t = new Date(s.end_time || s.start_time).getTime();
+              if (!maxTime || t > maxTime) maxTime = t;
+              totalMins += s.duration_minutes || 0;
+              if (new Date(s.start_time).getTime() >= weekAgo) {
+                weekMins += s.duration_minutes || 0;
+              }
+            });
+
+            const offlineTime = u.last_offline_at ? new Date(u.last_offline_at).getTime() : null;
+            const createdTime = new Date(u.created_at).getTime();
+            const latestActive = maxTime || offlineTime || createdTime;
+
+            const isCurrentlyActive = u.current_status === "studying" || u.current_status === "break";
+            const inactiveDays = isCurrentlyActive
+              ? 0
+              : Math.max(0, Math.floor((now - latestActive) / (1000 * 86400)));
+
+            const userEmail = u.email || `${u.display_name.toLowerCase().replace(/[^a-z0-9]/g, "")}@student.studyroom`;
+
+            // 1. TYPE A: Achiever Title 🏆 (Badge holders)
+            if (u.has_achiever_badge && inactiveDays < 3) {
+              computed.push({
+                candidate_id: `A-${u.id}`,
+                user_id: u.id,
+                user_name: u.display_name,
+                user_email: userEmail,
+                alert_type: "A",
+                consecutive_inactive_days: inactiveDays,
+                reason: "Active Achiever Title holder",
+                last_active_at: new Date(latestActive).toISOString(),
+                last_alert_sent_at: null,
+                has_achiever_badge: true,
+                total_study_minutes: totalMins,
+                past_week_study_minutes: weekMins,
+              });
+            }
+
+            // 2. TYPE D: Account Deletion Alert 🚨 (5+ consecutive days offline)
+            if (!isCurrentlyActive && inactiveDays >= 5) {
+              computed.push({
+                candidate_id: `D-${u.id}`,
+                user_id: u.id,
+                user_name: u.display_name,
+                user_email: userEmail,
+                alert_type: "D",
+                consecutive_inactive_days: inactiveDays,
+                reason: `Inactive for ${inactiveDays} consecutive days (Threshold: 5 days)`,
+                last_active_at: new Date(latestActive).toISOString(),
+                last_alert_sent_at: null,
+                has_achiever_badge: u.has_achiever_badge,
+                total_study_minutes: totalMins,
+                past_week_study_minutes: weekMins,
+              });
+            }
+            // 3. TYPE I: Account Activity Notice ⚠️ (3 to 4 consecutive days offline)
+            else if (!isCurrentlyActive && inactiveDays >= 3 && inactiveDays < 5) {
+              computed.push({
+                candidate_id: `I-${u.id}`,
+                user_id: u.id,
+                user_name: u.display_name,
+                user_email: userEmail,
+                alert_type: "I",
+                consecutive_inactive_days: inactiveDays,
+                reason: `Inactive for ${inactiveDays} consecutive days (Threshold: 3 days)`,
+                last_active_at: new Date(latestActive).toISOString(),
+                last_alert_sent_at: null,
+                has_achiever_badge: u.has_achiever_badge,
+                total_study_minutes: totalMins,
+                past_week_study_minutes: weekMins,
+              });
+            }
+            // 4. TYPE W: Weekly Performance & Momentum Alert 📊 (Active within 3 days, low past week output)
+            else if (inactiveDays < 3 && !u.has_achiever_badge && weekMins < 120) {
+              computed.push({
+                candidate_id: `W-${u.id}`,
+                user_id: u.id,
+                user_name: u.display_name,
+                user_email: userEmail,
+                alert_type: "W",
+                consecutive_inactive_days: inactiveDays,
+                reason: `Low study output in past 7 days (${(weekMins / 60).toFixed(1)}h logged)`,
+                last_active_at: new Date(latestActive).toISOString(),
+                last_alert_sent_at: null,
+                has_achiever_badge: false,
+                total_study_minutes: totalMins,
+                past_week_study_minutes: weekMins,
+              });
+            }
+          });
+
+          // Sort candidates priority: A (Achievers) -> D (Deletion) -> I (Notice) -> W (Weekly)
+          computed.sort((a, b) => {
+            const order: Record<string, number> = { A: 1, D: 2, I: 3, W: 4 };
+            return (order[a.alert_type] || 5) - (order[b.alert_type] || 5);
+          });
+
+          candidatesList = computed;
+        }
+      }
+
+      setCandidates(candidatesList);
     } catch (err) {
       console.error("Alerts fetch error:", err);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [getAuthHeaders]);
+  }, [adminEmail, getAuthHeaders, supabase]);
 
   useEffect(() => {
     fetchData();
@@ -185,10 +360,11 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
   const counts = useMemo(() => {
     const total = candidates.length;
     const aCount = candidates.filter((c) => c.alert_type === "A").length;
+    const wCount = candidates.filter((c) => c.alert_type === "W").length;
     const iCount = candidates.filter((c) => c.alert_type === "I").length;
     const dCount = candidates.filter((c) => c.alert_type === "D").length;
     const sentCount = history.filter((h) => h.status === "sent").length;
-    return { total, aCount, iCount, dCount, sentCount };
+    return { total, aCount, wCount, iCount, dCount, sentCount };
   }, [candidates, history]);
 
   // Selection helpers
@@ -215,7 +391,8 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
     return generateAlertEmail(
       previewCandidate.alert_type,
       previewCandidate.user_name,
-      previewCandidate.consecutive_inactive_days
+      previewCandidate.consecutive_inactive_days,
+      Math.round((previewCandidate.past_week_study_minutes || 0) / 60)
     );
   }, [previewCandidate]);
 
@@ -237,6 +414,7 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
           name: previewCandidate.user_name,
           type: previewCandidate.alert_type,
           consecutiveDays: previewCandidate.consecutive_inactive_days,
+          weeklyHours: Math.round((previewCandidate.past_week_study_minutes || 0) / 60),
         }),
       });
 
@@ -300,6 +478,43 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
     }
   };
 
+  // Direct Alert to Any Member
+  const handleOpenDirectAlert = (user?: PlatformUserOption) => {
+    if (user) {
+      setDirectSelectedUserId(user.id);
+      setDirectAlertType(user.has_achiever_badge ? "A" : "W");
+    } else if (allUsers.length > 0) {
+      setDirectSelectedUserId(allUsers[0].id);
+      setDirectAlertType("W");
+    }
+    setIsDirectAlertOpen(true);
+  };
+
+  const handleSendDirectAlert = async () => {
+    const targetUser = allUsers.find((u) => u.id === directSelectedUserId);
+    if (!targetUser) return;
+
+    const email = `${targetUser.display_name.toLowerCase().replace(/[^a-z0-9]/g, "")}@student.studyroom`;
+
+    const tempCandidate: AlertCandidate = {
+      candidate_id: `DIRECT-${targetUser.id}-${Date.now()}`,
+      user_id: targetUser.id,
+      user_name: targetUser.display_name,
+      user_email: email,
+      alert_type: directAlertType,
+      consecutive_inactive_days: 0,
+      reason: `Direct ${directAlertType} alert from admin based on performance review`,
+      last_active_at: new Date().toISOString(),
+      last_alert_sent_at: null,
+      has_achiever_badge: targetUser.has_achiever_badge,
+      total_study_minutes: targetUser.total_minutes,
+      past_week_study_minutes: targetUser.weekly_minutes,
+    };
+
+    setPreviewCandidate(tempCandidate);
+    setIsDirectAlertOpen(false);
+  };
+
   // Helper for type badges
   const renderTypeBadge = (type: AlertType) => {
     switch (type) {
@@ -308,6 +523,13 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
           <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/15 border border-emerald-500/30 text-emerald-300">
             <span>🏆</span>
             <span>Achiever&apos;s Title</span>
+          </span>
+        );
+      case "W":
+        return (
+          <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-500/15 border border-indigo-500/30 text-indigo-300">
+            <span>📊</span>
+            <span>Weekly Review</span>
           </span>
         );
       case "I":
@@ -342,11 +564,21 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
             </span>
           </div>
           <p className="text-xs text-zinc-400 mt-1">
-            Scan inactive students, preview spam-tested email templates, and dispatch alerts directly to inboxes.
+            Detect defaulters, celebrate weekly achievers, evaluate past-week output, and send verified alerts.
           </p>
         </div>
 
         <div className="flex items-center space-x-2.5">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => handleOpenDirectAlert()}
+            className="border-indigo-500/30 text-indigo-300 hover:bg-indigo-950/40"
+          >
+            <UserPlus className="w-3.5 h-3.5 mr-1.5 text-indigo-400" />
+            <span>Direct Member Alert</span>
+          </Button>
+
           <Button
             variant="secondary"
             size="sm"
@@ -413,7 +645,7 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
                 To send alert emails 100% free for life without going to spam:
               </p>
               <ol className="list-decimal pl-5 space-y-1 text-zinc-400">
-                <li>Create or choose any standard free personal Gmail address.</li>
+                <li>Choose any standard free personal Gmail address.</li>
                 <li>
                   Go to{" "}
                   <a
@@ -426,60 +658,36 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
                   </a>
                 </li>
                 <li>Generate a 16-character App Password named &ldquo;StudyRoom Alerts&rdquo;.</li>
-                <li>
-                  Add to your <code className="bg-zinc-800 text-zinc-200 px-1 py-0.5 rounded">.env.local</code>:
-                </li>
+                <li>Add to your .env.local file.</li>
               </ol>
-              <pre className="bg-zinc-900 p-2.5 rounded-lg border border-zinc-800 font-mono text-[11px] text-zinc-300 overflow-x-auto">
-{`ALERT_GMAIL_USER=your_alerts_email@gmail.com
-ALERT_GMAIL_APP_PASSWORD=xxxx xxxx xxxx xxxx
-ALERT_FROM_NAME=StudyRoom`}
-              </pre>
             </div>
           )}
         </div>
       )}
 
-      {/* 3. SQL MIGRATION REQUIRED WARNING */}
-      {needsMigration && (
-        <div className="p-4 rounded-xl bg-red-950/30 border border-red-800/50 text-red-200 text-xs flex items-start space-x-3">
-          <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
-          <div className="space-y-1">
-            <p className="font-bold text-red-100">Database Migration Required in Supabase</p>
-            <p className="text-red-300">
-              The <code className="bg-red-950/60 px-1 py-0.5 rounded">user_alerts</code> table and scanner function
-              haven&apos;t been executed yet. Run the script located in:
-            </p>
-            <p className="font-mono text-[11px] bg-black/40 p-2 rounded border border-red-900/40 text-red-200">
-              supabase/migrations/20260914_alerts_system.sql
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* 4. METRIC CARDS */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+      {/* 3. METRIC CARDS */}
+      <div className="grid grid-cols-2 sm:grid-cols-6 gap-2.5">
         <div
           onClick={() => setActiveTab("all")}
-          className={`cursor-pointer p-3.5 rounded-xl border transition-all ${
+          className={`cursor-pointer p-3 rounded-xl border transition-all ${
             activeTab === "all"
               ? "bg-zinc-800/80 border-indigo-500/50 shadow-sm"
               : "bg-zinc-900/40 border-zinc-800 hover:bg-zinc-900"
           }`}
         >
-          <div className="text-xs text-zinc-400">Total Actionable</div>
+          <div className="text-[11px] text-zinc-400">Total Actionable</div>
           <div className="text-xl font-bold text-zinc-100 mt-1">{counts.total}</div>
         </div>
 
         <div
           onClick={() => setActiveTab("A")}
-          className={`cursor-pointer p-3.5 rounded-xl border transition-all ${
+          className={`cursor-pointer p-3 rounded-xl border transition-all ${
             activeTab === "A"
               ? "bg-emerald-950/30 border-emerald-500/50 shadow-sm"
               : "bg-zinc-900/40 border-zinc-800 hover:bg-zinc-900"
           }`}
         >
-          <div className="text-xs text-emerald-400 flex items-center space-x-1">
+          <div className="text-[11px] text-emerald-400 flex items-center space-x-1">
             <span>🏆</span>
             <span>Achievers</span>
           </div>
@@ -487,14 +695,29 @@ ALERT_FROM_NAME=StudyRoom`}
         </div>
 
         <div
+          onClick={() => setActiveTab("W")}
+          className={`cursor-pointer p-3 rounded-xl border transition-all ${
+            activeTab === "W"
+              ? "bg-indigo-950/30 border-indigo-500/50 shadow-sm"
+              : "bg-zinc-900/40 border-zinc-800 hover:bg-zinc-900"
+          }`}
+        >
+          <div className="text-[11px] text-indigo-400 flex items-center space-x-1">
+            <span>📊</span>
+            <span>Weekly Slump</span>
+          </div>
+          <div className="text-xl font-bold text-indigo-300 mt-1">{counts.wCount}</div>
+        </div>
+
+        <div
           onClick={() => setActiveTab("I")}
-          className={`cursor-pointer p-3.5 rounded-xl border transition-all ${
+          className={`cursor-pointer p-3 rounded-xl border transition-all ${
             activeTab === "I"
               ? "bg-amber-950/30 border-amber-500/50 shadow-sm"
               : "bg-zinc-900/40 border-zinc-800 hover:bg-zinc-900"
           }`}
         >
-          <div className="text-xs text-amber-400 flex items-center space-x-1">
+          <div className="text-[11px] text-amber-400 flex items-center space-x-1">
             <span>⚠️</span>
             <span>Notice (3d)</span>
           </div>
@@ -503,13 +726,13 @@ ALERT_FROM_NAME=StudyRoom`}
 
         <div
           onClick={() => setActiveTab("D")}
-          className={`cursor-pointer p-3.5 rounded-xl border transition-all ${
+          className={`cursor-pointer p-3 rounded-xl border transition-all ${
             activeTab === "D"
               ? "bg-rose-950/30 border-rose-500/50 shadow-sm"
               : "bg-zinc-900/40 border-zinc-800 hover:bg-zinc-900"
           }`}
         >
-          <div className="text-xs text-rose-400 flex items-center space-x-1">
+          <div className="text-[11px] text-rose-400 flex items-center space-x-1">
             <span>🚨</span>
             <span>Deletion (5d)</span>
           </div>
@@ -518,13 +741,13 @@ ALERT_FROM_NAME=StudyRoom`}
 
         <div
           onClick={() => setActiveTab("history")}
-          className={`cursor-pointer p-3.5 rounded-xl border transition-all ${
+          className={`cursor-pointer p-3 rounded-xl border transition-all ${
             activeTab === "history"
               ? "bg-zinc-800/80 border-zinc-600 shadow-sm"
               : "bg-zinc-900/40 border-zinc-800 hover:bg-zinc-900"
           }`}
         >
-          <div className="text-xs text-zinc-400 flex items-center space-x-1">
+          <div className="text-[11px] text-zinc-400 flex items-center space-x-1">
             <Clock className="w-3.5 h-3.5" />
             <span>Sent History</span>
           </div>
@@ -532,7 +755,7 @@ ALERT_FROM_NAME=StudyRoom`}
         </div>
       </div>
 
-      {/* 5. FILTER TABS & SEARCH */}
+      {/* 4. FILTER TABS & SEARCH */}
       {activeTab !== "history" ? (
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -556,6 +779,16 @@ ALERT_FROM_NAME=StudyRoom`}
                 }`}
               >
                 🏆 Achievers ({counts.aCount})
+              </button>
+              <button
+                onClick={() => setActiveTab("W")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                  activeTab === "W"
+                    ? "bg-indigo-500 text-white"
+                    : "bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-zinc-800"
+                }`}
+              >
+                📊 Weekly Slump ({counts.wCount})
               </button>
               <button
                 onClick={() => setActiveTab("I")}
@@ -591,7 +824,7 @@ ALERT_FROM_NAME=StudyRoom`}
             </div>
           </div>
 
-          {/* 6. CANDIDATES TABLE */}
+          {/* 5. CANDIDATES TABLE */}
           <div className="border border-zinc-800/80 rounded-xl overflow-hidden bg-zinc-900/30">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs text-zinc-300">
@@ -609,8 +842,8 @@ ALERT_FROM_NAME=StudyRoom`}
                       />
                     </th>
                     <th className="p-3">Student</th>
-                    <th className="p-3">Alert Type</th>
-                    <th className="p-3">Activity Status</th>
+                    <th className="p-3">Alert Trigger</th>
+                    <th className="p-3">Activity &amp; Weekly Record</th>
                     <th className="p-3">Last Active</th>
                     <th className="p-3 text-right">Actions</th>
                   </tr>
@@ -620,7 +853,7 @@ ALERT_FROM_NAME=StudyRoom`}
                     <tr>
                       <td colSpan={6} className="p-8 text-center text-zinc-500">
                         <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-zinc-400" />
-                        Scanning active &amp; inactive students...
+                        Scanning students, inactivity records &amp; weekly performance...
                       </td>
                     </tr>
                   ) : filteredCandidates.length === 0 ? (
@@ -653,8 +886,11 @@ ALERT_FROM_NAME=StudyRoom`}
                                 {candidate.user_name.charAt(0).toUpperCase()}
                               </div>
                               <div>
-                                <div className="font-semibold text-zinc-100">
-                                  {candidate.user_name}
+                                <div className="font-semibold text-zinc-100 flex items-center space-x-1">
+                                  <span>{candidate.user_name}</span>
+                                  {candidate.has_achiever_badge && (
+                                    <span title="Achiever Title Active">👑</span>
+                                  )}
                                 </div>
                                 <div className="text-[11px] text-zinc-500 font-mono">
                                   {candidate.user_email}
@@ -664,21 +900,16 @@ ALERT_FROM_NAME=StudyRoom`}
                           </td>
                           <td className="p-3">{renderTypeBadge(candidate.alert_type)}</td>
                           <td className="p-3">
-                            {candidate.alert_type === "A" ? (
-                              <span className="text-emerald-400 font-medium">
-                                Achiever badge active ({Math.round(candidate.total_study_minutes / 60)}h total)
-                              </span>
-                            ) : (
-                              <span
-                                className={`font-semibold ${
-                                  candidate.consecutive_inactive_days >= 5
-                                    ? "text-rose-400"
-                                    : "text-amber-400"
-                                }`}
-                              >
-                                {candidate.consecutive_inactive_days} days inactive
-                              </span>
-                            )}
+                            <div className="space-y-0.5">
+                              <div className="text-zinc-200 font-medium">
+                                {candidate.reason}
+                              </div>
+                              <div className="text-[11px] text-zinc-500 flex items-center space-x-2">
+                                <span>Past Week: {(candidate.past_week_study_minutes / 60).toFixed(1)}h</span>
+                                <span>&bull;</span>
+                                <span>All-time: {(candidate.total_study_minutes / 60).toFixed(1)}h</span>
+                              </div>
+                            </div>
                           </td>
                           <td className="p-3 text-zinc-400">
                             {new Date(candidate.last_active_at).toLocaleDateString("en-IN", {
@@ -729,7 +960,7 @@ ALERT_FROM_NAME=StudyRoom`}
           </div>
         </div>
       ) : (
-        /* 7. SENT HISTORY TAB */
+        /* 6. SENT HISTORY TAB */
         <div className="border border-zinc-800 rounded-xl overflow-hidden bg-zinc-900/30">
           <div className="p-3 bg-zinc-900/80 border-b border-zinc-800 flex items-center justify-between">
             <h3 className="text-xs font-semibold text-zinc-300">Recent Dispatches (Last 50)</h3>
@@ -794,13 +1025,121 @@ ALERT_FROM_NAME=StudyRoom`}
         </div>
       )}
 
+      {/* 7. DIRECT MEMBER ALERT MODAL */}
+      <Modal
+        isOpen={isDirectAlertOpen}
+        onClose={() => setIsDirectAlertOpen(false)}
+        title="Direct Alert to Member"
+        subtitle="Select any platform member to send an instant customized alert based on past performance"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-zinc-300 mb-1.5">
+              Select Student / Member:
+            </label>
+            <select
+              value={directSelectedUserId}
+              onChange={(e) => setDirectSelectedUserId(e.target.value)}
+              className="w-full bg-zinc-900 border border-zinc-700 text-zinc-200 text-xs rounded-xl p-2.5 focus:outline-none focus:border-indigo-500"
+            >
+              {allUsers.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.display_name} {u.has_achiever_badge ? "👑" : ""} ({u.current_status}) — Past Week: {(u.weekly_minutes / 60).toFixed(1)}h
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-zinc-300 mb-1.5">
+              Select Alert Type:
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setDirectAlertType("A")}
+                className={`p-2.5 rounded-xl border text-left text-xs transition-all ${
+                  directAlertType === "A"
+                    ? "bg-emerald-950/40 border-emerald-500 text-emerald-200 font-bold"
+                    : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200"
+                }`}
+              >
+                <div className="flex items-center space-x-1.5 mb-1">
+                  <span>🏆</span>
+                  <span>Achiever&apos;s Title</span>
+                </div>
+                <div className="text-[10px] opacity-75">Milestone &amp; consistency award</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDirectAlertType("W")}
+                className={`p-2.5 rounded-xl border text-left text-xs transition-all ${
+                  directAlertType === "W"
+                    ? "bg-indigo-950/40 border-indigo-500 text-indigo-200 font-bold"
+                    : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200"
+                }`}
+              >
+                <div className="flex items-center space-x-1.5 mb-1">
+                  <span>📊</span>
+                  <span>Weekly Review</span>
+                </div>
+                <div className="text-[10px] opacity-75">Momentum &amp; slump check-in</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDirectAlertType("I")}
+                className={`p-2.5 rounded-xl border text-left text-xs transition-all ${
+                  directAlertType === "I"
+                    ? "bg-amber-950/40 border-amber-500 text-amber-200 font-bold"
+                    : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200"
+                }`}
+              >
+                <div className="flex items-center space-x-1.5 mb-1">
+                  <span>⚠️</span>
+                  <span>Activity Notice</span>
+                </div>
+                <div className="text-[10px] opacity-75">3-day inactivity reminder</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDirectAlertType("D")}
+                className={`p-2.5 rounded-xl border text-left text-xs transition-all ${
+                  directAlertType === "D"
+                    ? "bg-rose-950/40 border-rose-500 text-rose-200 font-bold"
+                    : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200"
+                }`}
+              >
+                <div className="flex items-center space-x-1.5 mb-1">
+                  <span>🚨</span>
+                  <span>Deletion Alert</span>
+                </div>
+                <div className="text-[10px] opacity-75">5-day urgent warning</div>
+              </button>
+            </div>
+          </div>
+
+          <div className="flex justify-end space-x-2 pt-2">
+            <Button variant="ghost" onClick={() => setIsDirectAlertOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={handleSendDirectAlert} className="bg-indigo-600 hover:bg-indigo-500 text-white">
+              <Eye className="w-3.5 h-3.5 mr-1.5" />
+              <span>Preview &amp; Send</span>
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
       {/* 8. INTERACTIVE LIVE PREVIEW MODAL */}
       {previewCandidate && previewEmailContent && (
         <Modal
           isOpen={!!previewCandidate}
           onClose={() => setPreviewCandidate(null)}
           title={`Email Preview: ${previewEmailContent.subject}`}
-          subtitle={`Simulating message for ${previewCandidate.user_name} (${previewCandidate.user_email})`}
+          subtitle={`Message for ${previewCandidate.user_name} (${previewCandidate.user_email})`}
         >
           <div className="space-y-4">
             {/* Device Frame Switcher & Test Action Bar */}
@@ -877,7 +1216,7 @@ ALERT_FROM_NAME=StudyRoom`}
               }`}
             >
               <div className="p-2 bg-zinc-900 border-b border-zinc-800 text-[11px] text-zinc-400 flex items-center justify-between">
-                <span>From: StudyRoom &lt;studyroom.alerts@gmail.com&gt;</span>
+                <span>From: StudyRoom &lt;studyaliveapp@gmail.com&gt;</span>
                 <span>To: {previewCandidate.user_email}</span>
               </div>
               <div

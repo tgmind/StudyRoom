@@ -29,6 +29,16 @@ describe("Email Alerts Generation Unit Tests", () => {
     expect(payload.html).toContain("Charlie");
   });
 
+  it("generates correct Type W (Weekly Performance Alert) email payload", () => {
+    const payload = generateAlertEmail("W", "Pallavi", 0, 0.5);
+    expect(payload.subject).toContain("Weekly Performance & Momentum Check-in");
+    expect(payload.subject).toContain("Pallavi");
+    expect(payload.text).toContain("0.5 hours");
+    expect(payload.html).toContain("0.5 hrs");
+    expect(payload.html).toContain("Weekly Performance Review");
+    expect(payload.html).toContain("Pallavi");
+  });
+
   it("escapes malicious user names in HTML output", () => {
     const maliciousName = "<script>alert('xss')</script>";
     const payload = generateAlertEmail("A", maliciousName);

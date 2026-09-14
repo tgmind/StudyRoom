@@ -1,4 +1,4 @@
-export type AlertType = "A" | "I" | "D";
+export type AlertType = "A" | "I" | "D" | "W";
 
 export interface EmailTemplatePayload {
   subject: string;
@@ -29,13 +29,15 @@ export function getAppUrl(): string {
  * Generate polished, spam-proof transactional emails for StudyRoom.
  * Supports:
  *  - Type A: Achiever's Title 🏆
+ *  - Type W: Weekly Performance & Motivation 📊 (Past week hours / slump check-in)
  *  - Type I: Account Activity Notice ⚠️ (3 consecutive days inactive)
  *  - Type D: Account Deletion Alert 🚨 (5 consecutive days inactive)
  */
 export function generateAlertEmail(
   type: AlertType,
   rawName: string,
-  consecutiveDays: number = 0
+  consecutiveDays: number = 0,
+  weeklyHours: number = 0
 ): EmailTemplatePayload {
   const name = escapeHtml(rawName || "Student");
   const year = new Date().getFullYear();
@@ -116,6 +118,88 @@ export function generateAlertEmail(
 
     <div style="${footerStyle}">
       <p style="margin:0 0 6px 0;">You received this achievement recognition because you are an active member of StudyRoom.</p>
+      <p style="margin:0;">&copy; ${year} StudyRoom &bull; Empowering Focused Minds</p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+    return { subject, text, html };
+  }
+
+  /* =========================================================
+     TYPE W: WEEKLY PERFORMANCE & STUDY CHECK-IN (PAST WEEK)
+     ========================================================= */
+  if (type === "W") {
+    const subject = `StudyRoom | Weekly Performance & Momentum Check-in: ${rawName}`;
+    const hoursText = weeklyHours > 0 ? `Your recorded study time over the past week: ${weeklyHours} hours.\n\n` : "";
+    const hoursHtml = weeklyHours > 0 ? `
+      <div style="text-align:center;margin:16px 0 20px 0;">
+        <span style="display:inline-block;padding:6px 16px;background-color:#1e1b4b;color:#c7d2fe;font-size:13px;font-weight:600;border-radius:8px;border:1px solid #3730a3;">
+          ⏱️ Past 7 Days Logged: <strong style="color:#ffffff;">${weeklyHours} hrs</strong>
+        </span>
+      </div>` : "";
+
+    const text = `Hi ${rawName},\n\n` +
+      `We wanted to check in on your study momentum over the past week in StudyRoom.\n\n` +
+      hoursText +
+      `Weekly consistency is how major goals are conquered. If you hit a study slump or recorded lower hours recently, remember that every week offers a brand new opportunity to reset and surge ahead.\n\n` +
+      `Jump back into the room today, set your daily goals, and rebuild your study momentum:\n\n` +
+      `${roomUrl}\n\n` +
+      `— The StudyRoom Team\n` +
+      `© ${year} StudyRoom. All rights reserved.`;
+
+    const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(subject)}</title>
+</head>
+<body style="${wrapperStyle}">
+  <div style="${cardStyle}">
+    <div style="${headerStyle}background:linear-gradient(180deg, rgba(99,102,241,0.15) 0%, rgba(30,41,59,0) 100%);">
+      <div style="font-size:48px;line-height:1;margin-bottom:12px;">📊</div>
+      <span style="display:inline-block;padding:4px 12px;background-color:#312e81;color:#a5b4fc;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;border-radius:999px;border:1px solid #4f46e5;">
+        Weekly Performance Review
+      </span>
+      <h1 style="margin:16px 0 0 0;font-size:24px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;">
+        Past Week Study Check-in
+      </h1>
+    </div>
+
+    <div style="${bodyStyle}">
+      <p style="font-size:16px;color:#cbd5e1;margin-top:0;">
+        Hi <strong style="color:#ffffff;">${name}</strong>,
+      </p>
+      <p style="font-size:15px;color:#cbd5e1;line-height:1.6;">
+        We took a look at your study output over the past week. Whether you made steady progress or faced a brief study slump, consistency is built session by session.
+      </p>
+      ${hoursHtml}
+
+      <div style="background-color:#0f172a;border-left:4px solid #6366f1;border-radius:8px;padding:16px 20px;margin:24px 0;">
+        <p style="margin:0;font-size:14px;color:#e0e7ff;font-weight:600;">
+          Restart Your Study Momentum
+        </p>
+        <p style="margin:6px 0 0 0;font-size:13px;color:#94a3b8;line-height:1.5;">
+          “A slump is just a brief detour before a bigger comeback.” Even a single 25-minute Pomodoro session today can restart your study rhythm.
+        </p>
+      </div>
+
+      <p style="font-size:15px;color:#94a3b8;margin-bottom:28px;">
+        Log in today, set your daily tasks, and study alongside your peers in the live room.
+      </p>
+
+      <div style="text-align:center;margin:32px 0 16px 0;">
+        <a href="${roomUrl}" style="${btnBase}background-color:#6366f1;color:#ffffff;box-shadow:0 4px 14px rgba(99,102,241,0.4);">
+          Open Room &amp; Reset Targets &rarr;
+        </a>
+      </div>
+    </div>
+
+    <div style="${footerStyle}">
+      <p style="margin:0 0 6px 0;">This weekly study performance check-in was sent to support your academic progress.</p>
       <p style="margin:0;">&copy; ${year} StudyRoom &bull; Empowering Focused Minds</p>
     </div>
   </div>

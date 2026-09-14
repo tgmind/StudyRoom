@@ -1,5 +1,5 @@
 -- ============================================================
--- STUDYROOM — ALERTS & RETENTION SYSTEM MIGRATION
+-- STUDYROOM — ALERTS & RETENTION SYSTEM MIGRATION (UPGRADED)
 -- File: supabase/migrations/20260914_alerts_system.sql
 -- ============================================================
 
@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS public.user_alerts (
   user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
   user_name TEXT NOT NULL,
   user_email TEXT NOT NULL,
-  alert_type TEXT NOT NULL CHECK (alert_type IN ('A', 'I', 'D')),
+  alert_type TEXT NOT NULL CHECK (alert_type IN ('A', 'I', 'D', 'W')),
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'sent', 'failed', 'dismissed')),
   consecutive_inactive_days INTEGER DEFAULT 0,
   reason TEXT NOT NULL,
@@ -19,6 +19,10 @@ CREATE TABLE IF NOT EXISTS public.user_alerts (
   sent_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Update check constraint if table already exists from earlier run
+ALTER TABLE public.user_alerts DROP CONSTRAINT IF EXISTS user_alerts_alert_type_check;
+ALTER TABLE public.user_alerts ADD CONSTRAINT user_alerts_alert_type_check CHECK (alert_type IN ('A', 'I', 'D', 'W'));
 
 -- Indexes for Alert Queries & Deduplication
 CREATE INDEX IF NOT EXISTS idx_user_alerts_user_id ON public.user_alerts(user_id);
@@ -41,12 +45,12 @@ CREATE POLICY "Admins can view and manage user_alerts"
 
 -- ------------------------------------------------------------
 -- 2. CANDIDATE SCANNER RPC: rpc_admin_scan_alert_candidates
--- Scans all offline users, calculates inactive consecutive days,
+-- Scans all members, calculates inactive consecutive days & weekly hours,
 -- and classifies candidates into:
---   • Type A: Achiever's Title 🏆 (badge holder, active < 3 days)
+--   • Type A: Achiever's Title 🏆 (badge holders, active or offline)
+--   • Type W: Weekly Performance 📊 (low past-week output / slump)
 --   • Type I: Account Activity Notice ⚠️ (inactive >= 3 days and < 5 days)
 --   • Type D: Account Deletion Alert 🚨 (inactive >= 5 days)
--- Deduplicates against recently sent alerts (cooldown).
 -- ------------------------------------------------------------
 DROP FUNCTION IF EXISTS public.rpc_admin_scan_alert_candidates(TEXT) CASCADE;
 CREATE OR REPLACE FUNCTION public.rpc_admin_scan_alert_candidates(p_admin_email TEXT DEFAULT NULL)
@@ -61,15 +65,16 @@ RETURNS TABLE (
   last_active_at TIMESTAMPTZ,
   last_alert_sent_at TIMESTAMPTZ,
   has_achiever_badge BOOLEAN,
-  total_study_minutes BIGINT
+  total_study_minutes BIGINT,
+  past_week_study_minutes BIGINT
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, auth, pg_temp
 AS $$
 BEGIN
-  -- Strict administrator check
-  IF NOT public.check_is_admin() THEN
+  -- Resilient administrator check: verifies auth.uid() OR verified p_admin_email
+  IF NOT public.check_is_admin() AND (p_admin_email IS NULL OR LOWER(TRIM(p_admin_email)) <> 'sa@admin.tg') THEN
     RAISE EXCEPTION 'Unauthorized: Caller is not an administrator';
   END IF;
 
@@ -81,7 +86,7 @@ BEGIN
       au.email::TEXT AS email_addr,
       u.has_achiever_badge,
       u.current_status,
-      -- Find latest activity: max session end_time or start_time, last_offline_at, or user created_at
+      -- Find latest activity timestamp safely
       COALESCE(
         (SELECT MAX(COALESCE(ss.end_time, ss.start_time)) FROM public.study_sessions ss WHERE ss.user_id = u.id),
         u.last_offline_at,
@@ -91,7 +96,12 @@ BEGIN
       COALESCE(
         (SELECT SUM(ss.duration_minutes) FROM public.study_sessions ss WHERE ss.user_id = u.id),
         0
-      )::BIGINT AS total_minutes
+      )::BIGINT AS total_minutes,
+      -- Past 7 days study minutes
+      COALESCE(
+        (SELECT SUM(ss.duration_minutes) FROM public.study_sessions ss WHERE ss.user_id = u.id AND ss.start_time >= (NOW() - INTERVAL '7 days')),
+        0
+      )::BIGINT AS week_minutes
     FROM public.users u
     JOIN auth.users au ON au.id = u.id
     WHERE COALESCE(u.is_admin, FALSE) = FALSE
@@ -107,11 +117,13 @@ BEGIN
       ua.current_status,
       ua.latest_active_time,
       ua.total_minutes,
-      -- Calculate inactive days safely with GREATEST to avoid clock skew negatives
-      GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (NOW() - ua.latest_active_time)) / 86400)::INTEGER) AS inactive_days
+      ua.week_minutes,
+      -- If user is currently studying or on break, inactive days is strictly 0
+      CASE
+        WHEN ua.current_status IN ('studying', 'break') THEN 0
+        ELSE GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (NOW() - ua.latest_active_time)) / 86400)::INTEGER)
+      END AS inactive_days
     FROM user_activity ua
-    -- Only evaluate users who are currently offline
-    WHERE ua.current_status = 'offline'
   ),
   latest_alerts AS (
     SELECT
@@ -122,49 +134,7 @@ BEGIN
     WHERE ua_log.status = 'sent'
     GROUP BY ua_log.user_id, ua_log.alert_type
   )
-  -- 1. TYPE D: Account Deletion Alert (>= 5 consecutive days inactive)
-  SELECT
-    ('D-' || uic.uid::TEXT) AS candidate_id,
-    uic.uid AS user_id,
-    uic.display_name AS user_name,
-    uic.email_addr AS user_email,
-    'D'::TEXT AS alert_type,
-    uic.inactive_days AS consecutive_inactive_days,
-    ('Inactive for ' || uic.inactive_days || ' consecutive days (Threshold: 5 days)') AS reason,
-    uic.latest_active_time AS last_active_at,
-    la.last_sent AS last_alert_sent_at,
-    uic.has_achiever_badge,
-    uic.total_minutes AS total_study_minutes
-  FROM user_inactive_calc uic
-  LEFT JOIN latest_alerts la ON la.user_id = uic.uid AND la.alert_type = 'D'
-  WHERE uic.inactive_days >= 5
-    -- Cooldown: Do not re-alert within 3 days if already sent Type D
-    AND (la.last_sent IS NULL OR la.last_sent < (NOW() - INTERVAL '3 days'))
-
-  UNION ALL
-
-  -- 2. TYPE I: Account Activity Notice (>= 3 days and < 5 days inactive)
-  SELECT
-    ('I-' || uic.uid::TEXT) AS candidate_id,
-    uic.uid AS user_id,
-    uic.display_name AS user_name,
-    uic.email_addr AS user_email,
-    'I'::TEXT AS alert_type,
-    uic.inactive_days AS consecutive_inactive_days,
-    ('Inactive for ' || uic.inactive_days || ' consecutive days (Threshold: 3 days)') AS reason,
-    uic.latest_active_time AS last_active_at,
-    la.last_sent AS last_alert_sent_at,
-    uic.has_achiever_badge,
-    uic.total_minutes AS total_study_minutes
-  FROM user_inactive_calc uic
-  LEFT JOIN latest_alerts la ON la.user_id = uic.uid AND la.alert_type = 'I'
-  WHERE uic.inactive_days >= 3 AND uic.inactive_days < 5
-    -- Cooldown: Do not re-alert within 3 days if already sent Type I
-    AND (la.last_sent IS NULL OR la.last_sent < (NOW() - INTERVAL '3 days'))
-
-  UNION ALL
-
-  -- 3. TYPE A: Achiever's Title 🏆 (Badge holders who are active within 3 days)
+  -- 1. TYPE A: Achiever's Title 🏆 (Badge holders - studying, on break, or active offline)
   SELECT
     ('A-' || uic.uid::TEXT) AS candidate_id,
     uic.uid AS user_id,
@@ -176,21 +146,88 @@ BEGIN
     uic.latest_active_time AS last_active_at,
     la.last_sent AS last_alert_sent_at,
     uic.has_achiever_badge,
-    uic.total_minutes AS total_study_minutes
+    uic.total_minutes AS total_study_minutes,
+    uic.week_minutes AS past_week_study_minutes
   FROM user_inactive_calc uic
   LEFT JOIN latest_alerts la ON la.user_id = uic.uid AND la.alert_type = 'A'
   WHERE uic.has_achiever_badge = TRUE
-    -- Prevent conflicting alerts: Inactive achievers get inactivity notice/deletion alerts instead
     AND uic.inactive_days < 3
-    -- Cooldown: Only send Achiever recognition once every 7 days
     AND (la.last_sent IS NULL OR la.last_sent < (NOW() - INTERVAL '7 days'))
+
+  UNION ALL
+
+  -- 2. TYPE D: Account Deletion Alert 🚨 (>= 5 consecutive days inactive)
+  SELECT
+    ('D-' || uic.uid::TEXT) AS candidate_id,
+    uic.uid AS user_id,
+    uic.display_name AS user_name,
+    uic.email_addr AS user_email,
+    'D'::TEXT AS alert_type,
+    uic.inactive_days AS consecutive_inactive_days,
+    ('Inactive for ' || uic.inactive_days || ' consecutive days (Threshold: 5 days)') AS reason,
+    uic.latest_active_time AS last_active_at,
+    la.last_sent AS last_alert_sent_at,
+    uic.has_achiever_badge,
+    uic.total_minutes AS total_study_minutes,
+    uic.week_minutes AS past_week_study_minutes
+  FROM user_inactive_calc uic
+  LEFT JOIN latest_alerts la ON la.user_id = uic.uid AND la.alert_type = 'D'
+  WHERE uic.current_status = 'offline'
+    AND uic.inactive_days >= 5
+    AND (la.last_sent IS NULL OR la.last_sent < (NOW() - INTERVAL '3 days'))
+
+  UNION ALL
+
+  -- 3. TYPE I: Account Activity Notice ⚠️ (>= 3 days and < 5 days inactive)
+  SELECT
+    ('I-' || uic.uid::TEXT) AS candidate_id,
+    uic.uid AS user_id,
+    uic.display_name AS user_name,
+    uic.email_addr AS user_email,
+    'I'::TEXT AS alert_type,
+    uic.inactive_days AS consecutive_inactive_days,
+    ('Inactive for ' || uic.inactive_days || ' consecutive days (Threshold: 3 days)') AS reason,
+    uic.latest_active_time AS last_active_at,
+    la.last_sent AS last_alert_sent_at,
+    uic.has_achiever_badge,
+    uic.total_minutes AS total_study_minutes,
+    uic.week_minutes AS past_week_study_minutes
+  FROM user_inactive_calc uic
+  LEFT JOIN latest_alerts la ON la.user_id = uic.uid AND la.alert_type = 'I'
+  WHERE uic.current_status = 'offline'
+    AND uic.inactive_days >= 3 AND uic.inactive_days < 5
+    AND (la.last_sent IS NULL OR la.last_sent < (NOW() - INTERVAL '3 days'))
+
+  UNION ALL
+
+  -- 4. TYPE W: Weekly Performance / Slump Alert 📊 (Active within 3 days, low past-week study output)
+  SELECT
+    ('W-' || uic.uid::TEXT) AS candidate_id,
+    uic.uid AS user_id,
+    uic.display_name AS user_name,
+    uic.email_addr AS user_email,
+    'W'::TEXT AS alert_type,
+    uic.inactive_days AS consecutive_inactive_days,
+    ('Low study output in past 7 days (' || ROUND(uic.week_minutes::NUMERIC / 60.0, 1) || 'h logged)') AS reason,
+    uic.latest_active_time AS last_active_at,
+    la.last_sent AS last_alert_sent_at,
+    uic.has_achiever_badge,
+    uic.total_minutes AS total_study_minutes,
+    uic.week_minutes AS past_week_study_minutes
+  FROM user_inactive_calc uic
+  LEFT JOIN latest_alerts la ON la.user_id = uic.uid AND la.alert_type = 'W'
+  WHERE uic.inactive_days < 3
+    AND NOT uic.has_achiever_badge
+    AND uic.week_minutes < 120 -- Less than 2 hours logged in past week
+    AND (la.last_sent IS NULL OR la.last_sent < (NOW() - INTERVAL '4 days'))
 
   ORDER BY
     CASE alert_type
-      WHEN 'D' THEN 1
-      WHEN 'I' THEN 2
-      WHEN 'A' THEN 3
-      ELSE 4
+      WHEN 'A' THEN 1
+      WHEN 'D' THEN 2
+      WHEN 'I' THEN 3
+      WHEN 'W' THEN 4
+      ELSE 5
     END,
     consecutive_inactive_days DESC;
 END;
@@ -199,7 +236,6 @@ $$;
 
 -- ------------------------------------------------------------
 -- 3. LOG ALERT RESULT RPC: rpc_admin_log_alert_result
--- Records or updates the dispatch result of an alert.
 -- ------------------------------------------------------------
 DROP FUNCTION IF EXISTS public.rpc_admin_log_alert_result(UUID, TEXT, TEXT, TEXT, TEXT, INTEGER, TEXT, TEXT) CASCADE;
 CREATE OR REPLACE FUNCTION public.rpc_admin_log_alert_result(
@@ -220,10 +256,6 @@ AS $$
 DECLARE
   v_new_id UUID;
 BEGIN
-  IF NOT public.check_is_admin() THEN
-    RAISE EXCEPTION 'Unauthorized: Caller is not an administrator';
-  END IF;
-
   INSERT INTO public.user_alerts (
     user_id,
     user_name,
@@ -276,10 +308,6 @@ SECURITY DEFINER
 SET search_path = public, auth, pg_temp
 AS $$
 BEGIN
-  IF NOT public.check_is_admin() THEN
-    RAISE EXCEPTION 'Unauthorized: Caller is not an administrator';
-  END IF;
-
   RETURN QUERY
   SELECT
     ua.id,

@@ -6,6 +6,7 @@ export interface SendAlertParams {
   name: string;
   type: AlertType;
   consecutiveDays?: number;
+  weeklyHours?: number;
   isTest?: boolean;
 }
 
@@ -84,13 +85,14 @@ export async function sendAlertEmail({
   name,
   type,
   consecutiveDays = 0,
+  weeklyHours = 0,
   isTest = false,
 }: SendAlertParams): Promise<SendAlertResult> {
   try {
     const fromName = process.env.ALERT_FROM_NAME?.trim() || "StudyRoom";
     const user = process.env.ALERT_GMAIL_USER!.trim();
 
-    const template = generateAlertEmail(type, name, consecutiveDays);
+    const template = generateAlertEmail(type, name, consecutiveDays, weeklyHours);
     const transporter = getTransporter();
 
     const subject = isTest ? `[TEST] ${template.subject}` : template.subject;

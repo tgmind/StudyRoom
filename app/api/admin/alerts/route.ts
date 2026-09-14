@@ -124,7 +124,7 @@ export async function POST(request: NextRequest) {
 
     // A. Send Test Email
     if (action === "send_test") {
-      const { to, name, type, consecutiveDays } = body;
+      const { to, name, type, consecutiveDays, weeklyHours } = body;
       if (!to || !type) {
         return NextResponse.json({ error: "Recipient 'to' and 'type' are required for test email" }, { status: 400 });
       }
@@ -134,6 +134,7 @@ export async function POST(request: NextRequest) {
         name: String(name || "Student").trim(),
         type: type as AlertType,
         consecutiveDays: Number(consecutiveDays || 0),
+        weeklyHours: Number(weeklyHours || 0),
         isTest: true,
       });
 
@@ -158,7 +159,7 @@ export async function POST(request: NextRequest) {
       const results = [];
 
       for (const item of candidates) {
-        const { candidate_id, user_id, user_name, user_email, alert_type, consecutive_inactive_days, reason } = item;
+        const { candidate_id, user_id, user_name, user_email, alert_type, consecutive_inactive_days, reason, past_week_study_minutes } = item;
 
         // Attempt dispatch
         const sendResult = await sendAlertEmail({
@@ -166,6 +167,7 @@ export async function POST(request: NextRequest) {
           name: user_name,
           type: alert_type as AlertType,
           consecutiveDays: consecutive_inactive_days,
+          weeklyHours: Math.round((past_week_study_minutes || 0) / 60),
           isTest: false,
         });
 
