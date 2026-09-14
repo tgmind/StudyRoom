@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { isMailerConfigured, sendAlertEmail } from "@/lib/email/mailer";
 import { AlertType } from "@/lib/email/templates";
 import { isAdminEmail, isAdminUserId } from "@/hooks/useAdmin";
+import { processWeeklyAchieverAutomation, isMondayInTimezone, getMondayDateString } from "@/lib/email/achieverAutomation";
+import { getWeekStartTimestamp } from "@/lib/time/format";
 
 type RpcCaller = {
   rpc: (name: string, params?: Record<string, unknown>) => Promise<{ data: unknown; error: Error | null }>;
@@ -75,7 +77,61 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ history: data || [] });
     }
 
-    // 3. Default: Scan candidates
+    // 3. Fetch weekly achiever status & Monday automation info
+    if (action === "achiever_status") {
+      const timezone = process.env.NEXT_PUBLIC_APP_TIMEZONE || "Asia/Kolkata";
+      const now = new Date();
+      const isMonday = isMondayInTimezone(now, timezone);
+      const weekKey = getMondayDateString(now, timezone);
+      const weekStartMs = getWeekStartTimestamp(now, timezone);
+      const weekStartIso = new Date(weekStartMs).toISOString();
+
+      // Check if Type A was sent since this Monday
+      const { data: sentAlerts } = await (auth.supabase as unknown as {
+        from: (t: string) => {
+          select: (cols: string) => {
+            eq: (col: string, val: string) => {
+              eq: (col2: string, val2: string) => {
+                gte: (col3: string, val3: string) => Promise<{ data: unknown[] | null; error: Error | null }>;
+              };
+            };
+          };
+        };
+      })
+        .from("user_alerts")
+        .select("id, sent_at, user_name, user_email")
+        .eq("alert_type", "A")
+        .eq("status", "sent")
+        .gte("sent_at", weekStartIso);
+
+      const alreadySentThisWeek = Array.isArray(sentAlerts) && sentAlerts.length > 0;
+      const lastSentAlert = alreadySentThisWeek ? sentAlerts[0] : null;
+
+      // Query current achiever from RPC
+      const { data: achieverData } = await (auth.supabase as unknown as RpcCaller).rpc(
+        "rpc_get_current_weekly_achiever",
+        { p_timezone: timezone }
+      );
+
+      return NextResponse.json({
+        isMonday,
+        weekKey,
+        alreadySentThisWeek,
+        lastSentAlert,
+        achiever: Array.isArray(achieverData) && achieverData.length > 0 ? achieverData[0] : null,
+      });
+    }
+
+    // 4. Fetch per-user alert tracking stats
+    if (action === "user_stats") {
+      const { data, error } = await (auth.supabase as unknown as RpcCaller).rpc("rpc_admin_get_user_alert_stats");
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+      return NextResponse.json({ stats: data || [] });
+    }
+
+    // 5. Default: Scan candidates
     const { data, error } = await (auth.supabase as unknown as RpcCaller).rpc("rpc_admin_scan_alert_candidates", {
       p_admin_email: auth.user?.email || null,
     });
@@ -212,6 +268,19 @@ export async function POST(request: NextRequest) {
         totalFailed,
         results,
       });
+    }
+
+    // C. Process Monday Achiever Email (Manual or Automated)
+    if (action === "process_achiever") {
+      const { force } = body;
+      const timezone = process.env.NEXT_PUBLIC_APP_TIMEZONE || "Asia/Kolkata";
+      const result = await processWeeklyAchieverAutomation({
+        force: Boolean(force),
+        timezone,
+        supabaseOverride: auth.supabase,
+      });
+
+      return NextResponse.json(result);
     }
 
     return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });

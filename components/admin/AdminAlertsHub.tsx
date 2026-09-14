@@ -41,6 +41,9 @@ export interface AlertCandidate {
   has_achiever_badge: boolean;
   total_study_minutes: number;
   past_week_study_minutes: number;
+  total_alerts_sent?: number;
+  alert_counts?: { A: number; W: number; I: number; D: number };
+  last_alert_type?: string;
 }
 
 interface AlertHistoryItem {
@@ -72,6 +75,31 @@ interface PlatformUserOption {
   created_at: string;
   weekly_minutes: number;
   total_minutes: number;
+  total_alerts_sent?: number;
+  alert_counts?: { A: number; W: number; I: number; D: number };
+  last_alert_type?: string;
+}
+
+interface WeeklyAchieverStatus {
+  isMonday: boolean;
+  weekKey: string;
+  alreadySentThisWeek: boolean;
+  lastSentAlert?: {
+    id: string;
+    sent_at: string;
+    user_name: string;
+    user_email: string;
+  } | null;
+  achiever?: {
+    user_id: string;
+    display_name: string;
+    email: string;
+    has_achiever_badge: boolean;
+    week_start_iso?: string;
+    already_sent_this_week?: boolean;
+    total_alerts_sent?: number;
+    alert_counts?: { A: number; W: number; I: number; D: number };
+  } | null;
 }
 
 interface AdminAlertsHubProps {
@@ -90,6 +118,11 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
   const [activeTab, setActiveTab] = useState<TabType>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // Weekly Achiever Automation state
+  const [achieverStatus, setAchieverStatus] = useState<WeeklyAchieverStatus | null>(null);
+  const [processingAchiever, setProcessingAchiever] = useState(false);
+  const [achieverFeedback, setAchieverFeedback] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
 
   // Direct Member Alert Modal state
   const [isDirectAlertOpen, setIsDirectAlertOpen] = useState(false);
@@ -148,15 +181,17 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
       setRefreshing(true);
       const headers = await getAuthHeaders();
 
-      // 1. Fetch Mailer Config & History
-      const [configRes, historyRes, rpcRes, usersRes, sessionsRes] = await Promise.allSettled([
+      // 1. Fetch Mailer Config, History, Achiever Status & Database tables
+      const [configRes, historyRes, achieverRes, rpcRes, usersRes, sessionsRes, alertsRes] = await Promise.allSettled([
         fetch("/api/admin/alerts?action=config", { headers }),
         fetch("/api/admin/alerts?action=history&limit=50", { headers }),
+        fetch("/api/admin/alerts?action=achiever_status", { headers }),
         (supabase as any).rpc("rpc_admin_scan_alert_candidates", {
           p_admin_email: adminEmail || "sa@admin.tg",
         }),
         supabase.from("users").select("*"),
         supabase.from("study_sessions").select("id, user_id, start_time, end_time, duration_minutes"),
+        supabase.from("user_alerts").select("user_id, alert_type, status, sent_at"),
       ]);
 
       if (configRes.status === "fulfilled" && configRes.value.ok) {
@@ -174,11 +209,48 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
         }
       }
 
+      if (achieverRes.status === "fulfilled" && achieverRes.value.ok) {
+        const achJson = await achieverRes.value.json();
+        setAchieverStatus(achJson);
+      }
+
+      // Compute aggregated alert counts per user from live user_alerts
+      const userAlertsMap: Record<
+        string,
+        { total: number; A: number; W: number; I: number; D: number; lastSentAt?: string; lastType?: string }
+      > = {};
+
+      const rawAlerts = (alertsRes.status === "fulfilled" && alertsRes.value.data) ? (alertsRes.value.data as any[]) : [];
+      rawAlerts.forEach((a) => {
+        if (a.status === "sent") {
+          if (!userAlertsMap[a.user_id]) {
+            userAlertsMap[a.user_id] = { total: 0, A: 0, W: 0, I: 0, D: 0 };
+          }
+          userAlertsMap[a.user_id].total += 1;
+          if (a.alert_type === "A") userAlertsMap[a.user_id].A += 1;
+          if (a.alert_type === "W") userAlertsMap[a.user_id].W += 1;
+          if (a.alert_type === "I") userAlertsMap[a.user_id].I += 1;
+          if (a.alert_type === "D") userAlertsMap[a.user_id].D += 1;
+          if (!userAlertsMap[a.user_id].lastSentAt || new Date(a.sent_at).getTime() > new Date(userAlertsMap[a.user_id].lastSentAt!).getTime()) {
+            userAlertsMap[a.user_id].lastSentAt = a.sent_at;
+            userAlertsMap[a.user_id].lastType = a.alert_type;
+          }
+        }
+      });
+
       // Check RPC response
       let candidatesList: AlertCandidate[] = [];
 
       if (rpcRes.status === "fulfilled" && !rpcRes.value.error && Array.isArray(rpcRes.value.data) && rpcRes.value.data.length > 0) {
-        candidatesList = rpcRes.value.data;
+        candidatesList = rpcRes.value.data.map((c: any) => {
+          const stats = userAlertsMap[c.user_id] || { total: c.total_alerts_sent || 0, A: c.alert_counts?.A || 0, W: c.alert_counts?.W || 0, I: c.alert_counts?.I || 0, D: c.alert_counts?.D || 0 };
+          return {
+            ...c,
+            total_alerts_sent: stats.total,
+            alert_counts: { A: stats.A, W: stats.W, I: stats.I, D: stats.D },
+            last_alert_type: stats.lastType || c.last_alert_type,
+          };
+        });
         setNeedsMigration(false);
       }
 
@@ -205,6 +277,14 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
             }
           });
 
+          const stats = userAlertsMap[u.id] || {
+            total: u.total_alerts_sent || 0,
+            A: u.alert_counts?.A || 0,
+            W: u.alert_counts?.W || 0,
+            I: u.alert_counts?.I || 0,
+            D: u.alert_counts?.D || 0,
+          };
+
           return {
             id: u.id,
             display_name: u.display_name,
@@ -214,6 +294,9 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
             created_at: u.created_at,
             weekly_minutes: weekMins,
             total_minutes: totalMins,
+            total_alerts_sent: stats.total,
+            alert_counts: { A: stats.A, W: stats.W, I: stats.I, D: stats.D },
+            last_alert_type: stats.lastType || u.last_alert_type,
           };
         });
 
@@ -224,6 +307,7 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
           const computed: AlertCandidate[] = [];
 
           nonAdmin.forEach((u) => {
+            const stats = userAlertsMap[u.id] || { total: 0, A: 0, W: 0, I: 0, D: 0 };
             const userSessions = rawSessions.filter((s) => s.user_id === u.id);
             let maxTime: number | null = null;
             let totalMins = 0;
@@ -260,10 +344,13 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
                 consecutive_inactive_days: inactiveDays,
                 reason: "Active Achiever Title holder",
                 last_active_at: new Date(latestActive).toISOString(),
-                last_alert_sent_at: null,
+                last_alert_sent_at: stats.lastSentAt || null,
                 has_achiever_badge: true,
                 total_study_minutes: totalMins,
                 past_week_study_minutes: weekMins,
+                total_alerts_sent: stats.total,
+                alert_counts: { A: stats.A, W: stats.W, I: stats.I, D: stats.D },
+                last_alert_type: stats.lastType || u.last_alert_type,
               });
             }
 
@@ -278,10 +365,13 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
                 consecutive_inactive_days: inactiveDays,
                 reason: `Inactive for ${inactiveDays} consecutive days (Threshold: 5 days)`,
                 last_active_at: new Date(latestActive).toISOString(),
-                last_alert_sent_at: null,
+                last_alert_sent_at: stats.lastSentAt || null,
                 has_achiever_badge: u.has_achiever_badge,
                 total_study_minutes: totalMins,
                 past_week_study_minutes: weekMins,
+                total_alerts_sent: stats.total,
+                alert_counts: { A: stats.A, W: stats.W, I: stats.I, D: stats.D },
+                last_alert_type: stats.lastType || u.last_alert_type,
               });
             }
             // 3. TYPE I: Account Activity Notice ⚠️ (3 to 4 consecutive days offline)
@@ -295,10 +385,13 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
                 consecutive_inactive_days: inactiveDays,
                 reason: `Inactive for ${inactiveDays} consecutive days (Threshold: 3 days)`,
                 last_active_at: new Date(latestActive).toISOString(),
-                last_alert_sent_at: null,
+                last_alert_sent_at: stats.lastSentAt || null,
                 has_achiever_badge: u.has_achiever_badge,
                 total_study_minutes: totalMins,
                 past_week_study_minutes: weekMins,
+                total_alerts_sent: stats.total,
+                alert_counts: { A: stats.A, W: stats.W, I: stats.I, D: stats.D },
+                last_alert_type: stats.lastType || u.last_alert_type,
               });
             }
             // 4. TYPE W: Weekly Performance & Momentum Alert 📊 (Active within 3 days, low past week output)
@@ -312,10 +405,13 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
                 consecutive_inactive_days: inactiveDays,
                 reason: `Low study output in past 7 days (${(weekMins / 60).toFixed(1)}h logged)`,
                 last_active_at: new Date(latestActive).toISOString(),
-                last_alert_sent_at: null,
+                last_alert_sent_at: stats.lastSentAt || null,
                 has_achiever_badge: false,
                 total_study_minutes: totalMins,
                 past_week_study_minutes: weekMins,
+                total_alerts_sent: stats.total,
+                alert_counts: { A: stats.A, W: stats.W, I: stats.I, D: stats.D },
+                last_alert_type: stats.lastType || u.last_alert_type,
               });
             }
           });
@@ -428,6 +524,51 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
       setTestErrorMessage(err instanceof Error ? err.message : "Failed to send test email");
     } finally {
       setSendingTest(false);
+    }
+  };
+
+  // Monday Weekly Achiever Automation Trigger
+  const handleRunWeeklyAchiever = async (force = false) => {
+    try {
+      setProcessingAchiever(true);
+      setAchieverFeedback(null);
+      const headers = await getAuthHeaders();
+      const res = await fetch("/api/admin/alerts", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          action: "process_achiever",
+          force,
+        }),
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        if (json.processed) {
+          setAchieverFeedback({
+            type: "success",
+            message: `🎉 Success! Weekly Achiever Congratulations email dispatched to ${json.winner?.name} (${json.winner?.email}) for week of ${json.weekKey}.`,
+          });
+        } else {
+          setAchieverFeedback({
+            type: "info",
+            message: json.reason || "Weekly achiever check completed (no dispatch required).",
+          });
+        }
+        await fetchData();
+      } else {
+        setAchieverFeedback({
+          type: "error",
+          message: json.error || "Failed to execute weekly achiever automation.",
+        });
+      }
+    } catch (err: any) {
+      setAchieverFeedback({
+        type: "error",
+        message: err?.message || "Error running weekly achiever automation.",
+      });
+    } finally {
+      setProcessingAchiever(false);
     }
   };
 
@@ -755,6 +896,83 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
         </div>
       </div>
 
+      {/* 3.5. MONDAY ACHIEVER AUTOMATION BANNER */}
+      <div className="p-4 rounded-xl border border-indigo-500/30 bg-gradient-to-r from-indigo-950/40 via-purple-950/30 to-zinc-900/60 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="space-y-1.5 flex-1">
+          <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+            <span className="text-xl">👑</span>
+            <span className="text-sm font-bold text-zinc-100">
+              Monday Achiever Automation
+            </span>
+            <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+              {achieverStatus?.isMonday ? "🗓️ Today is Monday" : "Automated Every Monday"}
+            </span>
+            {achieverStatus?.alreadySentThisWeek ? (
+              <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3" /> Dispatched for Week of {achieverStatus.weekKey}
+              </span>
+            ) : achieverStatus?.isMonday ? (
+              <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                <Zap className="w-3 h-3" /> Ready for Monday Dispatch
+              </span>
+            ) : null}
+          </div>
+
+          <div className="text-xs text-zinc-300 flex items-center gap-2 flex-wrap">
+            {achieverStatus?.achiever ? (
+              <span>
+                Current Achiever: <strong className="text-amber-300">{achieverStatus.achiever.display_name}</strong>{" "}
+                <span className="font-mono text-zinc-400">({achieverStatus.achiever.email})</span>
+              </span>
+            ) : (
+              <span className="text-zinc-400">Evaluating previous week top performer...</span>
+            )}
+            <span>&bull;</span>
+            <span className="text-zinc-400">
+              {achieverStatus?.alreadySentThisWeek
+                ? "Locked: Next congratulations email will be sent automatically on next Monday."
+                : achieverStatus?.isMonday
+                ? "Triggered automatically when data resets, or run now below."
+                : "Fires once per week on Mondays when the weekly leaderboard resets."}
+            </span>
+          </div>
+
+          {achieverFeedback && (
+            <div
+              className={`text-xs mt-2 px-2.5 py-1.5 rounded-md border ${
+                achieverFeedback.type === "success"
+                  ? "bg-emerald-950/40 border-emerald-500/40 text-emerald-300"
+                  : achieverFeedback.type === "error"
+                  ? "bg-rose-950/40 border-rose-500/40 text-rose-300"
+                  : "bg-indigo-950/40 border-indigo-500/40 text-indigo-300"
+              }`}
+            >
+              {achieverFeedback.message}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={() => handleRunWeeklyAchiever(false)}
+            disabled={processingAchiever || !mailerConfig?.configured}
+            className="px-3 py-2 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1.5 transition-all shadow-sm"
+          >
+            {processingAchiever ? (
+              <>
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                <span>Checking...</span>
+              </>
+            ) : (
+              <>
+                <Zap className="w-3.5 h-3.5" />
+                <span>Run Monday Check</span>
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
       {/* 4. FILTER TABS & SEARCH */}
       {activeTab !== "history" ? (
         <div className="space-y-4">
@@ -844,6 +1062,7 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
                     <th className="p-3">Student</th>
                     <th className="p-3">Alert Trigger</th>
                     <th className="p-3">Activity &amp; Weekly Record</th>
+                    <th className="p-3">Alerts History</th>
                     <th className="p-3">Last Active</th>
                     <th className="p-3 text-right">Actions</th>
                   </tr>
@@ -851,14 +1070,14 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
                 <tbody className="divide-y divide-zinc-800/60">
                   {loading ? (
                     <tr>
-                      <td colSpan={6} className="p-8 text-center text-zinc-500">
+                      <td colSpan={7} className="p-8 text-center text-zinc-500">
                         <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-zinc-400" />
                         Scanning students, inactivity records &amp; weekly performance...
                       </td>
                     </tr>
                   ) : filteredCandidates.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="p-8 text-center text-zinc-500">
+                      <td colSpan={7} className="p-8 text-center text-zinc-500">
                         No students currently match this filter. Everything is up to date!
                       </td>
                     </tr>
@@ -910,6 +1129,53 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
                                 <span>All-time: {(candidate.total_study_minutes / 60).toFixed(1)}h</span>
                               </div>
                             </div>
+                          </td>
+                          <td className="p-3">
+                            {candidate.total_alerts_sent && candidate.total_alerts_sent > 0 ? (
+                              <div className="space-y-1">
+                                <div className="flex items-center space-x-1">
+                                  <span className="text-xs font-semibold text-zinc-200">
+                                    {candidate.total_alerts_sent} sent
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1 flex-wrap text-[10px]">
+                                  {(candidate.alert_counts?.A || 0) > 0 && (
+                                    <span
+                                      title="Achiever's Title Congratulations"
+                                      className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-medium"
+                                    >
+                                      🏆 {candidate.alert_counts?.A}
+                                    </span>
+                                  )}
+                                  {(candidate.alert_counts?.W || 0) > 0 && (
+                                    <span
+                                      title="Weekly Momentum / Slump Review"
+                                      className="px-1.5 py-0.5 rounded bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 font-medium"
+                                    >
+                                      📊 {candidate.alert_counts?.W}
+                                    </span>
+                                  )}
+                                  {(candidate.alert_counts?.I || 0) > 0 && (
+                                    <span
+                                      title="3-Day Activity Notice"
+                                      className="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 font-medium"
+                                    >
+                                      ⚠️ {candidate.alert_counts?.I}
+                                    </span>
+                                  )}
+                                  {(candidate.alert_counts?.D || 0) > 0 && (
+                                    <span
+                                      title="5-Day Account Deletion Notice"
+                                      className="px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-300 border border-rose-500/30 font-medium"
+                                    >
+                                      🚨 {candidate.alert_counts?.D}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-zinc-500">0 sent</span>
+                            )}
                           </td>
                           <td className="p-3 text-zinc-400">
                             {new Date(candidate.last_active_at).toLocaleDateString("en-IN", {
@@ -1048,6 +1314,32 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
                 </option>
               ))}
             </select>
+
+            {(() => {
+              const selectedUser = allUsers.find((u) => u.id === (directSelectedUserId || allUsers[0]?.id));
+              if (!selectedUser) return null;
+              const sent = selectedUser.total_alerts_sent || 0;
+              const c = selectedUser.alert_counts || { A: 0, W: 0, I: 0, D: 0 };
+              return (
+                <div className="mt-2 p-2.5 rounded-lg bg-zinc-900/90 border border-zinc-800 text-[11px] text-zinc-300">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-semibold text-zinc-200">Alert Tracking History:</span>
+                    <span className="px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-200 font-bold">
+                      {sent} total sent
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap text-zinc-400">
+                    <span className="text-emerald-400">🏆 Achiever: {c.A}</span>
+                    <span>&bull;</span>
+                    <span className="text-indigo-400">📊 Weekly Slump: {c.W}</span>
+                    <span>&bull;</span>
+                    <span className="text-amber-400">⚠️ Notice: {c.I}</span>
+                    <span>&bull;</span>
+                    <span className="text-rose-400">🚨 Deletion: {c.D}</span>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           <div>
