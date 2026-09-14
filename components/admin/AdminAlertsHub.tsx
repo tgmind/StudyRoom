@@ -22,6 +22,7 @@ import {
   UserPlus,
   BarChart3,
   TrendingUp,
+  RotateCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -69,6 +70,7 @@ interface MailerConfigStatus {
 interface PlatformUserOption {
   id: string;
   display_name: string;
+  email: string;
   current_status: string;
   has_achiever_badge: boolean;
   last_offline_at: string | null;
@@ -146,6 +148,11 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
   >([]);
   const [batchFinished, setBatchFinished] = useState(false);
 
+  // Reset alert counts state
+  const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
+  const [resettingAlerts, setResettingAlerts] = useState(false);
+  const [resetFeedback, setResetFeedback] = useState<{ message: string; type: "success" | "error" } | null>(null);
+
   // Migration requirement prompt
   const [needsMigration, setNeedsMigration] = useState(false);
   const [showConfigHelp, setShowConfigHelp] = useState(false);
@@ -181,11 +188,13 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
       setRefreshing(true);
       const headers = await getAuthHeaders();
 
-      // 1. Fetch Mailer Config, History, Achiever Status & Database tables
-      const [configRes, historyRes, achieverRes, rpcRes, usersRes, sessionsRes, alertsRes] = await Promise.allSettled([
+      // 1. Fetch Mailer Config, History, Achiever Status, Candidates & Platform Members from Server API
+      const [configRes, historyRes, achieverRes, candidatesApiRes, membersApiRes, rpcRes, usersRes, sessionsRes, alertsRes] = await Promise.allSettled([
         fetch("/api/admin/alerts?action=config", { headers }),
         fetch("/api/admin/alerts?action=history&limit=100", { headers }),
         fetch("/api/admin/alerts?action=achiever_status", { headers }),
+        fetch("/api/admin/alerts?action=candidates", { headers }),
+        fetch("/api/admin/alerts?action=members", { headers }),
         (supabase as any).rpc("rpc_admin_scan_alert_candidates", {
           p_admin_email: adminEmail || "studyaliveapp@gmail.com",
         }),
@@ -206,11 +215,38 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
         }
       }
 
+      // Build a definitive map of real signup emails from auth.users (via members API or users table)
+      const emailByUserId: Record<string, string> = {};
+
+      if (membersApiRes.status === "fulfilled" && membersApiRes.value.ok) {
+        const memJson = await membersApiRes.value.json();
+        if (Array.isArray(memJson.members)) {
+          memJson.members.forEach((m: any) => {
+            if (m.email && !m.email.includes("@student.studyroom")) {
+              emailByUserId[m.id] = m.email.trim();
+            }
+          });
+        }
+      }
+
+      if (usersRes.status === "fulfilled" && Array.isArray(usersRes.value.data)) {
+        (usersRes.value.data as any[]).forEach((u: any) => {
+          if (u.email && !u.email.includes("@student.studyroom") && !emailByUserId[u.id]) {
+            emailByUserId[u.id] = u.email.trim();
+          }
+        });
+      }
+
       let fetchedHistory: AlertHistoryItem[] = [];
       if (historyRes.status === "fulfilled" && historyRes.value.ok) {
         const histJson = await historyRes.value.json();
         if (Array.isArray(histJson.history) && histJson.history.length > 0) {
-          fetchedHistory = histJson.history;
+          fetchedHistory = histJson.history.map((h: any) => ({
+            ...h,
+            user_email: (h.user_email && !h.user_email.includes("@student.studyroom"))
+              ? h.user_email.trim()
+              : (emailByUserId[h.user_id] || ""),
+          }));
           setHistory(fetchedHistory);
         }
       }
@@ -226,7 +262,9 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
           id: row.id || `alert-${Math.random()}`,
           user_id: row.user_id,
           user_name: row.user_name || "Student",
-          user_email: row.user_email || "student@studyroom",
+          user_email: (row.user_email && !row.user_email.includes("@student.studyroom"))
+            ? row.user_email.trim()
+            : (emailByUserId[row.user_id] || ""),
           alert_type: row.alert_type as AlertType,
           status: row.status as any,
           consecutive_inactive_days: row.consecutive_inactive_days || 0,
@@ -240,6 +278,9 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
 
       if (achieverRes.status === "fulfilled" && achieverRes.value.ok) {
         const achJson = await achieverRes.value.json();
+        if (achJson?.achiever && achJson.achiever.email?.includes("@student.studyroom")) {
+          achJson.achiever.email = emailByUserId[achJson.achiever.user_id] || "";
+        }
         setAchieverStatus(achJson);
       }
 
@@ -267,14 +308,34 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
         }
       });
 
-      // Check RPC response
+      // Check Server Candidates API response first, then RPC
       let candidatesList: AlertCandidate[] = [];
 
-      if (rpcRes.status === "fulfilled" && !rpcRes.value.error && Array.isArray(rpcRes.value.data) && rpcRes.value.data.length > 0) {
+      if (candidatesApiRes.status === "fulfilled" && candidatesApiRes.value.ok) {
+        const candJson = await candidatesApiRes.value.json();
+        if (Array.isArray(candJson.candidates) && candJson.candidates.length > 0) {
+          candidatesList = candJson.candidates.map((c: any) => {
+            const realEmail = emailByUserId[c.user_id] || ((c.user_email && !c.user_email.includes("@student.studyroom")) ? c.user_email.trim() : "");
+            const stats = userAlertsMap[c.user_id] || { total: c.total_alerts_sent || 0, A: c.alert_counts?.A || 0, W: c.alert_counts?.W || 0, I: c.alert_counts?.I || 0, D: c.alert_counts?.D || 0 };
+            return {
+              ...c,
+              user_email: realEmail,
+              total_alerts_sent: stats.total,
+              alert_counts: { A: stats.A, W: stats.W, I: stats.I, D: stats.D },
+              last_alert_type: stats.lastType || c.last_alert_type,
+            };
+          });
+          setNeedsMigration(false);
+        }
+      }
+
+      if (candidatesList.length === 0 && rpcRes.status === "fulfilled" && !rpcRes.value.error && Array.isArray(rpcRes.value.data) && rpcRes.value.data.length > 0) {
         candidatesList = rpcRes.value.data.map((c: any) => {
+          const realEmail = emailByUserId[c.user_id] || ((c.user_email && !c.user_email.includes("@student.studyroom")) ? c.user_email.trim() : "");
           const stats = userAlertsMap[c.user_id] || { total: c.total_alerts_sent || 0, A: c.alert_counts?.A || 0, W: c.alert_counts?.W || 0, I: c.alert_counts?.I || 0, D: c.alert_counts?.D || 0 };
           return {
             ...c,
+            user_email: realEmail,
             total_alerts_sent: stats.total,
             alert_counts: { A: stats.A, W: stats.W, I: stats.I, D: stats.D },
             last_alert_type: stats.lastType || c.last_alert_type,
@@ -284,7 +345,7 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
       }
 
       // 2. Client-side Smart Scanner Fallback
-      // If RPC returned 0 or error, compute candidates directly from users & sessions
+      // If server API / RPC returned 0 or error, compute candidates directly from users & sessions
       if (usersRes.status === "fulfilled" && usersRes.value.data) {
         const rawUsers = usersRes.value.data as any[];
         const rawSessions = (sessionsRes.status === "fulfilled" && sessionsRes.value.data) ? (sessionsRes.value.data as any[]) : [];
@@ -314,9 +375,12 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
             D: u.alert_counts?.D || 0,
           };
 
+          const exactEmail = emailByUserId[u.id] || ((u.email && !u.email.includes("@student.studyroom")) ? u.email.trim() : "");
+
           return {
             id: u.id,
             display_name: u.display_name,
+            email: exactEmail,
             current_status: u.current_status,
             has_achiever_badge: u.has_achiever_badge,
             last_offline_at: u.last_offline_at,
@@ -331,7 +395,7 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
 
         setAllUsers(platformUsersList);
 
-        // If RPC didn't return candidates, compute them from the loaded dataset
+        // If candidates list is still empty, compute from the loaded dataset
         if (candidatesList.length === 0) {
           const computed: AlertCandidate[] = [];
 
@@ -360,7 +424,7 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
               ? 0
               : Math.max(0, Math.floor((now - latestActive) / (1000 * 86400)));
 
-            const userEmail = u.email || `${u.display_name.toLowerCase().replace(/[^a-z0-9]/g, "")}@student.studyroom`;
+            const userEmail = emailByUserId[u.id] || ((u.email && !u.email.includes("@student.studyroom")) ? u.email.trim() : "");
 
             // 1. TYPE A: Achiever Title 🏆 (Badge holders)
             if (u.has_achiever_badge && inactiveDays < 3) {
@@ -506,24 +570,33 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
     return { total, aCount, wCount, iCount, dCount, sentCount };
   }, [candidates, history]);
 
-  // Active Achiever resolution: Uses RPC status or instant client fallback from users
+  // Active Achiever resolution: Uses RPC status or authentic email from users/candidates
   const activeAchiever = useMemo(() => {
-    if (achieverStatus?.achiever) return achieverStatus.achiever;
+    if (achieverStatus?.achiever) {
+      const ach = achieverStatus.achiever;
+      const cleanEmail = (ach.email && !ach.email.includes("@student.studyroom")) ? ach.email.trim() : "";
+      return {
+        ...ach,
+        email: cleanEmail || allUsers.find((u) => u.id === ach.user_id)?.email || "",
+      };
+    }
     const fromUsers = allUsers.find((u) => u.has_achiever_badge);
     if (fromUsers) {
+      const cleanEmail = (fromUsers.email && !fromUsers.email.includes("@student.studyroom")) ? fromUsers.email.trim() : "";
       return {
         user_id: fromUsers.id,
         display_name: fromUsers.display_name,
-        email: `${fromUsers.display_name.toLowerCase().replace(/[^a-z0-9]/g, "")}@student.studyroom`,
+        email: cleanEmail,
         has_achiever_badge: true,
       };
     }
     const fromCand = candidates.find((c) => c.has_achiever_badge || c.alert_type === "A");
     if (fromCand) {
+      const cleanEmail = (fromCand.user_email && !fromCand.user_email.includes("@student.studyroom")) ? fromCand.user_email.trim() : "";
       return {
         user_id: fromCand.user_id,
         display_name: fromCand.user_name,
-        email: fromCand.user_email,
+        email: cleanEmail,
         has_achiever_badge: true,
       };
     }
@@ -702,7 +775,7 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
     const targetUser = allUsers.find((u) => u.id === directSelectedUserId);
     if (!targetUser) return;
 
-    const email = `${targetUser.display_name.toLowerCase().replace(/[^a-z0-9]/g, "")}@student.studyroom`;
+    const email = (targetUser.email && !targetUser.email.includes("@student.studyroom")) ? targetUser.email.trim() : "";
 
     const tempCandidate: AlertCandidate = {
       candidate_id: `DIRECT-${targetUser.id}-${Date.now()}`,
@@ -721,6 +794,65 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
 
     setPreviewCandidate(tempCandidate);
     setIsDirectAlertOpen(false);
+  };
+
+  // Reset all alert counts and clear history across the platform
+  const handleResetAlerts = async () => {
+    try {
+      setResettingAlerts(true);
+      setResetFeedback(null);
+      const headers = await getAuthHeaders();
+      headers["Content-Type"] = "application/json";
+
+      const res = await fetch("/api/admin/alerts", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ action: "reset_alerts" }),
+      });
+
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.error || "Failed to reset alert counts");
+      }
+
+      // Instantly zero out counters in local React state
+      setHistory([]);
+      setCandidates((prev) =>
+        prev.map((c) => ({
+          ...c,
+          total_alerts_sent: 0,
+          alert_counts: { A: 0, W: 0, I: 0, D: 0 },
+          last_alert_sent_at: null,
+          last_alert_type: undefined,
+        }))
+      );
+      setAllUsers((prev) =>
+        prev.map((u) => ({
+          ...u,
+          total_alerts_sent: 0,
+          alert_counts: { A: 0, W: 0, I: 0, D: 0 },
+          last_alert_type: undefined,
+        }))
+      );
+
+      setResetFeedback({
+        message: "All alert history and student sent counters have been successfully reset to 0.",
+        type: "success",
+      });
+      setIsResetConfirmOpen(false);
+
+      // Re-fetch data from database
+      setTimeout(() => {
+        fetchData();
+      }, 500);
+    } catch (err: any) {
+      setResetFeedback({
+        message: err?.message || "Failed to reset alert counts",
+        type: "error",
+      });
+    } finally {
+      setResettingAlerts(false);
+    }
   };
 
   // Helper for type badges (supports compact mobile layout)
@@ -810,6 +942,17 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
             <span>Scan</span>
           </Button>
 
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setIsResetConfirmOpen(true)}
+            className="flex-1 sm:flex-initial border-rose-900/40 text-rose-300 hover:bg-rose-950/40 hover:border-rose-700/50 justify-center whitespace-nowrap text-xs"
+            title="Reset all alert history and student sent counters back to 0"
+          >
+            <RotateCcw className="w-3.5 h-3.5 mr-1.5 text-rose-400 shrink-0" />
+            <span>Reset Counts</span>
+          </Button>
+
           {selectedIds.size > 0 && (
             <Button
               variant="primary"
@@ -827,6 +970,32 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
           )}
         </div>
       </div>
+
+      {/* RESET FEEDBACK ALERT */}
+      {resetFeedback && (
+        <div
+          className={`p-3 rounded-xl border text-xs flex items-center justify-between transition-all ${
+            resetFeedback.type === "success"
+              ? "bg-emerald-950/30 border-emerald-800 text-emerald-300"
+              : "bg-rose-950/30 border-rose-800 text-rose-300"
+          }`}
+        >
+          <div className="flex items-center space-x-2">
+            {resetFeedback.type === "success" ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            ) : (
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+            )}
+            <span>{resetFeedback.message}</span>
+          </div>
+          <button
+            onClick={() => setResetFeedback(null)}
+            className="text-zinc-400 hover:text-zinc-200 text-xs ml-3"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* 2. SYSTEM STATUS / CONFIGURATION ACCORDION */}
       {mailerConfig && (
@@ -1286,8 +1455,10 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
                             <input
                               type="checkbox"
                               checked={isSelected}
+                              disabled={!candidate.user_email}
                               onChange={() => handleToggleSelect(candidate.candidate_id)}
-                              className="rounded bg-zinc-800 border-zinc-700 text-indigo-600 focus:ring-0 cursor-pointer w-4 h-4"
+                              className="rounded bg-zinc-800 border-zinc-700 text-indigo-600 focus:ring-0 cursor-pointer w-4 h-4 disabled:opacity-30 disabled:cursor-not-allowed"
+                              title={!candidate.user_email ? "Cannot select: Student has no email on file" : ""}
                             />
                           </td>
                           <td className="py-3.5 px-4">
@@ -1303,7 +1474,11 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
                                   )}
                                 </div>
                                 <div className="text-[11px] text-zinc-500 font-mono">
-                                  {candidate.user_email}
+                                  {candidate.user_email ? (
+                                    candidate.user_email
+                                  ) : (
+                                    <span className="text-amber-500 font-sans font-medium text-[10px]">⚠️ No Email on File</span>
+                                  )}
                                 </div>
                               </div>
                             </div>
@@ -1394,13 +1569,15 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
                               <Button
                                 variant="secondary"
                                 size="sm"
+                                disabled={!candidate.user_email}
                                 onClick={() => {
                                   setSelectedIds(new Set([candidate.candidate_id]));
                                   setBatchFinished(false);
                                   setBatchResults([]);
                                   setIsBatchModalOpen(true);
                                 }}
-                                className="h-8 px-2.5 text-xs border-indigo-500/30 text-indigo-300 hover:bg-indigo-950/30"
+                                className="h-8 px-2.5 text-xs border-indigo-500/30 text-indigo-300 hover:bg-indigo-950/30 disabled:opacity-30 disabled:cursor-not-allowed"
+                                title={!candidate.user_email ? "Cannot send: Student has no email on file" : "Send Alert"}
                               >
                                 <Send className="w-3 h-3 mr-1 text-indigo-400" />
                                 <span>Send</span>
@@ -1466,8 +1643,9 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
                             <input
                               type="checkbox"
                               checked={isSelected}
+                              disabled={!candidate.user_email}
                               onChange={() => handleToggleSelect(candidate.candidate_id)}
-                              className="rounded bg-zinc-800 border-zinc-700 text-indigo-600 focus:ring-0 w-4 h-4 shrink-0 cursor-pointer"
+                              className="rounded bg-zinc-800 border-zinc-700 text-indigo-600 focus:ring-0 w-4 h-4 shrink-0 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                             />
                             <div className="w-8 h-8 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center font-bold text-xs text-zinc-200 shrink-0">
                               {candidate.user_name.charAt(0).toUpperCase()}
@@ -1480,7 +1658,11 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
                                 )}
                               </div>
                               <div className="text-[10px] sm:text-[11px] text-zinc-500 font-mono truncate">
-                                {candidate.user_email}
+                                {candidate.user_email ? (
+                                  candidate.user_email
+                                ) : (
+                                  <span className="text-amber-500 font-sans font-medium text-[9px]">⚠️ No Email on File</span>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -1561,13 +1743,15 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
                           <Button
                             variant="secondary"
                             size="sm"
+                            disabled={!candidate.user_email}
                             onClick={() => {
                               setSelectedIds(new Set([candidate.candidate_id]));
                               setBatchFinished(false);
                               setBatchResults([]);
                               setIsBatchModalOpen(true);
                             }}
-                            className="flex-1 h-8 text-xs border-indigo-500/40 text-indigo-300 hover:bg-indigo-950/40 justify-center"
+                            className="flex-1 h-8 text-xs border-indigo-500/40 text-indigo-300 hover:bg-indigo-950/40 justify-center disabled:opacity-30 disabled:cursor-not-allowed"
+                            title={!candidate.user_email ? "Cannot send: Student has no email on file" : "Send Alert"}
                           >
                             <Send className="w-3 h-3 mr-1 text-indigo-400 shrink-0" />
                             <span>Send Alert</span>
@@ -1811,6 +1995,14 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
                       {sent} total sent
                     </span>
                   </div>
+                  <div className="mb-1.5 text-zinc-400">
+                    <span className="text-zinc-500">Signup Email: </span>
+                    {selectedUser.email ? (
+                      <span className="text-zinc-200 font-mono font-medium">{selectedUser.email}</span>
+                    ) : (
+                      <span className="text-amber-400 font-medium">⚠️ No authentic email found on file</span>
+                    )}
+                  </div>
                   <div className="flex items-center gap-2 flex-wrap text-zinc-400">
                     <span className="text-emerald-400">🏆 Achiever: {c.A}</span>
                     <span>&bull;</span>
@@ -1900,10 +2092,22 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
             <Button variant="ghost" onClick={() => setIsDirectAlertOpen(false)}>
               Cancel
             </Button>
-            <Button variant="primary" onClick={handleSendDirectAlert} className="bg-indigo-600 hover:bg-indigo-500 text-white">
-              <Eye className="w-3.5 h-3.5 mr-1.5" />
-              <span>Preview &amp; Send</span>
-            </Button>
+            {(() => {
+              const selectedUser = allUsers.find((u) => u.id === (directSelectedUserId || allUsers[0]?.id));
+              const hasEmail = Boolean(selectedUser?.email);
+              return (
+                <Button
+                  variant="primary"
+                  disabled={!hasEmail}
+                  onClick={handleSendDirectAlert}
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-40 disabled:cursor-not-allowed"
+                  title={!hasEmail ? "Cannot send alert: Student has no email on file" : ""}
+                >
+                  <Eye className="w-3.5 h-3.5 mr-1.5" />
+                  <span>Preview &amp; Send</span>
+                </Button>
+              );
+            })()}
           </div>
         </div>
       </Modal>
@@ -2123,6 +2327,51 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
               </div>
             </div>
           )}
+        </div>
+      </Modal>
+
+      {/* 10. RESET ALERT COUNTS CONFIRMATION MODAL */}
+      <Modal
+        isOpen={isResetConfirmOpen}
+        onClose={() => !resettingAlerts && setIsResetConfirmOpen(false)}
+        title="Reset All Alert Counts & Clear History?"
+        subtitle="Clears all alert logs and resets all student alert badge counters back to 0."
+        maxWidth="md"
+      >
+        <div className="space-y-4">
+          <div className="p-3.5 rounded-xl bg-rose-950/30 border border-rose-900/50 text-rose-200 text-xs space-y-2">
+            <div className="flex items-center space-x-2 font-semibold text-rose-300">
+              <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+              <span>Are you sure you want to reset all alerts?</span>
+            </div>
+            <p className="text-rose-200/90 leading-relaxed">
+              This will purge all logged history from <strong>user_alerts</strong> and zero out all badge counters (Total Alerts Sent, Achiever, Slump, Notice, Deletion) on all user profiles.
+            </p>
+            <p className="text-zinc-400 text-[11px]">
+              This will not affect any student study minutes, daily goals, or active sessions.
+            </p>
+          </div>
+
+          <div className="flex justify-end space-x-2 pt-2">
+            <Button
+              variant="ghost"
+              disabled={resettingAlerts}
+              onClick={() => setIsResetConfirmOpen(false)}
+              className="text-xs"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              disabled={resettingAlerts}
+              isLoading={resettingAlerts}
+              onClick={handleResetAlerts}
+              className="bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold"
+            >
+              <RotateCcw className="w-3.5 h-3.5 mr-1.5 shrink-0" />
+              <span>Confirm &amp; Reset to 0</span>
+            </Button>
+          </div>
         </div>
       </Modal>
     </div>

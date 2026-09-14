@@ -585,3 +585,276 @@ EXCEPTION
   WHEN OTHERS THEN NULL;
 END $$;
 
+
+-- ------------------------------------------------------------
+-- 12. CANDIDATE SCANNER RPC (Pulls Authentic Emails from auth.users)
+-- ------------------------------------------------------------
+DROP FUNCTION IF EXISTS public.rpc_admin_scan_alert_candidates(TEXT) CASCADE;
+CREATE OR REPLACE FUNCTION public.rpc_admin_scan_alert_candidates(p_admin_email TEXT DEFAULT NULL)
+RETURNS TABLE (
+  candidate_id TEXT,
+  user_id UUID,
+  user_name TEXT,
+  user_email TEXT,
+  alert_type TEXT,
+  consecutive_inactive_days INTEGER,
+  reason TEXT,
+  last_active_at TIMESTAMPTZ,
+  last_alert_sent_at TIMESTAMPTZ,
+  has_achiever_badge BOOLEAN,
+  total_study_minutes BIGINT,
+  past_week_study_minutes BIGINT
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth, pg_temp
+AS $$
+BEGIN
+  IF NOT public.check_is_admin() AND (p_admin_email IS NULL OR LOWER(TRIM(p_admin_email)) NOT IN ('studyaliveapp@gmail.com', 'sa@admin.tg')) THEN
+    RAISE EXCEPTION 'Unauthorized: Caller is not an administrator';
+  END IF;
+
+  RETURN QUERY
+  WITH user_activity AS (
+    SELECT
+      u.id AS uid,
+      u.display_name,
+      COALESCE(au.email, u.email)::TEXT AS email_addr,
+      u.has_achiever_badge,
+      u.current_status,
+      COALESCE(
+        (SELECT MAX(COALESCE(ss.end_time, ss.start_time)) FROM public.study_sessions ss WHERE ss.user_id = u.id),
+        u.last_offline_at,
+        u.created_at
+      ) AS latest_active_time,
+      COALESCE(
+        (SELECT SUM(ss.duration_minutes) FROM public.study_sessions ss WHERE ss.user_id = u.id),
+        0
+      )::BIGINT AS total_minutes,
+      COALESCE(
+        (SELECT SUM(ss.duration_minutes) FROM public.study_sessions ss WHERE ss.user_id = u.id AND ss.start_time >= (NOW() - INTERVAL '7 days')),
+        0
+      )::BIGINT AS week_minutes
+    FROM public.users u
+    JOIN auth.users au ON au.id = u.id
+    WHERE COALESCE(u.is_admin, FALSE) = FALSE
+      AND COALESCE(au.email, u.email) IS NOT NULL
+      AND TRIM(COALESCE(au.email, u.email)) <> ''
+  ),
+  user_inactive_calc AS (
+    SELECT
+      ua.uid,
+      ua.display_name,
+      ua.email_addr,
+      ua.has_achiever_badge,
+      ua.current_status,
+      ua.latest_active_time,
+      ua.total_minutes,
+      ua.week_minutes,
+      CASE
+        WHEN ua.current_status IN ('studying', 'break') THEN 0
+        ELSE GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (NOW() - ua.latest_active_time)) / 86400)::INTEGER)
+      END AS inactive_days
+    FROM user_activity ua
+  ),
+  latest_alerts AS (
+    SELECT
+      ua_log.user_id,
+      ua_log.alert_type,
+      MAX(ua_log.sent_at) AS last_sent
+    FROM public.user_alerts ua_log
+    WHERE ua_log.status = 'sent'
+    GROUP BY ua_log.user_id, ua_log.alert_type
+  )
+  -- 1. TYPE A: Achiever's Title
+  SELECT
+    ('A-' || uic.uid::TEXT) AS candidate_id,
+    uic.uid AS user_id,
+    uic.display_name AS user_name,
+    uic.email_addr AS user_email,
+    'A'::TEXT AS alert_type,
+    uic.inactive_days AS consecutive_inactive_days,
+    'Earned Achiever Title for high performance & dedication' AS reason,
+    uic.latest_active_time AS last_active_at,
+    la.last_sent AS last_alert_sent_at,
+    uic.has_achiever_badge,
+    uic.total_minutes AS total_study_minutes,
+    uic.week_minutes AS past_week_study_minutes
+  FROM user_inactive_calc uic
+  LEFT JOIN latest_alerts la ON la.user_id = uic.uid AND la.alert_type = 'A'
+  WHERE uic.has_achiever_badge = TRUE
+    AND uic.inactive_days < 3
+    AND (la.last_sent IS NULL OR la.last_sent < (NOW() - INTERVAL '7 days'))
+
+  UNION ALL
+
+  -- 2. TYPE D: Account Deletion Alert
+  SELECT
+    ('D-' || uic.uid::TEXT) AS candidate_id,
+    uic.uid AS user_id,
+    uic.display_name AS user_name,
+    uic.email_addr AS user_email,
+    'D'::TEXT AS alert_type,
+    uic.inactive_days AS consecutive_inactive_days,
+    ('Inactive for ' || uic.inactive_days || ' consecutive days (Threshold: 5 days)') AS reason,
+    uic.latest_active_time AS last_active_at,
+    la.last_sent AS last_alert_sent_at,
+    uic.has_achiever_badge,
+    uic.total_minutes AS total_study_minutes,
+    uic.week_minutes AS past_week_study_minutes
+  FROM user_inactive_calc uic
+  LEFT JOIN latest_alerts la ON la.user_id = uic.uid AND la.alert_type = 'D'
+  WHERE uic.current_status = 'offline'
+    AND uic.inactive_days >= 5
+    AND (la.last_sent IS NULL OR la.last_sent < (NOW() - INTERVAL '3 days'))
+
+  UNION ALL
+
+  -- 3. TYPE I: Account Activity Notice
+  SELECT
+    ('I-' || uic.uid::TEXT) AS candidate_id,
+    uic.uid AS user_id,
+    uic.display_name AS user_name,
+    uic.email_addr AS user_email,
+    'I'::TEXT AS alert_type,
+    uic.inactive_days AS consecutive_inactive_days,
+    ('Inactive for ' || uic.inactive_days || ' consecutive days (Threshold: 3 days)') AS reason,
+    uic.latest_active_time AS last_active_at,
+    la.last_sent AS last_alert_sent_at,
+    uic.has_achiever_badge,
+    uic.total_minutes AS total_study_minutes,
+    uic.week_minutes AS past_week_study_minutes
+  FROM user_inactive_calc uic
+  LEFT JOIN latest_alerts la ON la.user_id = uic.uid AND la.alert_type = 'I'
+  WHERE uic.current_status = 'offline'
+    AND uic.inactive_days >= 3 AND uic.inactive_days < 5
+    AND (la.last_sent IS NULL OR la.last_sent < (NOW() - INTERVAL '3 days'))
+
+  UNION ALL
+
+  -- 4. TYPE W: Weekly Performance / Slump Alert
+  SELECT
+    ('W-' || uic.uid::TEXT) AS candidate_id,
+    uic.uid AS user_id,
+    uic.display_name AS user_name,
+    uic.email_addr AS user_email,
+    'W'::TEXT AS alert_type,
+    uic.inactive_days AS consecutive_inactive_days,
+    ('Low study output in past 7 days (' || ROUND(uic.week_minutes::NUMERIC / 60.0, 1) || 'h logged)') AS reason,
+    uic.latest_active_time AS last_active_at,
+    la.last_sent AS last_alert_sent_at,
+    uic.has_achiever_badge,
+    uic.total_minutes AS total_study_minutes,
+    uic.week_minutes AS past_week_study_minutes
+  FROM user_inactive_calc uic
+  LEFT JOIN latest_alerts la ON la.user_id = uic.uid AND la.alert_type = 'W'
+  WHERE uic.inactive_days < 3
+    AND NOT uic.has_achiever_badge
+    AND uic.week_minutes < 120
+    AND (la.last_sent IS NULL OR la.last_sent < (NOW() - INTERVAL '4 days'))
+
+  ORDER BY
+    CASE alert_type
+      WHEN 'A' THEN 1
+      WHEN 'D' THEN 2
+      WHEN 'I' THEN 3
+      WHEN 'W' THEN 4
+      ELSE 5
+    END,
+    consecutive_inactive_days DESC;
+END;
+$$;
+
+-- ------------------------------------------------------------
+-- 13. RPC: rpc_admin_get_platform_members (All Members with Auth Emails)
+-- ------------------------------------------------------------
+DROP FUNCTION IF EXISTS public.rpc_admin_get_platform_members(TEXT) CASCADE;
+CREATE OR REPLACE FUNCTION public.rpc_admin_get_platform_members(p_admin_email TEXT DEFAULT NULL)
+RETURNS TABLE (
+  id UUID,
+  display_name TEXT,
+  email TEXT,
+  avatar_url TEXT,
+  current_status TEXT,
+  has_achiever_badge BOOLEAN,
+  last_offline_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ,
+  total_study_minutes BIGINT,
+  past_week_study_minutes BIGINT,
+  total_alerts_sent INTEGER,
+  alert_counts JSONB,
+  last_alert_sent_at TIMESTAMPTZ,
+  last_alert_type TEXT
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth, pg_temp
+AS $$
+BEGIN
+  IF NOT public.check_is_admin() AND (p_admin_email IS NULL OR LOWER(TRIM(p_admin_email)) NOT IN ('studyaliveapp@gmail.com', 'sa@admin.tg')) THEN
+    RAISE EXCEPTION 'Unauthorized: Caller is not an administrator';
+  END IF;
+
+  RETURN QUERY
+  WITH study_calc AS (
+    SELECT
+      ss.user_id,
+      COALESCE(SUM(ss.duration_minutes), 0)::BIGINT AS total_mins,
+      COALESCE(SUM(CASE WHEN ss.start_time >= (NOW() - INTERVAL '7 days') THEN ss.duration_minutes ELSE 0 END), 0)::BIGINT AS week_mins
+    FROM public.study_sessions ss
+    GROUP BY ss.user_id
+  )
+  SELECT
+    u.id,
+    u.display_name,
+    COALESCE(au.email, u.email)::TEXT AS email,
+    u.avatar_url,
+    u.current_status,
+    u.has_achiever_badge,
+    u.last_offline_at,
+    u.created_at,
+    COALESCE(sc.total_mins, 0) AS total_study_minutes,
+    COALESCE(sc.week_mins, 0) AS past_week_study_minutes,
+    COALESCE(u.total_alerts_sent, 0) AS total_alerts_sent,
+    COALESCE(u.alert_counts, '{"A":0,"W":0,"I":0,"D":0}'::jsonb) AS alert_counts,
+    u.last_alert_sent_at,
+    u.last_alert_type
+  FROM public.users u
+  LEFT JOIN auth.users au ON au.id = u.id
+  LEFT JOIN study_calc sc ON sc.user_id = u.id
+  WHERE COALESCE(u.is_admin, FALSE) = FALSE
+  ORDER BY u.display_name ASC;
+END;
+$$;
+
+-- ------------------------------------------------------------
+-- 14. RPC: rpc_admin_reset_alert_counts (Reset Alert History & Counters)
+-- ------------------------------------------------------------
+DROP FUNCTION IF EXISTS public.rpc_admin_reset_alert_counts(TEXT) CASCADE;
+CREATE OR REPLACE FUNCTION public.rpc_admin_reset_alert_counts(p_admin_email TEXT DEFAULT NULL)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth, pg_temp
+AS $$
+BEGIN
+  IF NOT public.check_is_admin() AND (p_admin_email IS NULL OR LOWER(TRIM(p_admin_email)) NOT IN ('studyaliveapp@gmail.com', 'sa@admin.tg')) THEN
+    RAISE EXCEPTION 'Unauthorized: Caller is not an administrator';
+  END IF;
+
+  -- 1. Truncate/delete all user alert history
+  DELETE FROM public.user_alerts;
+
+  -- 2. Reset all per-user tracking counters on public.users
+  UPDATE public.users
+  SET total_alerts_sent = 0,
+      alert_counts = '{"A":0,"W":0,"I":0,"D":0}'::jsonb,
+      last_alert_sent_at = NULL,
+      last_alert_type = NULL;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'message', 'Alert counts and history have been successfully reset to 0.'
+  );
+END;
+$$;

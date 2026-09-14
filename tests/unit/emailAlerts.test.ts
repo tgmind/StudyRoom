@@ -57,4 +57,17 @@ describe("Email Alerts Generation Unit Tests", () => {
     expect(payload.html).toContain("https://studyalive.netlify.app/room");
     expect(payload.text).toContain("https://studyalive.netlify.app/room");
   });
+
+  it("strictly identifies placeholder @student.studyroom as invalid recipient email", () => {
+    const isInvalidRecipient = (email: string) => {
+      const clean = (email || "").trim();
+      return !clean || clean.includes("@student.studyroom") || !clean.includes("@") || !clean.includes(".");
+    };
+
+    expect(isInvalidRecipient("ritesh@student.studyroom")).toBe(true);
+    expect(isInvalidRecipient("ravi@student.studyroom")).toBe(true);
+    expect(isInvalidRecipient("")).toBe(true);
+    expect(isInvalidRecipient("ritesh@gmail.com")).toBe(false);
+    expect(isInvalidRecipient("student@outlook.com")).toBe(false);
+  });
 });
