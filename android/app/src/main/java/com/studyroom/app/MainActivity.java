@@ -463,9 +463,13 @@ public class MainActivity extends AppCompatActivity {
                 "      var studyObj = null;" +
                 "      try { studyObj = study ? JSON.parse(study) : null; } catch(e) {}" +
                 "      var breakStartMs = 0;" +
-                "      if (brkObj && brkObj.breakStartedAt) {" +
-                "        var t = new Date(brkObj.breakStartedAt).getTime();" +
-                "        if (!isNaN(t) && t > 0) breakStartMs = t;" +
+                "      if (brkObj) {" +
+                "        if (typeof brkObj.localBreakStartMs === 'number' && brkObj.localBreakStartMs > 0) {" +
+                "          breakStartMs = brkObj.localBreakStartMs;" +
+                "        } else if (brkObj.breakStartedAt) {" +
+                "          var t = new Date(brkObj.breakStartedAt).getTime();" +
+                "          if (!isNaN(t) && t > 0) breakStartMs = t;" +
+                "        }" +
                 "      }" +
                 "      var studyStartMs = 0;" +
                 "      var studyAccruedSec = 0;" +

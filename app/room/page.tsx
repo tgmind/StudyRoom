@@ -58,7 +58,7 @@ export default function RoomPage() {
         id: user.id,
         current_status: newStatus,
         session_start_time: newStatus === "offline" ? null : undefined,
-        break_started_at: newStatus === "break" ? new Date().toISOString() : null,
+        break_started_at: newStatus === "break" ? getServerNow().toISOString() : null,
         current_focus: newStatus === "offline" ? null : undefined,
       });
     }

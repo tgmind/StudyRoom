@@ -178,4 +178,52 @@ describe("useActiveSession Hook - Break Expiry & RPC Resilience", () => {
     rerender({ profile: { ...offlineProfileWithExpiry } });
     expect(result.current.isBreakExpiredNoticeOpen).toBe(false);
   });
+
+  it("stores localBreakStartMs and notifies AndroidBridge with 0 drift on pauseSession", async () => {
+    const studyProfile = {
+      id: "user-6",
+      display_name: "Test User 6",
+      current_status: "studying",
+      session_start_time: new Date(Date.now() - 600 * 1000).toISOString(),
+      active_study_seconds_snapshot: 600,
+    } as unknown as UserProfile;
+
+    const mockOnSessionStateResolved = vi.fn();
+    (window as any).AndroidBridge = {
+      onSessionStateResolved: mockOnSessionStateResolved,
+    };
+
+    mockRpc.mockResolvedValue({
+      data: { success: true, server_now: new Date().toISOString() },
+      error: null,
+    });
+
+    const { result } = renderHook(() => useActiveSession(studyProfile));
+
+    await act(async () => {
+      await result.current.pauseSession();
+    });
+
+    expect(result.current.status).toBe("break");
+
+    // Check localStorage
+    const rawBreak = localStorage.getItem("studyroom_active_break");
+    expect(rawBreak).not.toBeNull();
+    const parsed = JSON.parse(rawBreak!);
+    expect(typeof parsed.localBreakStartMs).toBe("number");
+    expect(parsed.localBreakStartMs).toBeGreaterThan(0);
+    expect(typeof parsed.breakStartedAt).toBe("string");
+
+    // Check AndroidBridge notification
+    expect(mockOnSessionStateResolved).toHaveBeenCalledWith(
+      true,
+      parsed.localBreakStartMs,
+      expect.any(Number),
+      false,
+      0,
+      ""
+    );
+
+    delete (window as any).AndroidBridge;
+  });
 });

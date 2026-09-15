@@ -14,7 +14,11 @@ import {
   getEffectiveMemberStatus,
   isMemberBreakExpired,
 } from "@/lib/time/break";
-import { getServerNow, calibrateWithServerTime } from "@/lib/time/clockSync";
+import {
+  getServerNow,
+  calibrateWithServerTime,
+  getServerTimeOffset,
+} from "@/lib/time/clockSync";
 import {
   with10sTimeout,
   saveOfflineActiveSession,
@@ -96,6 +100,7 @@ export function useActiveSession(
 
   const actionSeqRef = useRef<number>(0);
   const lastActionTimestampRef = useRef<number>(0);
+  const initialBreakStartIsoRef = useRef<string | null>(null);
 
   // Clear local override when server profile catches up to the intended state
   useEffect(() => {
@@ -149,7 +154,37 @@ export function useActiveSession(
         setBlocks(sessionBlocks);
         setElapsedStudySeconds(offlineSession.elapsedStudySeconds || 0);
         setLocalStatusOverride("break");
+        initialBreakStartIsoRef.current = offlineSession.breakStartedAt;
         if (onStatusChangeRef.current) onStatusChangeRef.current("break");
+
+        // Calibrate local break start ms for Android Notification Chronometer
+        if (typeof window !== "undefined") {
+          try {
+            const serverOffset = getServerTimeOffset();
+            const serverBreakStartMs = new Date(offlineSession.breakStartedAt).getTime();
+            const localBreakStartMs = serverBreakStartMs - serverOffset;
+            localStorage.setItem(
+              "studyroom_active_break",
+              JSON.stringify({
+                userId: offlineSession.userId || profileRef.current?.id || "offline_user",
+                breakStartedAt: new Date(localBreakStartMs).toISOString(),
+                localBreakStartMs,
+                serverBreakStartedAt: offlineSession.breakStartedAt,
+                accruedSeconds: offlineSession.elapsedStudySeconds || 0,
+              })
+            );
+            if ((window as any).AndroidBridge?.onSessionStateResolved) {
+              (window as any).AndroidBridge.onSessionStateResolved(
+                true,
+                localBreakStartMs,
+                offlineSession.elapsedStudySeconds || 0,
+                false,
+                0,
+                ""
+              );
+            }
+          } catch {}
+        }
       }
     }
   }, []);
@@ -191,6 +226,51 @@ export function useActiveSession(
       document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, [supabase]);
+
+  // -----------------------------------------------------------------------
+  // BREAK NOTIFICATION & CHRONOMETER SYNCHRONIZATION
+  // -----------------------------------------------------------------------
+  useEffect(() => {
+    if (effectiveStatus === "break") {
+      const openBreak = blocksRef.current.find((b) => b.block_type === "break" && !b.end_time);
+      if (!initialBreakStartIsoRef.current) {
+        initialBreakStartIsoRef.current =
+          openBreak?.start_time || profileRef.current?.break_started_at || getServerNow().toISOString();
+      }
+
+      if (typeof window !== "undefined" && initialBreakStartIsoRef.current) {
+        try {
+          const serverOffset = getServerTimeOffset();
+          const serverBreakStartMs = new Date(initialBreakStartIsoRef.current).getTime();
+          const localBreakStartMs = serverBreakStartMs - serverOffset;
+          const currentAccrued = elapsedStudySecondsRef.current;
+
+          localStorage.setItem(
+            "studyroom_active_break",
+            JSON.stringify({
+              userId: profileRef.current?.id || "offline_user",
+              breakStartedAt: new Date(localBreakStartMs).toISOString(),
+              localBreakStartMs,
+              serverBreakStartedAt: initialBreakStartIsoRef.current,
+              accruedSeconds: currentAccrued,
+            })
+          );
+          if ((window as any).AndroidBridge?.onSessionStateResolved) {
+            (window as any).AndroidBridge.onSessionStateResolved(
+              true,
+              localBreakStartMs,
+              currentAccrued,
+              false,
+              0,
+              ""
+            );
+          }
+        } catch {}
+      }
+    } else {
+      initialBreakStartIsoRef.current = null;
+    }
+  }, [effectiveStatus, profile?.break_started_at]);
 
   // -----------------------------------------------------------------------
   // FETCH SESSION BLOCKS (When Online)
@@ -253,6 +333,7 @@ export function useActiveSession(
       const currentSeq = ++actionSeqRef.current;
       setError(null);
 
+      initialBreakStartIsoRef.current = null;
       const nowIso = getServerNow().toISOString();
       const currentBlocks = blocksRef.current;
       const offlineSession = getOfflineActiveSession();
@@ -294,6 +375,16 @@ export function useActiveSession(
         try {
           localStorage.removeItem("studyroom_active_break");
           localStorage.removeItem("studyroom_active_study");
+          if ((window as any).AndroidBridge?.onSessionStateResolved) {
+            (window as any).AndroidBridge.onSessionStateResolved(
+              false,
+              0,
+              totalActiveSeconds,
+              false,
+              0,
+              ""
+            );
+          }
         } catch {}
       }
 
@@ -581,6 +672,7 @@ export function useActiveSession(
 
     const nowIso = getServerNow().toISOString();
     const currentStudySeconds = elapsedStudySecondsRef.current;
+    initialBreakStartIsoRef.current = nowIso;
 
     // 1. Close current study block and open break block
     const updatedBlocks: SessionBlock[] = blocksRef.current.map((b) =>
@@ -608,14 +700,27 @@ export function useActiveSession(
 
     if (typeof window !== "undefined") {
       try {
+        const localBreakStartMs = now;
         localStorage.setItem(
           "studyroom_active_break",
           JSON.stringify({
             userId: profileRef.current?.id || "offline_user",
-            breakStartedAt: nowIso,
+            breakStartedAt: new Date(localBreakStartMs).toISOString(),
+            localBreakStartMs,
+            serverBreakStartedAt: nowIso,
             accruedSeconds: currentStudySeconds,
           })
         );
+        if ((window as any).AndroidBridge?.onSessionStateResolved) {
+          (window as any).AndroidBridge.onSessionStateResolved(
+            true,
+            localBreakStartMs,
+            currentStudySeconds,
+            false,
+            0,
+            ""
+          );
+        }
       } catch {}
     }
 
@@ -661,6 +766,7 @@ export function useActiveSession(
     const currentSeq = ++actionSeqRef.current;
     setError(null);
 
+    initialBreakStartIsoRef.current = null;
     const nowIso = getServerNow().toISOString();
 
     // 1. Close current break block and open study block
@@ -690,6 +796,16 @@ export function useActiveSession(
     if (typeof window !== "undefined") {
       try {
         localStorage.removeItem("studyroom_active_break");
+        if ((window as any).AndroidBridge?.onSessionStateResolved) {
+          (window as any).AndroidBridge.onSessionStateResolved(
+            false,
+            0,
+            elapsedStudySecondsRef.current,
+            true,
+            now,
+            profileRef.current?.current_focus || ""
+          );
+        }
       } catch {}
     }
 
@@ -763,7 +879,11 @@ export function useActiveSession(
   };
 
   const openBreakBlock = blocks.find((b) => b.block_type === "break" && !b.end_time);
-  const breakStartedAt = profile?.break_started_at || openBreakBlock?.start_time || null;
+  const breakStartedAt =
+    initialBreakStartIsoRef.current ||
+    openBreakBlock?.start_time ||
+    profile?.break_started_at ||
+    null;
 
   return {
     status: effectiveStatus,
