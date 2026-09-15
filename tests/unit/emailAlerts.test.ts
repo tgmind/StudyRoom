@@ -91,7 +91,25 @@ describe("Email Alerts Generation Unit Tests", () => {
     expect(res.messageId).toBeDefined();
   }, 15000);
 
-  it("checks dispatch to gpintalk@gmail.com and amitkumarkushawaha66@gmail.com", async () => {
+  it("dispatches successfully to Resend account owner using Resend provider", async () => {
+    const { sendAlertEmail } = await import("@/lib/email/mailer");
+    const res = await sendAlertEmail({
+      to: "thoughtfulmindg@gmail.com",
+      name: "Subodh",
+      type: "W",
+      weeklyHours: 25.7,
+      isTest: true,
+    });
+    console.log("TEST Resend Owner RESULT:", res);
+    expect(res.success).toBe(true);
+    expect(res.messageId).toBeDefined();
+    // If RESEND_API_KEY is present, provider should be resend
+    if (process.env.RESEND_API_KEY) {
+      expect(res.provider).toBe("resend");
+    }
+  }, 15000);
+
+  it("checks dispatch to external recipients with seamless Gmail fallback", async () => {
     const { sendAlertEmail } = await import("@/lib/email/mailer");
     const res1 = await sendAlertEmail({
       to: "gpintalk@gmail.com",

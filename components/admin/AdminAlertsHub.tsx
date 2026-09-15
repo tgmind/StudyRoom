@@ -111,11 +111,12 @@ interface WeeklyAchieverStatus {
 
 interface AdminAlertsHubProps {
   adminEmail?: string;
+  lastDeletedUserId?: string | null;
 }
 
 type TabType = "all" | "A" | "W" | "I" | "D" | "history";
 
-export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
+export function AdminAlertsHub({ adminEmail, lastDeletedUserId }: AdminAlertsHubProps) {
   const [candidates, setCandidates] = useState<AlertCandidate[]>([]);
   const [allUsers, setAllUsers] = useState<PlatformUserOption[]>([]);
   const [history, setHistory] = useState<AlertHistoryItem[]>([]);
@@ -125,6 +126,20 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
   const [activeTab, setActiveTab] = useState<TabType>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // Realtime synchronization when user is deleted from admin management
+  useEffect(() => {
+    if (lastDeletedUserId) {
+      setAllUsers((prev) => prev.filter((u) => u.id !== lastDeletedUserId));
+      setCandidates((prev) => prev.filter((c) => c.user_id !== lastDeletedUserId));
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(lastDeletedUserId);
+        return next;
+      });
+      setDirectSelectedUserId((prev) => (prev === lastDeletedUserId ? "" : prev));
+    }
+  }, [lastDeletedUserId]);
 
   // Weekly Achiever Automation state
   const [achieverStatus, setAchieverStatus] = useState<WeeklyAchieverStatus | null>(null);
@@ -255,11 +270,13 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
 
       // Build a definitive map of real signup emails from auth.users (via members API or users table)
       const emailByUserId: Record<string, string> = {};
+      const validMemberIds = new Set<string>();
 
       if (membersApiRes.status === "fulfilled" && membersApiRes.value.ok) {
         const memJson = await membersApiRes.value.json();
         if (Array.isArray(memJson.members)) {
           memJson.members.forEach((m: any) => {
+            validMemberIds.add(m.id);
             if (m.email && !m.email.includes("@student.studyroom")) {
               emailByUserId[m.id] = m.email.trim();
             }
@@ -393,7 +410,12 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
 
         const nonAdmin = rawUsers.filter((u) => !u.is_admin);
 
-        const platformUsersList: PlatformUserOption[] = nonAdmin.map((u) => {
+        // Filter out any orphaned users whose accounts were deleted (if members API provided active auth accounts)
+        const activeUsers = validMemberIds.size > 0
+          ? nonAdmin.filter((u) => validMemberIds.has(u.id))
+          : nonAdmin;
+
+        const platformUsersList: PlatformUserOption[] = activeUsers.map((u) => {
           const userSessions = rawSessions.filter((s) => s.user_id === u.id);
           let weekMins = 0;
           let totalMins = 0;
@@ -437,7 +459,7 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
         if (candidatesList.length === 0) {
           const computed: AlertCandidate[] = [];
 
-          nonAdmin.forEach((u) => {
+          activeUsers.forEach((u) => {
             const stats = userAlertsMap[u.id] || { total: 0, A: 0, W: 0, I: 0, D: 0 };
             const userSessions = rawSessions.filter((s) => s.user_id === u.id);
             let maxTime: number | null = null;
@@ -568,7 +590,93 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
 
   useEffect(() => {
     fetchData();
-  }, [fetchData]);
+
+    // Supabase Realtime: instantly update UI when users are deleted, inserted, or updated
+    const channel = supabase
+      .channel("admin:alerts:realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "users" },
+        (payload) => {
+          if (payload.eventType === "DELETE") {
+            const deletedId = (payload.old as { id?: string })?.id;
+            if (deletedId) {
+              setAllUsers((prev) => prev.filter((u) => u.id !== deletedId));
+              setCandidates((prev) => prev.filter((c) => c.user_id !== deletedId));
+              setSelectedIds((prev) => {
+                const next = new Set(prev);
+                next.delete(deletedId);
+                return next;
+              });
+              setDirectSelectedUserId((prev) => (prev === deletedId ? "" : prev));
+            }
+          } else if (payload.eventType === "INSERT") {
+            fetchData();
+          } else if (payload.eventType === "UPDATE") {
+            const updated = payload.new as any;
+            if (updated?.id) {
+              setAllUsers((prev) =>
+                prev.map((u) =>
+                  u.id === updated.id
+                    ? {
+                        ...u,
+                        display_name: updated.display_name ?? u.display_name,
+                        email: (updated.email && !updated.email.includes("@student.studyroom")) ? updated.email : u.email,
+                        current_status: updated.current_status ?? u.current_status,
+                        has_achiever_badge: updated.has_achiever_badge ?? u.has_achiever_badge,
+                        last_offline_at: updated.last_offline_at ?? u.last_offline_at,
+                      }
+                    : u
+                )
+              );
+            }
+          }
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "user_alerts" },
+        (payload) => {
+          if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
+            const alertRow = payload.new as any;
+            if (alertRow?.id) {
+              setHistory((prev) => {
+                const exists = prev.some((h) => h.id === alertRow.id);
+                if (exists) {
+                  return prev.map((h) => (h.id === alertRow.id ? { ...h, ...alertRow } : h));
+                }
+                return [alertRow as AlertHistoryItem, ...prev].slice(0, 100);
+              });
+
+              if (alertRow.status === "sent" && alertRow.user_id) {
+                setAllUsers((prev) =>
+                  prev.map((u) => {
+                    if (u.id === alertRow.user_id) {
+                      const counts = { ...(u.alert_counts || { A: 0, W: 0, I: 0, D: 0 }) };
+                      const type = alertRow.alert_type as "A" | "W" | "I" | "D";
+                      if (counts[type] !== undefined) counts[type] += 1;
+                      return {
+                        ...u,
+                        total_alerts_sent: (u.total_alerts_sent || 0) + 1,
+                        alert_counts: counts,
+                        last_alert_type: alertRow.alert_type,
+                        last_alert_sent_at: alertRow.sent_at || new Date().toISOString(),
+                      };
+                    }
+                    return u;
+                  })
+                );
+              }
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchData, supabase]);
 
   // Filtered candidate list
   const filteredCandidates = useMemo(() => {
@@ -1222,6 +1330,10 @@ export function AdminAlertsHub({ adminEmail }: AdminAlertsHubProps) {
             </h2>
             <span className="px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider rounded-md bg-indigo-500/15 text-indigo-400 border border-indigo-500/30">
               Manual Watch Hub
+            </span>
+            <span className="inline-flex items-center space-x-1 px-2 py-0.5 text-[10px] font-semibold rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span>Realtime Active</span>
             </span>
           </div>
           <p className="text-xs text-zinc-400 mt-1">

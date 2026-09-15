@@ -46,6 +46,7 @@ export default function AdminPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
   const [adminSection, setAdminSection] = useState<"members" | "alerts">("members");
+  const [lastDeletedUserId, setLastDeletedUserId] = useState<string | null>(null);
   const [, setClockTick] = useState(0);
 
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -210,6 +211,7 @@ export default function AdminPage() {
       await deleteUser(userId);
       setSuccess(`Deleted user "${userName}" from the platform`);
       setUsers((prev) => prev.filter((u) => u.user_id !== userId));
+      setLastDeletedUserId(userId);
       try {
         const newStats = await getStats();
         setStats(newStats);
@@ -399,7 +401,7 @@ export default function AdminPage() {
         </div>
 
         {adminSection === "alerts" ? (
-          <AdminAlertsHub adminEmail={user.email} />
+          <AdminAlertsHub adminEmail={user.email} lastDeletedUserId={lastDeletedUserId} />
         ) : (
           <>
             {/* Platform Stats Overview */}

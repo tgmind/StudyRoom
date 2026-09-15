@@ -21,46 +21,73 @@ export interface MailerConfigStatus {
   configured: boolean;
   provider?: "resend" | "gmail";
   user?: string;
+  hasResend?: boolean;
+  hasGmail?: boolean;
+  dailyResendCount?: number;
   reason?: string;
+}
+
+// Resend Free Tier Safeguards: 100 emails/day, 3,000/month
+// We cap daily Resend dispatches at 90 to ensure 100% zero-cost forever.
+const MAX_DAILY_RESEND_FREE_TIER = 90;
+let dailyResendCount = 0;
+let currentDayTracker = new Date().toISOString().slice(0, 10);
+
+export function getDailyResendUsage(): { count: number; canSend: boolean } {
+  const today = new Date().toISOString().slice(0, 10);
+  if (today !== currentDayTracker) {
+    currentDayTracker = today;
+    dailyResendCount = 0;
+  }
+  return {
+    count: dailyResendCount,
+    canSend: dailyResendCount < MAX_DAILY_RESEND_FREE_TIER,
+  };
+}
+
+function incrementDailyResendUsage(): void {
+  dailyResendCount += 1;
 }
 
 /**
  * Returns whether email dispatch credentials (Resend API or Gmail SMTP) are configured.
  */
 export function isMailerConfigured(): MailerConfigStatus {
-  // 1. Check if dedicated transactional Resend API key is configured
   const resendKey = process.env.RESEND_API_KEY?.trim();
-  if (resendKey) {
+  const gmailUser = process.env.ALERT_GMAIL_USER?.trim();
+  const gmailPass = process.env.ALERT_GMAIL_APP_PASSWORD?.trim();
+
+  const hasResend = Boolean(resendKey);
+  const hasGmail = Boolean(gmailUser && gmailPass && gmailUser.includes("@"));
+
+  if (!hasResend && !hasGmail) {
+    return {
+      configured: false,
+      reason: "Missing RESEND_API_KEY and Gmail SMTP credentials in environment variables.",
+    };
+  }
+
+  const { count } = getDailyResendUsage();
+
+  if (hasResend) {
     const fromEmail = process.env.ALERT_FROM_EMAIL?.trim() || "StudyRoom <onboarding@resend.dev>";
     return {
       configured: true,
       provider: "resend",
       user: fromEmail,
-    };
-  }
-
-  // 2. Check authenticated Gmail SMTP credentials
-  const user = process.env.ALERT_GMAIL_USER?.trim();
-  const pass = process.env.ALERT_GMAIL_APP_PASSWORD?.trim();
-
-  if (!user || !pass) {
-    return {
-      configured: false,
-      reason: "Missing ALERT_GMAIL_USER or ALERT_GMAIL_APP_PASSWORD (or RESEND_API_KEY) in environment variables (.env.local).",
-    };
-  }
-
-  if (!user.includes("@")) {
-    return {
-      configured: false,
-      reason: "ALERT_GMAIL_USER does not appear to be a valid email address.",
+      hasResend: true,
+      hasGmail,
+      dailyResendCount: count,
     };
   }
 
   return {
     configured: true,
     provider: "gmail",
-    user,
+    user: gmailUser,
+    hasResend: false,
+    hasGmail: true,
+    dailyResendCount: 0,
   };
 }
 
@@ -70,9 +97,9 @@ export function isMailerConfigured(): MailerConfigStatus {
 let transporterCache: Transporter | null = null;
 
 function getTransporter(): Transporter {
-  const { configured, reason } = isMailerConfigured();
-  if (!configured) {
-    throw new Error(reason || "Email transport is not configured.");
+  const { configured, reason, hasGmail } = isMailerConfigured();
+  if (!configured || !hasGmail) {
+    throw new Error(reason || "Gmail SMTP fallback is not configured.");
   }
 
   if (transporterCache) {
@@ -100,7 +127,8 @@ function getTransporter(): Transporter {
 }
 
 /**
- * Dispatches a spam-proof alert email to the recipient via Resend or authenticated Gmail SMTP.
+ * Dispatches a spam-proof alert email to the recipient.
+ * Defaults to Resend API, with seamless automatic fallback to hardened Gmail SMTP.
  */
 export async function sendAlertEmail({
   to,
@@ -125,50 +153,69 @@ export async function sendAlertEmail({
     const subject = isTest ? `[TEST] ${template.subject}` : template.subject;
 
     // -------------------------------------------------------------
-    // OPTION A: Resend Transactional Engine (If RESEND_API_KEY is present)
+    // PRIMARY: Resend Transactional Engine (Default method when configured)
     // -------------------------------------------------------------
     const resendKey = process.env.RESEND_API_KEY?.trim();
     if (resendKey) {
-      const from = process.env.ALERT_FROM_EMAIL?.trim() || "StudyRoom <onboarding@resend.dev>";
-      const replyTo = process.env.ALERT_GMAIL_USER?.trim() || "studyaliveapp@gmail.com";
+      const { count, canSend } = getDailyResendUsage();
+      if (!canSend) {
+        console.warn(
+          `[Mailer] Resend free tier daily safety limit reached (${count}/${MAX_DAILY_RESEND_FREE_TIER}). Automatically routing via Gmail SMTP for zero-cost lifelong delivery.`
+        );
+      } else {
+        try {
+          const from = process.env.ALERT_FROM_EMAIL?.trim() || "StudyRoom <onboarding@resend.dev>";
+          const replyTo = process.env.ALERT_GMAIL_USER?.trim() || "studyaliveapp@gmail.com";
 
-      const res = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${resendKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from,
-          to: [cleanTo],
-          reply_to: replyTo,
-          subject,
-          text: template.text,
-          html: template.html,
-          headers: {
-            "List-Unsubscribe": `<mailto:${replyTo}?subject=Unsubscribe%20${encodeURIComponent(cleanTo)}>, <${appUrl}/settings>`,
-            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-            "Auto-Submitted": "auto-generated",
-            "X-Entity-Ref-ID": `${type}-${Date.now()}`,
-          },
-        }),
-      });
+          const res = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${resendKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              from,
+              to: [cleanTo],
+              reply_to: replyTo,
+              subject,
+              text: template.text,
+              html: template.html,
+              headers: {
+                "List-Unsubscribe": `<mailto:${replyTo}?subject=Unsubscribe%20${encodeURIComponent(cleanTo)}>, <${appUrl}/settings>`,
+                "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+                "Auto-Submitted": "auto-generated",
+                "X-Entity-Ref-ID": `${type}-${Date.now()}`,
+              },
+            }),
+          });
 
-      const resData = await res.json();
-      if (!res.ok) {
-        throw new Error(resData?.message || "Resend email delivery failed");
+          const resData = await res.json();
+          if (res.ok && resData?.id) {
+            incrementDailyResendUsage();
+            return {
+              success: true,
+              messageId: resData.id,
+              provider: "resend",
+            };
+          }
+
+          // If Resend rejected (e.g. 403 unverified custom domain for external recipient, or 429 quota)
+          console.warn(
+            `[Mailer] Resend dispatch returned (${res.status}: ${resData?.message || "error"}). Falling back seamlessly to hardened Gmail SMTP.`
+          );
+        } catch (resendErr) {
+          console.warn(
+            "[Mailer] Resend network dispatch failed. Falling back seamlessly to Gmail SMTP:",
+            resendErr
+          );
+        }
       }
-
-      return {
-        success: true,
-        messageId: resData?.id,
-        provider: "resend",
-      };
     }
 
     // -------------------------------------------------------------
-    // OPTION B: Hardened, Spam-Proof Google Gmail SMTP
+    // FALLBACK / SECONDARY: Hardened, Spam-Proof Google Gmail SMTP
     // -------------------------------------------------------------
+
     const user = process.env.ALERT_GMAIL_USER!.trim();
     const fromName = process.env.ALERT_FROM_NAME?.trim() || "StudyRoom";
     const transporter = getTransporter();

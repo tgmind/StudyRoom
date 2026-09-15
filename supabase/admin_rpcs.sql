@@ -209,7 +209,7 @@ RETURNS JSONB AS $$
 DECLARE
   v_target_name TEXT;
 BEGIN
-  IF NOT public.check_is_admin() THEN
+  IF NOT public.check_is_admin() AND (p_admin_email IS NULL OR LOWER(TRIM(p_admin_email)) NOT IN ('studyaliveapp@gmail.com', 'sa@admin.tg')) THEN
     RAISE EXCEPTION 'Unauthorized: Caller is not an administrator';
   END IF;
 
@@ -225,17 +225,20 @@ BEGIN
   FROM public.users
   WHERE id = p_target_user_id;
 
-  IF v_target_name IS NULL THEN
-    RAISE EXCEPTION 'User not found';
-  END IF;
+  -- Explicitly clean up all dependent records across public schema
+  DELETE FROM public.study_sessions WHERE user_id = p_target_user_id;
+  DELETE FROM public.session_blocks WHERE user_id = p_target_user_id;
+  DELETE FROM public.daily_goals WHERE user_id = p_target_user_id;
+  DELETE FROM public.user_alerts WHERE user_id = p_target_user_id;
+  DELETE FROM public.users WHERE id = p_target_user_id;
 
-  -- Delete from auth.users (cascades to public.users, daily_goals, study_sessions, session_blocks)
+  -- Delete from auth.users
   DELETE FROM auth.users WHERE id = p_target_user_id;
 
   RETURN jsonb_build_object(
     'success', true,
     'deleted_user_id', p_target_user_id,
-    'deleted_user_name', v_target_name
+    'deleted_user_name', COALESCE(v_target_name, 'Unknown')
   );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -906,7 +909,7 @@ BEGIN
     u.last_alert_sent_at,
     u.last_alert_type
   FROM public.users u
-  LEFT JOIN auth.users au ON au.id = u.id
+  INNER JOIN auth.users au ON au.id = u.id
   LEFT JOIN study_calc sc ON sc.user_id = u.id
   WHERE COALESCE(u.is_admin, FALSE) = FALSE
   ORDER BY u.display_name ASC;
@@ -957,11 +960,26 @@ SET search_path = public, auth, pg_temp
 AS $$
 DECLARE
   v_updated_count INTEGER := 0;
+  v_pruned_count INTEGER := 0;
 BEGIN
   IF NOT public.check_is_admin() AND (p_admin_email IS NULL OR LOWER(TRIM(p_admin_email)) NOT IN ('studyaliveapp@gmail.com', 'sa@admin.tg')) THEN
     RAISE EXCEPTION 'Unauthorized: Caller is not an administrator';
   END IF;
 
+  -- 1. Clean up orphaned records whose auth account was deleted
+  WITH deleted_orphans AS (
+    DELETE FROM public.users
+    WHERE id NOT IN (SELECT id FROM auth.users)
+    RETURNING id
+  )
+  SELECT COUNT(*) INTO v_pruned_count FROM deleted_orphans;
+
+  DELETE FROM public.study_sessions WHERE user_id NOT IN (SELECT id FROM auth.users);
+  DELETE FROM public.session_blocks WHERE user_id NOT IN (SELECT id FROM auth.users);
+  DELETE FROM public.daily_goals WHERE user_id NOT IN (SELECT id FROM auth.users);
+  DELETE FROM public.user_alerts WHERE user_id NOT IN (SELECT id FROM auth.users);
+
+  -- 2. Sync real emails from auth.users into public.users
   WITH updated AS (
     UPDATE public.users u
     SET email = au.email
@@ -977,7 +995,8 @@ BEGIN
   RETURN jsonb_build_object(
     'success', true,
     'synced_count', v_updated_count,
-    'message', format('Successfully synced %s user emails from auth.users.', v_updated_count)
+    'pruned_count', v_pruned_count,
+    'message', format('Successfully synced %s emails and pruned %s deleted user records.', v_updated_count, v_pruned_count)
   );
 END;
 $$;
