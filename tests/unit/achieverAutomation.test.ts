@@ -95,6 +95,7 @@ describe("Weekly Achiever Automation Unit Tests", () => {
     const result = await processWeeklyAchieverAutomation({
       force: false,
       timezone: "Asia/Kolkata",
+      now: new Date("2026-09-14T10:00:00Z"), // Monday
       supabaseOverride: mockSupabase,
     });
 
@@ -151,7 +152,8 @@ describe("Weekly Achiever Automation Unit Tests", () => {
     };
 
     const result = await processWeeklyAchieverAutomation({
-      force: true,
+      force: false,
+      now: new Date("2026-09-14T10:00:00Z"),
       timezone: "Asia/Kolkata",
       supabaseOverride: mockSupabase,
     });

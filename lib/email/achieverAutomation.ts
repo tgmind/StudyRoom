@@ -97,10 +97,11 @@ export function getMondayDateString(
 export async function processWeeklyAchieverAutomation(options?: {
   force?: boolean;
   timezone?: string;
+  now?: Date;
   supabaseOverride?: unknown;
 }): Promise<AchieverAutomationResult> {
   const timezone = options?.timezone || process.env.NEXT_PUBLIC_APP_TIMEZONE || "Asia/Kolkata";
-  const now = new Date();
+  const now = options?.now || new Date();
   const isMonday = isMondayInTimezone(now, timezone);
   const weekKey = getMondayDateString(now, timezone);
   const weekStartMs = getWeekStartTimestamp(now, timezone);

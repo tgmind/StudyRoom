@@ -20,13 +20,16 @@ describe("Email Alerts Generation Unit Tests", () => {
     expect(payload.html).toContain("Bob");
   });
 
-  it("generates correct Type D (Account Deletion - 5d) email payload", () => {
+  it("generates correct Type D (Inactivity / Desk Retention - 5d) email payload", () => {
     const payload = generateAlertEmail("D", "Charlie", 5);
-    expect(payload.subject).toContain("Scheduled for Deletion");
     expect(payload.subject).toContain("5 Days Inactive");
     expect(payload.text).toContain("inactive for 5 consecutive days");
-    expect(payload.html).toContain("Account Deletion Alert");
+    expect(payload.html).toContain("5 Days Inactive");
     expect(payload.html).toContain("Charlie");
+    // Ensure high-risk phishing trigger words are NOT present
+    expect(payload.subject).not.toContain("URGENT");
+    expect(payload.subject).not.toContain("Deletion");
+    expect(payload.text).not.toContain("URGENT ACTION REQUIRED");
   });
 
   it("generates correct Type W (Weekly Performance Alert) email payload", () => {

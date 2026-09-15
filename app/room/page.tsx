@@ -13,8 +13,10 @@ import { BreakGoalUpdateModal } from "@/components/session/BreakGoalUpdateModal"
 import { SessionLimitModal } from "@/components/session/SessionLimitModal";
 import { CreateGoalModal } from "@/components/goals/CreateGoalModal";
 import { getServerNow } from "@/lib/time/clockSync";
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 
 export default function RoomPage() {
+  const isOnline = useOnlineStatus();
   const { user, profile, refreshProfile } = useAuth();
   const {
     members,
@@ -104,7 +106,6 @@ export default function RoomPage() {
   const handlePauseSession = async () => {
     const accruedBeforePause = elapsedStudySeconds;
     const nowIso = getServerNow().toISOString();
-    await pauseSession();
     if (user) {
       broadcastStatusChange({
         id: user.id,
@@ -113,19 +114,21 @@ export default function RoomPage() {
         active_study_seconds_snapshot: accruedBeforePause,
       });
     }
+    await pauseSession();
   };
 
   const handleResumeSession = async () => {
-    const res = await resumeSession();
     const nowIso = getServerNow().toISOString();
-    if (user && res?.success) {
+    if (user) {
       broadcastStatusChange({
         id: user.id,
         current_status: "studying",
         break_started_at: null,
         last_resumed_at: nowIso,
       });
-    } else if (user && res?.expired) {
+    }
+    const res = await resumeSession();
+    if (user && res?.expired) {
       broadcastStatusChange({
         id: user.id,
         current_status: "offline",
@@ -138,7 +141,6 @@ export default function RoomPage() {
   };
 
   const handleFinishSession = async (completedTaskIds: string[]) => {
-    await finishSession(completedTaskIds);
     if (user) {
       broadcastStatusChange({
         id: user.id,
@@ -149,6 +151,7 @@ export default function RoomPage() {
         current_focus: null,
       });
     }
+    await finishSession(completedTaskIds);
     await Promise.allSettled([refreshGoals(), refreshProfile(), refreshMembers()]);
   };
 
@@ -186,6 +189,19 @@ export default function RoomPage() {
       />
 
       <main className="flex-1 w-full max-w-2xl sm:max-w-3xl px-3.5 sm:px-6 py-4 mx-auto space-y-4 sm:space-y-6">
+        {/* Subtle Offline Mode Indicator */}
+        {!isOnline && (
+          <div className="flex items-center justify-between px-3.5 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs font-medium animate-in fade-in duration-200 shadow-sm">
+            <div className="flex items-center space-x-2">
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+              <span>Offline Mode • Live timer is saving to disk</span>
+            </div>
+            <span className="text-[10px] text-amber-400/80 font-semibold uppercase tracking-wider">
+              Syncs on reconnect
+            </span>
+          </div>
+        )}
+
         {/* Session Controller Panel */}
         <section aria-label="Session Controller">
           <SessionController

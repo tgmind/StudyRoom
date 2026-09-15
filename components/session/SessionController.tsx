@@ -144,7 +144,6 @@ export const SessionController = memo(function SessionController({
               size="md"
               variant="danger"
               onClick={() => setIsStopModalOpen(true)}
-              isLoading={isLoading}
               className="flex-1 space-x-2 font-bold"
             >
               <Square className="w-4 h-4 fill-current" />
@@ -169,7 +168,6 @@ export const SessionController = memo(function SessionController({
               size="md"
               variant="danger"
               onClick={() => setIsStopModalOpen(true)}
-              isLoading={isLoading}
               className="flex-1 space-x-2 font-bold"
             >
               <Square className="w-4 h-4 fill-current" />

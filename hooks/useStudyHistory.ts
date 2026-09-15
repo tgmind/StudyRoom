@@ -5,9 +5,18 @@ import { createClient } from "@/lib/supabase/client";
 import { StudySession, DailyGoal, GoalTask } from "@/lib/supabase/types";
 import { getWeekStartTimestamp, formatSessionDate } from "@/lib/time/format";
 import { getServerNow } from "@/lib/time/clockSync";
+import {
+  with10sTimeout,
+  getOfflineCompletedSessions,
+  getCachedSessions,
+  saveCachedSessions,
+} from "@/lib/offline/sessionQueue";
 
 type RpcCaller = {
-  rpc: (name: string, params?: Record<string, unknown>) => Promise<{ data: unknown; error: Error | null }>;
+  rpc: (
+    name: string,
+    params?: Record<string, unknown>
+  ) => Promise<{ data: unknown; error: Error | null }>;
 };
 
 export interface HistorySummary {
@@ -42,6 +51,10 @@ export function useStudyHistory(userId?: string) {
 
   const [currentWeekSessions, setCurrentWeekSessions] = useState<StudySession[]>(() => {
     if (userId && cachedHistoryUserId === userId) return cachedCurrentWeekSessions;
+    if (typeof window !== "undefined") {
+      const disk = getCachedSessions<StudySession[]>();
+      if (disk && Array.isArray(disk)) return disk;
+    }
     return [];
   });
   const [pastSessions, setPastSessions] = useState<StudySession[]>([]);
@@ -81,66 +94,76 @@ export function useStudyHistory(userId?: string) {
       const currentWeekStartIso = new Date(getWeekStartTimestamp(serverNow)).toISOString();
       const ninetyDaysAgoIso = new Date(serverNow.getTime() - 90 * 86400000).toISOString();
 
-      // 1. Fetch current week's full sessions (immediate fast load)
-      const currentWeekPromise = supabase
-        .from("study_sessions")
-        .select("*")
-        .eq("user_id", userId)
-        .gte("start_time", currentWeekStartIso)
-        .order("start_time", { ascending: false });
+      // Read any offline-completed sessions stored locally
+      const offlineCompleted = getOfflineCompletedSessions().map((s) => ({
+        id: s.id,
+        user_id: s.user_id,
+        start_time: s.start_time,
+        end_time: s.end_time,
+        duration_minutes: s.duration_minutes,
+        completed_tasks: s.completed_tasks,
+        created_at: s.created_at,
+      })) as StudySession[];
 
-      // 2. Fetch lightweight summary of earlier sessions (only id, duration_minutes, start_time)
-      const pastSummaryPromise = supabase
-        .from("study_sessions")
-        .select("id, duration_minutes, start_time")
-        .eq("user_id", userId)
-        .lt("start_time", currentWeekStartIso)
-        .gte("start_time", ninetyDaysAgoIso);
+      // 1. Fetch current week's full sessions with 10s safety timeout
+      const currentWeekPromise = with10sTimeout(
+        supabase
+          .from("study_sessions")
+          .select("*")
+          .eq("user_id", userId)
+          .gte("start_time", currentWeekStartIso)
+          .order("start_time", { ascending: false }),
+        "Fetch current week sessions"
+      );
 
-      const [currentRes, summaryRes] = await Promise.all([currentWeekPromise, pastSummaryPromise]);
+      // 2. Fetch lightweight summary of earlier sessions
+      const pastSummaryPromise = with10sTimeout(
+        supabase
+          .from("study_sessions")
+          .select("id, duration_minutes, start_time")
+          .eq("user_id", userId)
+          .lt("start_time", currentWeekStartIso)
+          .gte("start_time", ninetyDaysAgoIso),
+        "Fetch past summary"
+      );
 
-      if (currentRes.error) {
-        // Fallback to RPC if direct table select has issue
-        const { data: rpcData, error: rpcErr } = await (supabase as unknown as RpcCaller).rpc("rpc_get_study_history");
-        if (rpcErr) throw currentRes.error;
-        const allSessions = (rpcData || []) as StudySession[];
-        const currentMs = new Date(currentWeekStartIso).getTime();
-        const current = allSessions.filter((s) => new Date(s.start_time).getTime() >= currentMs);
-        const past = allSessions.filter((s) => new Date(s.start_time).getTime() < currentMs);
-        setCurrentWeekSessions(current);
-        setPastSessions(past);
-        setIsPastLoaded(true);
-        setPastSummary({
-          count: past.length,
-          minutes: past.reduce((acc, s) => acc + (s.duration_minutes || 0), 0),
-        });
-        return;
+      let fetchedCurrent: StudySession[] = [];
+      try {
+        const [currentRes, summaryRes] = await Promise.all([currentWeekPromise, pastSummaryPromise]);
+
+        if (currentRes.data) {
+          fetchedCurrent = currentRes.data as StudySession[];
+        }
+
+        if (summaryRes.data) {
+          const rows = summaryRes.data as Array<{ duration_minutes: number }>;
+          const count = rows.length;
+          const minutes = rows.reduce((acc, r) => acc + (r.duration_minutes || 0), 0);
+          const nextSummary = { count, minutes };
+          setPastSummary(nextSummary);
+          cachedPastSummary = nextSummary;
+        }
+      } catch (networkErr) {
+        console.warn("Could not fetch remote study history (using local/offline data):", networkErr);
       }
 
-      setCurrentWeekSessions((currentRes.data || []) as StudySession[]);
+      // Merge offline-completed sessions
+      const existingIds = new Set(fetchedCurrent.map((s) => s.id));
+      const uncommittedOffline = offlineCompleted.filter((s) => !existingIds.has(s.id));
+      const combinedCurrent = [...uncommittedOffline, ...fetchedCurrent];
 
-      if (summaryRes.data) {
-        const rows = summaryRes.data as Array<{ duration_minutes: number }>;
-        const count = rows.length;
-        const minutes = rows.reduce((acc, r) => acc + (r.duration_minutes || 0), 0);
-        const nextSummary = { count, minutes };
-        setPastSummary(nextSummary);
+      setCurrentWeekSessions(combinedCurrent);
+      cachedHistoryUserId = userId;
+      cachedCurrentWeekSessions = combinedCurrent;
+      saveCachedSessions(combinedCurrent);
 
-        cachedHistoryUserId = userId;
-        cachedCurrentWeekSessions = (currentRes.data || []) as StudySession[];
-        cachedPastSummary = nextSummary;
-      } else {
-        cachedHistoryUserId = userId;
-        cachedCurrentWeekSessions = (currentRes.data || []) as StudySession[];
-      }
-
-      // 3. Fetch user's daily goals to extract lapsed (uncompleted expired) goals
+      // 3. Fetch user's daily goals to extract lapsed goals (Uncompleted expired goals)
       let fetchedGoals: DailyGoal[] = [];
       try {
         const goalsQuery = supabase.from("daily_goals").select("*");
         const withUser = typeof (goalsQuery as any)?.eq === "function" ? (goalsQuery as any).eq("user_id", userId) : goalsQuery;
-        const withOrder = typeof (withUser as any)?.order === "function" ? (withUser as any).order("expires_at", { ascending: false }) : withUser;
-        const goalsRes = await withOrder;
+        const withOrder = typeof (withUser as any)?.order === "function" ? (withUser as any).order("created_at", { ascending: false }) : withUser;
+        const goalsRes = (await with10sTimeout(withOrder, "Fetch goals for history")) as { data?: DailyGoal[] | null };
         if (goalsRes?.data) {
           fetchedGoals = goalsRes.data as DailyGoal[];
         }
@@ -174,8 +197,12 @@ export function useStudyHistory(userId?: string) {
           completedTasksCount: tasks.length - lapsedTasks.length,
         };
 
-        const dateLabel = formatSessionDate(g.expires_at, serverNow);
-        if (expiryMs >= currentWeekStartMs) {
+        // ALIGNMENT: Group by created_at date (the day the student set the goal)
+        const createdDate = g.created_at || g.expires_at;
+        const createdMs = new Date(createdDate).getTime();
+        const dateLabel = formatSessionDate(createdDate, serverNow);
+
+        if (createdMs >= currentWeekStartMs) {
           if (!nextCurrentWeekLapsed[dateLabel]) nextCurrentWeekLapsed[dateLabel] = [];
           nextCurrentWeekLapsed[dateLabel].push(windowInfo);
         } else {
@@ -198,6 +225,18 @@ export function useStudyHistory(userId?: string) {
 
   useEffect(() => {
     fetchHistory();
+
+    const handleQueueFlushed = () => {
+      fetchHistory();
+    };
+
+    window.addEventListener("studyroom_queue_flushed", handleQueueFlushed);
+    window.addEventListener("online", handleQueueFlushed);
+
+    return () => {
+      window.removeEventListener("studyroom_queue_flushed", handleQueueFlushed);
+      window.removeEventListener("online", handleQueueFlushed);
+    };
   }, [fetchHistory]);
 
   // On-demand fetch for past weeks data when user expands the archive banner
@@ -210,16 +249,18 @@ export function useStudyHistory(userId?: string) {
       const currentWeekStartIso = new Date(getWeekStartTimestamp(serverNow)).toISOString();
       const ninetyDaysAgoIso = new Date(serverNow.getTime() - 90 * 86400000).toISOString();
 
-      const { data, error: pastErr } = await supabase
-        .from("study_sessions")
-        .select("*")
-        .eq("user_id", userId)
-        .lt("start_time", currentWeekStartIso)
-        .gte("start_time", ninetyDaysAgoIso)
-        .order("start_time", { ascending: false });
+      const { data, error: pastErr } = await with10sTimeout(
+        supabase
+          .from("study_sessions")
+          .select("*")
+          .eq("user_id", userId)
+          .lt("start_time", currentWeekStartIso)
+          .gte("start_time", ninetyDaysAgoIso)
+          .order("start_time", { ascending: false }),
+        "Fetch past study sessions"
+      );
 
       if (pastErr) {
-        // Fallback to RPC if direct table select encounters an issue
         const { data: rpcData, error: rpcErr } = await (supabase as unknown as RpcCaller).rpc("rpc_get_study_history");
         if (rpcErr) throw pastErr;
         const allSessions = (rpcData || []) as StudySession[];
@@ -257,10 +298,13 @@ export function useStudyHistory(userId?: string) {
     setError(null);
 
     try {
-      const { error: deleteErr } = await supabase
-        .from("study_sessions")
-        .delete()
-        .eq("user_id", userId);
+      const { error: deleteErr } = await with10sTimeout(
+        supabase
+          .from("study_sessions")
+          .delete()
+          .eq("user_id", userId),
+        "Clear study sessions"
+      );
 
       if (deleteErr) {
         const { data, error: rpcErr } = await (supabase as unknown as RpcCaller).rpc("rpc_clear_study_history");
@@ -294,25 +338,22 @@ export function useStudyHistory(userId?: string) {
     }
   };
 
-  // Combined full sessions list (preserves backward compatibility)
+  // Combined full sessions list
   const sessions = useMemo(() => {
     return [...currentWeekSessions, ...pastSessions];
   }, [currentWeekSessions, pastSessions]);
 
-  // Overall 90-day metrics
-  const totalSummary: HistorySummary = useMemo(() => {
+  const totalSummary = useMemo<HistorySummary>(() => {
     const currentMinutes = currentWeekSessions.reduce((acc, s) => acc + (s.duration_minutes || 0), 0);
+    const totalSessions = currentWeekSessions.length + pastSummary.count;
+    const totalMinutes = currentMinutes + pastSummary.minutes;
     return {
-      totalSessions: currentWeekSessions.length + pastSummary.count,
-      totalMinutes: currentMinutes + pastSummary.minutes,
+      totalSessions,
+      totalMinutes,
       pastWeeksCount: pastSummary.count,
       pastWeeksMinutes: pastSummary.minutes,
     };
   }, [currentWeekSessions, pastSummary]);
-
-  const lapsedGoalsByDate = useMemo(() => {
-    return { ...pastWeeksLapsedGoals, ...currentWeekLapsedGoals };
-  }, [pastWeeksLapsedGoals, currentWeekLapsedGoals]);
 
   return {
     sessions,
@@ -322,14 +363,13 @@ export function useStudyHistory(userId?: string) {
     totalSummary,
     currentWeekLapsedGoals,
     pastWeeksLapsedGoals,
-    lapsedGoalsByDate,
     loading,
     isPastLoading,
     isPastLoaded,
     actionLoading,
     error,
-    fetchPastSessions,
     refreshHistory: fetchHistory,
+    fetchPastSessions,
     clearHistory,
   };
 }

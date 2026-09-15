@@ -208,4 +208,67 @@ describe("useStudyHistory Hook", () => {
     expect(result.current.totalSummary.totalMinutes).toBe(0);
     expect(result.current.isPastLoaded).toBe(false);
   });
+
+  it("groups lapsed goals under the day they were created (created_at), NOT when expired", async () => {
+    const lapsedTestUserId = "user-lapsed-test-unique";
+    // Goal created on Monday at 08:00 AM, expires on Tuesday at 08:00 AM (serverNow is Tuesday 09:00 AM)
+    const mondayCreatedIso = new Date(Date.now() - 25 * 3600 * 1000).toISOString();
+    const tuesdayExpiresIso = new Date(Date.now() - 1 * 3600 * 1000).toISOString();
+
+    const mockLapsedGoal = {
+      id: "goal-mon-1",
+      user_id: lapsedTestUserId,
+      tasks: [
+        { id: "t1", task: "Read Physics Chapter 5", completed: false },
+        { id: "t2", task: "Math Calculus Practice", completed: true },
+      ],
+      created_at: mondayCreatedIso,
+      expires_at: tuesdayExpiresIso,
+    };
+
+    mockFrom.mockImplementation((table: string) => {
+      if (table === "study_sessions") {
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              gte: vi.fn().mockReturnValue({
+                order: vi.fn().mockResolvedValue({ data: [], error: null }),
+              }),
+              lt: vi.fn().mockReturnValue({
+                gte: vi.fn().mockResolvedValue({ data: [], error: null }),
+              }),
+            }),
+          }),
+        };
+      }
+      if (table === "daily_goals") {
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              order: vi.fn().mockResolvedValue({ data: [mockLapsedGoal], error: null }),
+            }),
+          }),
+        };
+      }
+      return { select: vi.fn().mockResolvedValue({ data: [], error: null }) };
+    });
+
+    const { result } = renderHook(() => useStudyHistory(lapsedTestUserId));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    const currentWeekLapsed = result.current.currentWeekLapsedGoals;
+    const dateKeys = Object.keys(currentWeekLapsed);
+    expect(dateKeys.length).toBeGreaterThan(0);
+
+    // Goal is inside the group for the day it was set (created_at), not expires_at
+    const allLapsedWindows = Object.values(currentWeekLapsed).flat();
+    expect(allLapsedWindows).toHaveLength(1);
+    expect(allLapsedWindows[0].id).toBe("goal-mon-1");
+    expect(allLapsedWindows[0].lapsedTasks).toHaveLength(1);
+    expect(allLapsedWindows[0].lapsedTasks[0].id).toBe("t1");
+    expect(allLapsedWindows[0].completedTasksCount).toBe(1);
+  });
 });

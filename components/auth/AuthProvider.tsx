@@ -6,6 +6,8 @@ import { UserProfile } from "@/lib/supabase/types";
 import { User } from "@supabase/supabase-js";
 import { isAdminEmail } from "@/hooks/useAdmin";
 
+import { getCachedUserProfile, saveCachedUserProfile, with10sTimeout } from "@/lib/offline/sessionQueue";
+
 export interface AuthContextValue {
   user: User | null;
   profile: UserProfile | null;
@@ -19,26 +21,42 @@ export const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(() => {
+    if (typeof window !== "undefined") {
+      return getCachedUserProfile<UserProfile>();
+    }
+    return null;
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const supabase = useMemo(() => createClient(), []);
 
   const fetchProfile = useCallback(async (userId: string) => {
+    const cached = getCachedUserProfile<UserProfile>();
+    if (cached && cached.id === userId) {
+      setProfile(cached);
+    }
+
     try {
-      const { data, error } = await supabase
-        .from("users")
-        .select("*")
-        .eq("id", userId)
-        .single();
+      const { data, error } = await with10sTimeout(
+        supabase
+          .from("users")
+          .select("*")
+          .eq("id", userId)
+          .single(),
+        "Fetch profile"
+      );
 
       if (error && error.code !== "PGRST116") {
         console.error("Error fetching profile:", error);
       }
-      setProfile(data as UserProfile | null);
+      if (data) {
+        setProfile(data as UserProfile);
+        saveCachedUserProfile(data);
+      }
     } catch (err) {
-      console.error("Profile fetch error:", err);
+      console.warn("Profile fetch error (using cached profile):", err);
     }
   }, [supabase]);
 
@@ -125,6 +143,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         localStorage.removeItem("studyroom_admin_uid");
         localStorage.removeItem("pwa_banner_dismissed");
+        localStorage.removeItem("studyroom_cached_user_profile");
+        localStorage.removeItem("studyroom_cached_active_goal");
+        localStorage.removeItem("studyroom_cached_sessions");
         if (typeof document !== "undefined") {
           document.cookie = "studyroom_onboarded=; path=/; max-age=0";
         }

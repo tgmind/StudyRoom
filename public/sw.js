@@ -1,8 +1,8 @@
 // StudyRoom PWA Service Worker
-const CACHE_NAME = "studyroom-v9";
+const CACHE_NAME = "studyroom-v10";
 const OFFLINE_URL = "/offline.html";
 
-// Precache ONLY static, public assets guaranteed to return 200 OK without authentication
+// Precache static public assets guaranteed to return 200 OK without authentication
 const PRECACHE_ASSETS = [
   "/offline.html",
   "/manifest.json",
@@ -51,7 +51,7 @@ self.addEventListener("fetch", (event) => {
   if (!url.protocol.startsWith("http")) return;
   if (url.pathname.startsWith("/_next/webpack-hmr")) return;
 
-  // Direct bypass for non-origin requests (e.g. Supabase API/Realtime) - do not intercept or delay
+  // Direct bypass for non-origin requests (e.g. Supabase API/Realtime) - handled by client offline queue
   if (url.origin !== self.location.origin || url.hostname.includes("supabase.co")) return;
 
   // Static Assets (Next.js static chunks, icons, fonts, images, manifest): Cache-first
@@ -78,7 +78,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // HTML / App Navigation Routes: Stale-While-Revalidate for instantaneous splash screen exit
+  // HTML / App Navigation Routes: Stale-While-Revalidate with resilient offline fallback
   if (event.request.mode === "navigate" || event.request.headers.get("accept")?.includes("text/html")) {
     event.respondWith(
       caches.match(event.request).then((cachedResponse) => {
@@ -90,8 +90,13 @@ self.addEventListener("fetch", (event) => {
             }
             return networkResponse;
           })
-          .catch(() => {
-            return cachedResponse || caches.match(OFFLINE_URL);
+          .catch(async () => {
+            if (cachedResponse) return cachedResponse;
+            const roomFallback = await caches.match("/room");
+            if (roomFallback) return roomFallback;
+            const rootFallback = await caches.match("/");
+            if (rootFallback) return rootFallback;
+            return caches.match(OFFLINE_URL);
           });
 
         // Instant startup: return cached app shell immediately (< 50ms) if present, revalidating in background

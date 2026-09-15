@@ -338,7 +338,9 @@ export default function HistoryPage() {
                                 <div className="text-xs sm:text-sm text-zinc-300 font-mono flex items-center space-x-1.5 whitespace-nowrap tabular-nums">
                                   <Clock className="w-3.5 h-3.5 text-rose-400 shrink-0" />
                                   <span>
-                                    Window ended {formatSessionTime(lapsedGoal.expires_at)}
+                                    {lapsedGoal.created_at
+                                      ? `Set ${formatSessionTime(lapsedGoal.created_at)} • Ended ${formatSessionTime(lapsedGoal.expires_at)}`
+                                      : `Window ended ${formatSessionTime(lapsedGoal.expires_at)}`}
                                   </span>
                                 </div>
                               </div>
@@ -520,7 +522,9 @@ export default function HistoryPage() {
                                       <div className="text-xs sm:text-sm text-zinc-300 font-mono flex items-center space-x-1.5 whitespace-nowrap tabular-nums">
                                         <Clock className="w-3.5 h-3.5 text-rose-400 shrink-0" />
                                         <span>
-                                          Window ended {formatSessionTime(lapsedGoal.expires_at)}
+                                          {lapsedGoal.created_at
+                                            ? `Set ${formatSessionTime(lapsedGoal.created_at)} • Ended ${formatSessionTime(lapsedGoal.expires_at)}`
+                                            : `Window ended ${formatSessionTime(lapsedGoal.expires_at)}`}
                                         </span>
                                       </div>
                                     </div>
