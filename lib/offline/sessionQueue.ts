@@ -7,6 +7,7 @@ import {
   QueuedActionType,
   OfflineSessionBlock,
 } from "./storageKeys";
+import { getDateInTimezone, getTimeUntilMidnight } from "../scoring/streak";
 
 export type {
   OfflineActiveSession,
@@ -335,42 +336,91 @@ export async function flushSessionActionQueue(
             continue;
           }
 
-          // 1. Insert into public.study_sessions
-          const insertRes: any = await with10sTimeout(
-            supabase
-              .from("study_sessions")
-              .insert({
-                user_id: sessionPayload.user_id,
-                start_time: sessionPayload.start_time,
-                end_time: sessionPayload.end_time,
-                duration_minutes: sessionPayload.duration_minutes,
-                completed_tasks: sessionPayload.completed_tasks,
-              })
-              .select("id")
-              .single(),
-            "Upload offline study session"
-          );
-          const insertedSession = insertRes?.data;
-          const sessionErr = insertRes?.error;
+          const tz = process.env.NEXT_PUBLIC_APP_TIMEZONE || "Asia/Kolkata";
+          const startDateKey = getDateInTimezone(new Date(sessionPayload.start_time), tz);
+          const endDateKey = getDateInTimezone(new Date(sessionPayload.end_time), tz);
 
-          if (sessionErr) throw sessionErr;
+          if (startDateKey !== endDateKey) {
+            const { hours: untilHours, minutes: untilMins } = getTimeUntilMidnight(new Date(sessionPayload.start_time), tz);
+            const minsBeforeMidnight = Math.max(0, untilHours * 60 + untilMins);
+            const minsBefore = Math.min(sessionPayload.duration_minutes || 0, minsBeforeMidnight);
+            const minsAfter = Math.max(0, (sessionPayload.duration_minutes || 0) - minsBefore);
+            const midnightDate = new Date(new Date(sessionPayload.start_time).getTime() + minsBeforeMidnight * 60000);
+            const midnightIso = midnightDate.toISOString();
 
-          const createdSessionId = insertedSession?.id;
+            if (minsBefore > 0 || minsAfter === 0) {
+              const insertRes1: any = await with10sTimeout(
+                supabase
+                  .from("study_sessions")
+                  .insert({
+                    user_id: sessionPayload.user_id,
+                    start_time: sessionPayload.start_time,
+                    end_time: midnightIso,
+                    duration_minutes: minsBefore,
+                    completed_tasks: minsAfter === 0 ? sessionPayload.completed_tasks : [],
+                  })
+                  .select("id")
+                  .single(),
+                "Upload offline study session part 1"
+              );
+              if (insertRes1?.error) throw insertRes1.error;
+            }
 
-          // 2. Insert blocks linked to this session if blocks exist
-          if (sessionPayload.blocks && sessionPayload.blocks.length > 0 && createdSessionId) {
-            const blocksToInsert = sessionPayload.blocks.map((b) => ({
-              user_id: sessionPayload.user_id,
-              block_type: b.block_type,
-              start_time: b.start_time,
-              end_time: b.end_time || sessionPayload.end_time,
-              session_id: createdSessionId,
-            }));
-
-            await with10sTimeout(
-              supabase.from("session_blocks").insert(blocksToInsert),
-              "Upload offline session blocks"
+            if (minsAfter > 0) {
+              const insertRes2: any = await with10sTimeout(
+                supabase
+                  .from("study_sessions")
+                  .insert({
+                    user_id: sessionPayload.user_id,
+                    start_time: midnightIso,
+                    end_time: sessionPayload.end_time,
+                    duration_minutes: minsAfter,
+                    completed_tasks: sessionPayload.completed_tasks,
+                  })
+                  .select("id")
+                  .single(),
+                "Upload offline study session part 2"
+              );
+              if (insertRes2?.error) throw insertRes2.error;
+            }
+          } else {
+            // 1. Insert into public.study_sessions
+            const insertRes: any = await with10sTimeout(
+              supabase
+                .from("study_sessions")
+                .insert({
+                  user_id: sessionPayload.user_id,
+                  start_time: sessionPayload.start_time,
+                  end_time: sessionPayload.end_time,
+                  duration_minutes: sessionPayload.duration_minutes,
+                  completed_tasks: sessionPayload.completed_tasks,
+                })
+                .select("id")
+                .single(),
+              "Upload offline study session"
             );
+            const insertedSession = insertRes?.data;
+            const sessionErr = insertRes?.error;
+
+            if (sessionErr) throw sessionErr;
+
+            const createdSessionId = insertedSession?.id;
+
+            // 2. Insert blocks linked to this session if blocks exist
+            if (sessionPayload.blocks && sessionPayload.blocks.length > 0 && createdSessionId) {
+              const blocksToInsert = sessionPayload.blocks.map((b) => ({
+                user_id: sessionPayload.user_id,
+                block_type: b.block_type,
+                start_time: b.start_time,
+                end_time: b.end_time || sessionPayload.end_time,
+                session_id: createdSessionId,
+              }));
+
+              await with10sTimeout(
+                supabase.from("session_blocks").insert(blocksToInsert),
+                "Upload offline session blocks"
+              );
+            }
           }
 
           // 3. If tasks were completed, update daily_goals

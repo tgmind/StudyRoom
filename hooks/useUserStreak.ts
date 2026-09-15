@@ -10,6 +10,7 @@ import {
   calculateWeeklyHeatmap,
   calculateConsistencyStats,
   getDateInTimezone,
+  getTimeUntilMidnight,
 } from "@/lib/scoring/streak";
 import { getWeekStartTimestamp } from "@/lib/time/format";
 import { getServerNow } from "@/lib/time/clockSync";
@@ -67,7 +68,7 @@ export function useUserStreak(userId?: string, liveActiveMinutes = 0) {
       // 2. Fetch past 90 days lightweight sessions to build historical daily summaries
       const pastPromise = supabase
         .from("study_sessions")
-        .select("start_time, duration_minutes")
+        .select("start_time, end_time, duration_minutes")
         .eq("user_id", userId)
         .gte("start_time", ninetyDaysAgoIso);
 
@@ -83,15 +84,36 @@ export function useUserStreak(userId?: string, liveActiveMinutes = 0) {
       const fetchedWeekSessions = (weekRes.data || []) as StudySession[];
       setWeekSessions(fetchedWeekSessions);
 
-      // Aggregate past 90 days by date in target timezone
+      // Aggregate past 90 days by date in target timezone with cross-midnight splitting
       const dailyMap = new Map<string, number>();
-      const pastRows = (pastRes.data || []) as Array<{ start_time: string; duration_minutes: number }>;
+      const pastRows = (pastRes.data || []) as Array<{ start_time: string; end_time?: string; duration_minutes: number }>;
       for (const row of pastRows) {
         if (!row.start_time) continue;
         const d = new Date(row.start_time);
         if (isNaN(d.getTime())) continue;
-        const dateKey = getDateInTimezone(d, timezone);
-        dailyMap.set(dateKey, (dailyMap.get(dateKey) || 0) + (row.duration_minutes || 0));
+        const startDateKey = getDateInTimezone(d, timezone);
+
+        if (row.end_time) {
+          const eDate = new Date(row.end_time);
+          if (!isNaN(eDate.getTime())) {
+            const endDateKey = getDateInTimezone(eDate, timezone);
+            if (startDateKey !== endDateKey) {
+              const { hours: untilHours, minutes: untilMins } = getTimeUntilMidnight(d, timezone);
+              const minsBeforeMidnight = Math.max(0, untilHours * 60 + untilMins);
+              const minsBefore = Math.min(row.duration_minutes || 0, minsBeforeMidnight);
+              const minsAfter = Math.max(0, (row.duration_minutes || 0) - minsBefore);
+              if (minsBefore > 0) {
+                dailyMap.set(startDateKey, (dailyMap.get(startDateKey) || 0) + minsBefore);
+              }
+              if (minsAfter > 0) {
+                dailyMap.set(endDateKey, (dailyMap.get(endDateKey) || 0) + minsAfter);
+              }
+              continue;
+            }
+          }
+        }
+
+        dailyMap.set(startDateKey, (dailyMap.get(startDateKey) || 0) + (row.duration_minutes || 0));
       }
 
       const summaryList: DailyStudySummary[] = Array.from(dailyMap.entries()).map(([dateISO, activeStudyMinutes]) => ({

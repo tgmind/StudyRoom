@@ -154,4 +154,34 @@ describe("Streak Heatmap & Consistency Calculations", () => {
     const statsWithLive = calculateConsistencyStats(heatmap, summaries, refWednesday, "Asia/Kolkata", mockSessions, 25);
     expect(statsWithLive.totalSessionsCount).toBe(3); // 2 completed + 1 live in-progress
   });
+
+  it("accurately splits cross-midnight sessions between Day 1 and Day 2", () => {
+    // Session starts Monday 23:00 IST (17:30 UTC) and ends Tuesday 01:00 IST (19:30 UTC)
+    // Total duration: 120 minutes (60 mins Monday before midnight, 60 mins Tuesday after midnight)
+    const crossMidnightSession: StudySession = {
+      id: "s-cross",
+      user_id: "u-cross",
+      start_time: "2026-08-31T17:30:00Z", // Monday 23:00 IST
+      end_time: "2026-08-31T19:30:00Z",   // Tuesday 01:00 IST
+      duration_minutes: 120,
+    };
+
+    const heatmap = calculateWeeklyHeatmap([crossMidnightSession], refWednesday, 0, "Asia/Kolkata");
+
+    // Mon (2026-08-31) should have 60 active study minutes and qualify
+    const monDay = heatmap.find((d) => d.dayName === "Mon");
+    expect(monDay).toBeDefined();
+    expect(monDay?.activeStudyMinutes).toBe(60);
+    expect(monDay?.isQualified).toBe(true);
+
+    // Tue (2026-09-01) should have 60 active study minutes and qualify
+    const tueDay = heatmap.find((d) => d.dayName === "Tue");
+    expect(tueDay).toBeDefined();
+    expect(tueDay?.activeStudyMinutes).toBe(60);
+    expect(tueDay?.isQualified).toBe(true);
+
+    // Total weekly minutes across both days
+    const totalMins = heatmap.reduce((acc, d) => acc + d.activeStudyMinutes, 0);
+    expect(totalMins).toBe(120);
+  });
 });

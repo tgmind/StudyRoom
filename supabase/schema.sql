@@ -554,7 +554,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- RPC: Finish Session (Atomic Transaction for Stop Hook)
+-- RPC: Finish Session (Atomic Transaction for Stop Hook with Midnight Splitting)
 CREATE OR REPLACE FUNCTION public.rpc_finish_session(p_completed_task_ids TEXT[] DEFAULT ARRAY[]::TEXT[])
 RETURNS JSONB AS $$
 DECLARE
@@ -563,9 +563,16 @@ DECLARE
   v_session_start TIMESTAMPTZ;
   v_focus TEXT;
   v_now TIMESTAMPTZ := NOW();
+  v_tz TEXT := 'Asia/Kolkata';
+  v_midnight TIMESTAMPTZ;
+  v_crossed_midnight BOOLEAN := false;
   v_total_study_seconds NUMERIC := 0;
   v_duration_minutes INTEGER := 0;
+  v_dur_1 INTEGER := 0;
+  v_dur_2 INTEGER := 0;
   v_session_id UUID;
+  v_session_id_1 UUID := NULL;
+  v_session_id_2 UUID := NULL;
   v_active_goal_id UUID;
   v_tasks JSONB;
   v_updated_tasks JSONB;
@@ -574,6 +581,7 @@ DECLARE
   v_task_id TEXT;
   v_is_completed BOOLEAN;
   v_task_text TEXT;
+  v_block RECORD;
 BEGIN
   v_user_id := auth.uid();
   IF v_user_id IS NULL THEN
@@ -603,15 +611,30 @@ BEGIN
     v_session_start := v_now;
   END IF;
 
-  -- Calculate total active study seconds from study blocks (EXCLUDING BREAKS, capped at 3 hours / 180 minutes)
-  SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(end_time, v_now) - start_time))), 0)
-  INTO v_total_study_seconds
-  FROM public.session_blocks
-  WHERE user_id = v_user_id
-    AND block_type = 'study'
-    AND session_id IS NULL;
+  -- Detect if session crossed midnight in application timezone (Asia/Kolkata)
+  IF DATE(v_session_start AT TIME ZONE v_tz) <> DATE(v_now AT TIME ZONE v_tz) THEN
+    v_crossed_midnight := true;
+    v_midnight := (DATE_TRUNC('day', v_now AT TIME ZONE v_tz) AT TIME ZONE v_tz);
 
-  v_duration_minutes := LEAST(180, GREATEST(0, FLOOR(v_total_study_seconds / 60)::INTEGER));
+    -- Split any unlinked block that straddles v_midnight
+    FOR v_block IN
+      SELECT id, block_type, start_time, end_time
+      FROM public.session_blocks
+      WHERE user_id = v_user_id
+        AND session_id IS NULL
+        AND start_time < v_midnight
+        AND end_time > v_midnight
+    LOOP
+      -- Insert block part after midnight
+      INSERT INTO public.session_blocks (user_id, block_type, start_time, end_time, session_id)
+      VALUES (v_user_id, v_block.block_type, v_midnight, v_block.end_time, NULL);
+
+      -- Truncate block part before midnight
+      UPDATE public.session_blocks
+      SET end_time = v_midnight
+      WHERE id = v_block.id;
+    END LOOP;
+  END IF;
 
   -- Update Goal Task completions if active unexpired goal window exists
   -- OR if goal was active when this session started / within session grace window
@@ -656,15 +679,85 @@ BEGIN
     WHERE id = v_active_goal_id;
   END IF;
 
-  -- Insert study session record with completed tasks
-  INSERT INTO public.study_sessions (user_id, start_time, end_time, duration_minutes, completed_tasks)
-  VALUES (v_user_id, v_session_start, v_now, v_duration_minutes, v_session_completed_tasks)
-  RETURNING id INTO v_session_id;
+  -- Handle Session and Block insertion
+  IF v_crossed_midnight THEN
+    -- Calculate study seconds before midnight
+    SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (end_time - start_time))), 0)
+    INTO v_total_study_seconds
+    FROM public.session_blocks
+    WHERE user_id = v_user_id
+      AND block_type = 'study'
+      AND session_id IS NULL
+      AND end_time <= v_midnight;
+    v_dur_1 := LEAST(180, GREATEST(0, FLOOR(v_total_study_seconds / 60)::INTEGER));
 
-  -- Associate unlinked blocks with this session
-  UPDATE public.session_blocks
-  SET session_id = v_session_id
-  WHERE user_id = v_user_id AND session_id IS NULL;
+    -- Calculate study seconds after midnight
+    SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (end_time - start_time))), 0)
+    INTO v_total_study_seconds
+    FROM public.session_blocks
+    WHERE user_id = v_user_id
+      AND block_type = 'study'
+      AND session_id IS NULL
+      AND start_time >= v_midnight;
+    v_dur_2 := LEAST(180, GREATEST(0, FLOOR(v_total_study_seconds / 60)::INTEGER));
+
+    -- Fallback if no study blocks exist
+    IF v_dur_1 = 0 AND v_dur_2 = 0 THEN
+      v_dur_1 := LEAST(180, GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (v_midnight - v_session_start)) / 60)::INTEGER));
+      v_dur_2 := LEAST(180, GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (v_now - v_midnight)) / 60)::INTEGER));
+    END IF;
+
+    v_duration_minutes := v_dur_1 + v_dur_2;
+
+    -- Insert Part 1 (Day 1)
+    IF v_dur_1 > 0 OR v_dur_2 = 0 THEN
+      INSERT INTO public.study_sessions (user_id, start_time, end_time, duration_minutes, completed_tasks)
+      VALUES (v_user_id, v_session_start, v_midnight, v_dur_1, CASE WHEN v_dur_2 = 0 THEN v_session_completed_tasks ELSE '[]'::JSONB END)
+      RETURNING id INTO v_session_id_1;
+
+      UPDATE public.session_blocks
+      SET session_id = v_session_id_1
+      WHERE user_id = v_user_id AND session_id IS NULL AND end_time <= v_midnight;
+    END IF;
+
+    -- Insert Part 2 (Day 2)
+    IF v_dur_2 > 0 THEN
+      INSERT INTO public.study_sessions (user_id, start_time, end_time, duration_minutes, completed_tasks)
+      VALUES (v_user_id, v_midnight, v_now, v_dur_2, v_session_completed_tasks)
+      RETURNING id INTO v_session_id_2;
+
+      UPDATE public.session_blocks
+      SET session_id = v_session_id_2
+      WHERE user_id = v_user_id AND session_id IS NULL AND start_time >= v_midnight;
+    END IF;
+
+    -- Link any remaining unlinked blocks
+    UPDATE public.session_blocks
+    SET session_id = COALESCE(v_session_id_2, v_session_id_1)
+    WHERE user_id = v_user_id AND session_id IS NULL;
+
+    v_session_id := COALESCE(v_session_id_2, v_session_id_1);
+  ELSE
+    -- Standard single-day session
+    SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(end_time, v_now) - start_time))), 0)
+    INTO v_total_study_seconds
+    FROM public.session_blocks
+    WHERE user_id = v_user_id
+      AND block_type = 'study'
+      AND session_id IS NULL;
+
+    v_duration_minutes := LEAST(180, GREATEST(0, FLOOR(v_total_study_seconds / 60)::INTEGER));
+
+    -- Insert study session record with completed tasks
+    INSERT INTO public.study_sessions (user_id, start_time, end_time, duration_minutes, completed_tasks)
+    VALUES (v_user_id, v_session_start, v_now, v_duration_minutes, v_session_completed_tasks)
+    RETURNING id INTO v_session_id;
+
+    -- Associate unlinked blocks with this session
+    UPDATE public.session_blocks
+    SET session_id = v_session_id
+    WHERE user_id = v_user_id AND session_id IS NULL;
+  END IF;
 
   -- Reset user to offline and clear active snapshots
   UPDATE public.users
@@ -681,11 +774,73 @@ BEGIN
   RETURN jsonb_build_object(
     'success', true,
     'session_id', v_session_id,
+    'session_id_1', v_session_id_1,
+    'session_id_2', v_session_id_2,
     'duration_minutes', v_duration_minutes,
+    'duration_minutes_1', v_dur_1,
+    'duration_minutes_2', v_dur_2,
     'start_time', v_session_start,
     'end_time', v_now,
     'completed_tasks', v_session_completed_tasks,
     'server_now', v_now
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- One-time migration helper to retroactively split past cross-midnight sessions
+CREATE OR REPLACE FUNCTION public.split_cross_midnight_sessions()
+RETURNS JSONB AS $$
+DECLARE
+  v_rec RECORD;
+  v_tz TEXT := 'Asia/Kolkata';
+  v_midnight TIMESTAMPTZ;
+  v_mins_before INTEGER;
+  v_mins_after INTEGER;
+  v_total_seconds NUMERIC;
+  v_split_count INTEGER := 0;
+  v_new_session_id UUID;
+BEGIN
+  FOR v_rec IN
+    SELECT id, user_id, start_time, end_time, duration_minutes, completed_tasks
+    FROM public.study_sessions
+    WHERE DATE(start_time AT TIME ZONE v_tz) <> DATE(end_time AT TIME ZONE v_tz)
+      AND end_time > start_time
+    ORDER BY start_time ASC
+  LOOP
+    v_midnight := (DATE_TRUNC('day', v_rec.end_time AT TIME ZONE v_tz) AT TIME ZONE v_tz);
+
+    -- Calculate proportional study minutes before and after midnight
+    v_total_seconds := EXTRACT(EPOCH FROM (v_rec.end_time - v_rec.start_time));
+    IF v_total_seconds > 0 THEN
+      v_mins_before := ROUND(v_rec.duration_minutes * (EXTRACT(EPOCH FROM (v_midnight - v_rec.start_time)) / v_total_seconds))::INTEGER;
+    ELSE
+      v_mins_before := v_rec.duration_minutes / 2;
+    END IF;
+    v_mins_after := GREATEST(0, v_rec.duration_minutes - v_mins_before);
+
+    -- 1. Update existing session to be Part 1 (ending at midnight)
+    UPDATE public.study_sessions
+    SET end_time = v_midnight,
+        duration_minutes = v_mins_before,
+        completed_tasks = '[]'::JSONB
+    WHERE id = v_rec.id;
+
+    -- 2. Insert Part 2 (starting at midnight)
+    INSERT INTO public.study_sessions (user_id, start_time, end_time, duration_minutes, completed_tasks)
+    VALUES (v_rec.user_id, v_midnight, v_rec.end_time, v_mins_after, COALESCE(v_rec.completed_tasks, '[]'::JSONB))
+    RETURNING id INTO v_new_session_id;
+
+    -- 3. Reassign blocks belonging to Part 2 if session_blocks exist
+    UPDATE public.session_blocks
+    SET session_id = v_new_session_id
+    WHERE session_id = v_rec.id AND start_time >= v_midnight;
+
+    v_split_count := v_split_count + 1;
+  END LOOP;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'split_sessions_count', v_split_count
   );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

@@ -3,6 +3,7 @@
 import React, { memo } from "react";
 import { LeaderboardEntry } from "@/lib/supabase/types";
 import { Star, Crown } from "lucide-react";
+import { formatSecondsToHuman } from "@/lib/time/format";
 
 interface LeaderboardCardProps {
   entry: LeaderboardEntry;
@@ -15,7 +16,7 @@ export const LeaderboardCard = memo(function LeaderboardCard({
   rank,
   isCurrentUser = false,
 }: LeaderboardCardProps) {
-  const hours = (entry.total_study_minutes / 60).toFixed(1);
+  const studyDurationDisplay = formatSecondsToHuman(entry.total_study_minutes * 60);
   const initials = entry.display_name
     ? entry.display_name.substring(0, 2).toUpperCase()
     : "??";
@@ -120,13 +121,13 @@ export const LeaderboardCard = memo(function LeaderboardCard({
         {/* Right Side: Score & Study Duration Pill */}
         <div
           className="text-right shrink-0"
-          title={`${entry.display_name}: ${entry.score.toFixed(1)} pts (${hours}h study • ${entry.completed_tasks ?? 0}/${entry.total_tasks ?? 0} goals • ${entry.streak_days}d streak)`}
+          title={`${entry.display_name}: ${entry.score.toFixed(1)} pts (${studyDurationDisplay} study • ${entry.completed_tasks ?? 0}/${entry.total_tasks ?? 0} goals • ${entry.streak_days}d streak)`}
         >
           <div className="font-mono text-sm sm:text-base font-black text-zinc-100 whitespace-nowrap">
             {entry.score.toFixed(1)} <span className="text-[10px] font-normal text-zinc-500">pts</span>
           </div>
           <div className="text-[10px] sm:text-[11px] font-mono text-zinc-400 font-bold whitespace-nowrap">
-            {hours}h active
+            {studyDurationDisplay} active
           </div>
         </div>
       </div>

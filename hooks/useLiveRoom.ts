@@ -185,16 +185,17 @@ export function useLiveRoom(currentUserId?: string) {
         for (const s of rawSessions) {
           const entry = statsMap.get(s.user_id) || { past24hSeconds: 0, weeklySeconds: 0, weeklySessions: 0, totalSessions: 0, latestSessionEndMs: 0 };
           entry.totalSessions += 1;
-          const sessionTime = s.end_time ? new Date(s.end_time).getTime() : s.start_time ? new Date(s.start_time).getTime() : 0;
-          if (sessionTime >= cutoffTime) {
+          const sessionStartTime = s.start_time ? new Date(s.start_time).getTime() : (s.end_time ? new Date(s.end_time).getTime() : 0);
+          const sessionEndTime = s.end_time ? new Date(s.end_time).getTime() : sessionStartTime;
+          if (sessionEndTime >= cutoffTime) {
             entry.past24hSeconds += (s.duration_minutes || 0) * 60;
           }
-          if (sessionTime >= weekStartTime) {
+          if (sessionStartTime >= weekStartTime) {
             entry.weeklySeconds += (s.duration_minutes || 0) * 60;
             entry.weeklySessions += 1;
           }
-          if (sessionTime > entry.latestSessionEndMs) {
-            entry.latestSessionEndMs = sessionTime;
+          if (sessionEndTime > entry.latestSessionEndMs) {
+            entry.latestSessionEndMs = sessionEndTime;
           }
           statsMap.set(s.user_id, entry);
         }

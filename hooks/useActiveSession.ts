@@ -35,6 +35,7 @@ import {
   CompletedOfflineSessionRecord,
   OfflineSessionBlock,
 } from "@/lib/offline/sessionQueue";
+import { getDateInTimezone, getTimeUntilMidnight } from "@/lib/scoring/streak";
 
 type RpcCaller = {
   rpc: (
@@ -422,11 +423,17 @@ export function useActiveSession(
       const totalActiveSeconds = calculateActiveStudySeconds(finalBlocks, new Date(nowIso));
       const durationMinutes = Math.min(180, Math.max(0, Math.floor(totalActiveSeconds / 60)));
 
-      // 3. Build offline completed session record for immediate History view
+      // 3. Build offline completed session record for immediate History view (with midnight splitting)
+      const baseOfflineId = offlineSession?.sessionId || "offline_" + now;
+      const sessionStartIso = offlineSession?.startTime || finalBlocks[0]?.start_time || nowIso;
+      const timezone = process.env.NEXT_PUBLIC_APP_TIMEZONE || "Asia/Kolkata";
+      const startDateKey = getDateInTimezone(new Date(sessionStartIso), timezone);
+      const endDateKey = getDateInTimezone(new Date(nowIso), timezone);
+
       const offlineRecord: CompletedOfflineSessionRecord = {
-        id: offlineSession?.sessionId || "offline_" + now,
+        id: baseOfflineId,
         user_id: profileRef.current?.id || offlineSession?.userId || "offline_user",
-        start_time: offlineSession?.startTime || finalBlocks[0]?.start_time || nowIso,
+        start_time: sessionStartIso,
         end_time: nowIso,
         duration_minutes: durationMinutes,
         completed_tasks: (completedTaskIds || []).map((id) => ({ id, task: "Completed Task" })),
@@ -440,8 +447,34 @@ export function useActiveSession(
         is_offline_created: true,
       };
 
-      // Save to local history cache
-      saveOfflineCompletedSession(offlineRecord);
+      if (startDateKey !== endDateKey) {
+        const { hours: untilHours, minutes: untilMins } = getTimeUntilMidnight(new Date(sessionStartIso), timezone);
+        const minsBeforeMidnight = Math.max(0, untilHours * 60 + untilMins);
+        const minsBefore = Math.min(durationMinutes, minsBeforeMidnight);
+        const minsAfter = Math.max(0, durationMinutes - minsBefore);
+        const midnightDate = new Date(new Date(sessionStartIso).getTime() + minsBeforeMidnight * 60000);
+        const midnightIso = midnightDate.toISOString();
+
+        if (minsBefore > 0 || minsAfter === 0) {
+          saveOfflineCompletedSession({
+            ...offlineRecord,
+            id: baseOfflineId + "_1",
+            end_time: midnightIso,
+            duration_minutes: minsBefore,
+            completed_tasks: minsAfter === 0 ? offlineRecord.completed_tasks : [],
+          });
+        }
+        if (minsAfter > 0) {
+          saveOfflineCompletedSession({
+            ...offlineRecord,
+            id: baseOfflineId + "_2",
+            start_time: midnightIso,
+            duration_minutes: minsAfter,
+          });
+        }
+      } else {
+        saveOfflineCompletedSession(offlineRecord);
+      }
 
       // Clean up active session from disk
       clearOfflineActiveSession();
@@ -486,6 +519,8 @@ export function useActiveSession(
           if (res.server_now) calibrateWithServerTime(res.server_now);
           // Server accepted session; remove temporary offline duplicate & clear active transitions
           removeOfflineCompletedSession(offlineRecord.id);
+          removeOfflineCompletedSession(baseOfflineId + "_1");
+          removeOfflineCompletedSession(baseOfflineId + "_2");
           removeActiveTransitionActions();
         } else if (rpcErr) {
           // If network failed, enqueue to ensure it gets synced when reconnected

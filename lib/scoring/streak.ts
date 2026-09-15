@@ -211,16 +211,43 @@ export function calculateWeeklyHeatmap(
   const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
   const daysSinceMonday = getDayOfWeekInTimezone(referenceDate, timezone);
 
-  // Group sessions by YYYY-MM-DD
+  // Group sessions by YYYY-MM-DD (with defense-in-depth midnight splitting for cross-day sessions)
   const sessionsByDate = new Map<string, StudySession[]>();
   for (const session of sessions) {
     if (!session.start_time) continue;
     const sDate = new Date(session.start_time);
     if (isNaN(sDate.getTime())) continue;
-    const dateKey = getDateInTimezone(sDate, timezone);
-    const list = sessionsByDate.get(dateKey) || [];
+    const startDateKey = getDateInTimezone(sDate, timezone);
+
+    // If session has end_time and crosses midnight into next calendar day in local timezone
+    if (session.end_time) {
+      const eDate = new Date(session.end_time);
+      if (!isNaN(eDate.getTime())) {
+        const endDateKey = getDateInTimezone(eDate, timezone);
+        if (startDateKey !== endDateKey) {
+          const { hours: untilHours, minutes: untilMins } = getTimeUntilMidnight(sDate, timezone);
+          const minsBeforeMidnight = Math.max(0, untilHours * 60 + untilMins);
+          const minsBefore = Math.min(session.duration_minutes || 0, minsBeforeMidnight);
+          const minsAfter = Math.max(0, (session.duration_minutes || 0) - minsBefore);
+
+          if (minsBefore > 0) {
+            const list1 = sessionsByDate.get(startDateKey) || [];
+            list1.push({ ...session, duration_minutes: minsBefore });
+            sessionsByDate.set(startDateKey, list1);
+          }
+          if (minsAfter > 0) {
+            const list2 = sessionsByDate.get(endDateKey) || [];
+            list2.push({ ...session, start_time: session.end_time, duration_minutes: minsAfter });
+            sessionsByDate.set(endDateKey, list2);
+          }
+          continue;
+        }
+      }
+    }
+
+    const list = sessionsByDate.get(startDateKey) || [];
     list.push(session);
-    sessionsByDate.set(dateKey, list);
+    sessionsByDate.set(startDateKey, list);
   }
 
   const refIso = getDateInTimezone(referenceDate, timezone);
