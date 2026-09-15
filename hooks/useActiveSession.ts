@@ -22,7 +22,11 @@ import {
   clearOfflineActiveSession,
   updateOfflineActiveSession,
   saveOfflineCompletedSession,
+  removeOfflineCompletedSession,
   enqueueSessionAction,
+  removeSessionAction,
+  removeActiveTransitionActions,
+  sanitizeSessionQueue,
   flushSessionActionQueue,
   CompletedOfflineSessionRecord,
   OfflineSessionBlock,
@@ -87,6 +91,12 @@ export function useActiveSession(
   const profileRef = useRef(profile);
   profileRef.current = profile;
 
+  const localStatusOverrideRef = useRef(localStatusOverride);
+  localStatusOverrideRef.current = localStatusOverride;
+
+  const actionSeqRef = useRef<number>(0);
+  const lastActionTimestampRef = useRef<number>(0);
+
   // Clear local override when server profile catches up to the intended state
   useEffect(() => {
     if (localStatusOverride && profile && profile.current_status === localStatusOverride) {
@@ -98,6 +108,8 @@ export function useActiveSession(
   // RESTORATION ON MOUNT: Check disk for active session (Closed-App Support)
   // -----------------------------------------------------------------------
   useEffect(() => {
+    sanitizeSessionQueue();
+
     const offlineSession = getOfflineActiveSession();
     if (!offlineSession) return;
 
@@ -157,7 +169,7 @@ export function useActiveSession(
   }, [profile, currentStatus]);
 
   // -----------------------------------------------------------------------
-  // BACKGROUND SYNC WORKER LISTENERS
+  // BACKGROUND SYNC WORKER LISTENERS (Event-Driven, No Polling Spikes)
   // -----------------------------------------------------------------------
   useEffect(() => {
     const handleSync = () => {
@@ -174,13 +186,9 @@ export function useActiveSession(
     };
     document.addEventListener("visibilitychange", handleVisibility);
 
-    // Periodic heartbeat sync every 10 seconds
-    const intervalId = setInterval(handleSync, 10000);
-
     return () => {
       window.removeEventListener("online", handleSync);
       document.removeEventListener("visibilitychange", handleVisibility);
-      clearInterval(intervalId);
     };
   }, [supabase]);
 
@@ -213,6 +221,11 @@ export function useActiveSession(
         return;
       }
 
+      // If user recently toggled locally (local override is active), don't overwrite with stale server blocks
+      if (localStatusOverrideRef.current) {
+        return;
+      }
+
       const fetchedBlocks = (data || []) as SessionBlock[];
       if (fetchedBlocks.length > 0) {
         setBlocks(fetchedBlocks);
@@ -233,9 +246,11 @@ export function useActiveSession(
   // -----------------------------------------------------------------------
   const finishSession = useCallback(
     async (completedTaskIds: string[] = []) => {
-      if (actionLoadingRef.current) return;
-      actionLoadingRef.current = true;
-      setActionLoading(true);
+      const now = Date.now();
+      if (now - lastActionTimestampRef.current < 250) return;
+      lastActionTimestampRef.current = now;
+
+      const currentSeq = ++actionSeqRef.current;
       setError(null);
 
       const nowIso = getServerNow().toISOString();
@@ -253,7 +268,7 @@ export function useActiveSession(
 
       // 3. Build offline completed session record for immediate History view
       const offlineRecord: CompletedOfflineSessionRecord = {
-        id: offlineSession?.sessionId || "offline_" + Date.now(),
+        id: offlineSession?.sessionId || "offline_" + now,
         user_id: profileRef.current?.id || offlineSession?.userId || "offline_user",
         start_time: offlineSession?.startTime || finalBlocks[0]?.start_time || nowIso,
         end_time: nowIso,
@@ -274,6 +289,7 @@ export function useActiveSession(
 
       // Clean up active session from disk
       clearOfflineActiveSession();
+      removeActiveTransitionActions();
       if (typeof window !== "undefined") {
         try {
           localStorage.removeItem("studyroom_active_break");
@@ -288,14 +304,7 @@ export function useActiveSession(
       dismissedBreakExpiryRef.current = true;
       if (onStatusChangeRef.current) onStatusChangeRef.current("offline");
 
-      // 5. Enqueue action for background sync to guarantee zero data loss
-      const queuedAction = enqueueSessionAction("finish_session", {
-        completedTaskIds,
-        elapsedStudySeconds: totalActiveSeconds,
-        payload: { session: offlineRecord },
-      });
-
-      // 6. Attempt immediate fast sync with 10s safety timeout
+      // 5. Attempt immediate fast sync with 10s safety timeout
       try {
         const { data, error: rpcErr } = await with10sTimeout(
           (supabase as unknown as RpcCaller).rpc("rpc_finish_session", {
@@ -304,18 +313,31 @@ export function useActiveSession(
           "Finish session RPC"
         );
 
+        if (currentSeq !== actionSeqRef.current) return;
+
         if (!rpcErr && data) {
           const res = data as { success: boolean; server_now?: string; error?: string };
           if (res.server_now) calibrateWithServerTime(res.server_now);
-          // Sync succeeded! Remove from pending queue
-          enqueueSessionAction("offline_session_sync"); // self-cleans
-          flushSessionActionQueue(supabase);
+          // Server accepted session; remove temporary offline duplicate & clear active transitions
+          removeOfflineCompletedSession(offlineRecord.id);
+          removeActiveTransitionActions();
+        } else if (rpcErr) {
+          // If network failed, enqueue to ensure it gets synced when reconnected
+          enqueueSessionAction("finish_session", {
+            completedTaskIds,
+            elapsedStudySeconds: totalActiveSeconds,
+            payload: { session: offlineRecord },
+          });
         }
       } catch (err) {
         console.warn("Fast finish sync timed out or offline; safely queued on disk:", err);
-      } finally {
-        actionLoadingRef.current = false;
-        setActionLoading(false);
+        if (currentSeq === actionSeqRef.current) {
+          enqueueSessionAction("finish_session", {
+            completedTaskIds,
+            elapsedStudySeconds: totalActiveSeconds,
+            payload: { session: offlineRecord },
+          });
+        }
       }
 
       return { success: true };
@@ -485,14 +507,16 @@ export function useActiveSession(
   // -----------------------------------------------------------------------
   const startSession = async () => {
     dismissedBreakExpiryRef.current = false;
-    if (actionLoadingRef.current) return;
-    actionLoadingRef.current = true;
-    setActionLoading(true);
+    const now = Date.now();
+    if (now - lastActionTimestampRef.current < 250) return;
+    lastActionTimestampRef.current = now;
+
+    const currentSeq = ++actionSeqRef.current;
     setError(null);
 
     const nowIso = getServerNow().toISOString();
     const newBlock: SessionBlock = {
-      id: "block_" + Date.now(),
+      id: "block_" + now,
       user_id: profileRef.current?.id || "offline_user",
       session_id: null,
       block_type: "study",
@@ -502,7 +526,7 @@ export function useActiveSession(
 
     // 1. Commit active session to disk immediately (Survived closed app)
     saveOfflineActiveSession({
-      sessionId: "session_" + Date.now(),
+      sessionId: "session_" + now,
       userId: profileRef.current?.id || "offline_user",
       startTime: nowIso,
       status: "studying",
@@ -519,26 +543,28 @@ export function useActiveSession(
     setElapsedStudySeconds(0);
     if (onStatusChangeRef.current) onStatusChangeRef.current("studying");
 
-    // 3. Queue action
-    enqueueSessionAction("start_session");
-
-    // 4. Remote RPC with 10s safety timeout
+    // 3. Remote RPC with 10s safety timeout
     try {
       const { data, error: rpcErr } = await with10sTimeout(
         (supabase as unknown as RpcCaller).rpc("rpc_start_session", { p_focus: null }),
         "Start session RPC"
       );
 
+      if (currentSeq !== actionSeqRef.current) return;
+
       if (!rpcErr && data) {
+        removeActiveTransitionActions();
         const res = data as { success: boolean; server_now?: string };
         if (res.server_now) calibrateWithServerTime(res.server_now);
         await fetchSessionBlocks();
+      } else if (rpcErr) {
+        enqueueSessionAction("start_session");
       }
     } catch (err) {
       console.warn("Start session fast sync timed out or offline; safely queued:", err);
-    } finally {
-      actionLoadingRef.current = false;
-      setActionLoading(false);
+      if (currentSeq === actionSeqRef.current) {
+        enqueueSessionAction("start_session");
+      }
     }
   };
 
@@ -546,9 +572,11 @@ export function useActiveSession(
   // PAUSE SESSION
   // -----------------------------------------------------------------------
   const pauseSession = async () => {
-    if (actionLoadingRef.current) return;
-    actionLoadingRef.current = true;
-    setActionLoading(true);
+    const now = Date.now();
+    if (now - lastActionTimestampRef.current < 250) return;
+    lastActionTimestampRef.current = now;
+
+    const currentSeq = ++actionSeqRef.current;
     setError(null);
 
     const nowIso = getServerNow().toISOString();
@@ -559,7 +587,7 @@ export function useActiveSession(
       !b.end_time && b.block_type === "study" ? { ...b, end_time: nowIso } : b
     );
     const breakBlock: SessionBlock = {
-      id: "block_break_" + Date.now(),
+      id: "block_break_" + now,
       user_id: profileRef.current?.id || "offline_user",
       session_id: null,
       block_type: "break",
@@ -597,26 +625,28 @@ export function useActiveSession(
     setElapsedStudySeconds(currentStudySeconds);
     if (onStatusChangeRef.current) onStatusChangeRef.current("break");
 
-    // 4. Queue action
-    enqueueSessionAction("pause_session", { elapsedStudySeconds: currentStudySeconds });
-
-    // 5. Remote RPC with 10s safety timeout
+    // 4. Remote RPC with 10s safety timeout
     try {
       const { data, error: rpcErr } = await with10sTimeout(
         (supabase as unknown as RpcCaller).rpc("rpc_pause_session"),
         "Pause session RPC"
       );
 
+      if (currentSeq !== actionSeqRef.current) return;
+
       if (!rpcErr && data) {
+        removeActiveTransitionActions();
         const res = data as { success: boolean; server_now?: string };
         if (res.server_now) calibrateWithServerTime(res.server_now);
         await fetchSessionBlocks();
+      } else if (rpcErr) {
+        enqueueSessionAction("pause_session", { elapsedStudySeconds: currentStudySeconds });
       }
     } catch (err) {
       console.warn("Pause session fast sync timed out or offline; safely queued:", err);
-    } finally {
-      actionLoadingRef.current = false;
-      setActionLoading(false);
+      if (currentSeq === actionSeqRef.current) {
+        enqueueSessionAction("pause_session", { elapsedStudySeconds: currentStudySeconds });
+      }
     }
   };
 
@@ -624,9 +654,11 @@ export function useActiveSession(
   // RESUME SESSION
   // -----------------------------------------------------------------------
   const resumeSession = async (): Promise<{ success: boolean; expired?: boolean }> => {
-    if (actionLoadingRef.current) return { success: false };
-    actionLoadingRef.current = true;
-    setActionLoading(true);
+    const now = Date.now();
+    if (now - lastActionTimestampRef.current < 250) return { success: false };
+    lastActionTimestampRef.current = now;
+
+    const currentSeq = ++actionSeqRef.current;
     setError(null);
 
     const nowIso = getServerNow().toISOString();
@@ -636,7 +668,7 @@ export function useActiveSession(
       !b.end_time && b.block_type === "break" ? { ...b, end_time: nowIso } : b
     );
     const studyBlock: SessionBlock = {
-      id: "block_study_" + Date.now(),
+      id: "block_study_" + now,
       user_id: profileRef.current?.id || "offline_user",
       session_id: null,
       block_type: "study",
@@ -666,17 +698,17 @@ export function useActiveSession(
     setBlocks(updatedBlocks);
     if (onStatusChangeRef.current) onStatusChangeRef.current("studying");
 
-    // 4. Queue action
-    enqueueSessionAction("resume_session");
-
-    // 5. Remote RPC with 10s safety timeout
+    // 4. Remote RPC with 10s safety timeout
     try {
       const { data, error: rpcErr } = await with10sTimeout(
         (supabase as unknown as RpcCaller).rpc("rpc_resume_session"),
         "Resume session RPC"
       );
 
+      if (currentSeq !== actionSeqRef.current) return { success: true };
+
       if (!rpcErr && data) {
+        removeActiveTransitionActions();
         const res = data as { success: boolean; server_now?: string; error?: string };
         if (res.server_now) calibrateWithServerTime(res.server_now);
         if (!res.success && res.error === "break_expired") {
@@ -687,12 +719,21 @@ export function useActiveSession(
           return { success: false, expired: true };
         }
         await fetchSessionBlocks();
+      } else if (rpcErr) {
+        const msg = (rpcErr.message || "").toLowerCase();
+        if (msg.includes("not currently on break") && profileRef.current) {
+          const accruedSeconds = profileRef.current.active_study_seconds_snapshot ?? elapsedStudySeconds;
+          setSavedStudySecondsOnBreakExpiry(accruedSeconds);
+          setIsBreakExpiredNoticeOpen(true);
+          return { success: false, expired: true };
+        }
+        enqueueSessionAction("resume_session");
       }
     } catch (err) {
       console.warn("Resume session fast sync timed out or offline; safely queued:", err);
-    } finally {
-      actionLoadingRef.current = false;
-      setActionLoading(false);
+      if (currentSeq === actionSeqRef.current) {
+        enqueueSessionAction("resume_session");
+      }
     }
 
     return { success: true };

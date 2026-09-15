@@ -62,8 +62,6 @@ export default function RoomPage() {
         current_focus: newStatus === "offline" ? null : undefined,
       });
     }
-    refreshProfile();
-    refreshMembers();
   });
 
 

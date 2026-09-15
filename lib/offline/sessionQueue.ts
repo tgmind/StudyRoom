@@ -137,6 +137,7 @@ export function enqueueSessionAction(
     elapsedStudySeconds?: number;
     completedTaskIds?: string[];
     payload?: Record<string, unknown>;
+    deduplicate?: boolean;
   }
 ): QueuedSessionAction {
   const newAction: QueuedSessionAction = {
@@ -151,7 +152,15 @@ export function enqueueSessionAction(
 
   if (typeof window !== "undefined") {
     try {
-      const queue = getPendingSessionActions();
+      let queue = getPendingSessionActions();
+      if (options?.deduplicate) {
+        queue = queue.filter(
+          (item) =>
+            item.action !== "start_session" &&
+            item.action !== "pause_session" &&
+            item.action !== "resume_session"
+        );
+      }
       queue.push(newAction);
       localStorage.setItem(STORAGE_KEYS.OFFLINE_SESSION_QUEUE, JSON.stringify(queue));
     } catch (err) {
@@ -168,6 +177,50 @@ export function removeSessionAction(id: string): void {
     const queue = getPendingSessionActions();
     const remaining = queue.filter((item) => item.id !== id);
     localStorage.setItem(STORAGE_KEYS.OFFLINE_SESSION_QUEUE, JSON.stringify(remaining));
+  } catch {}
+}
+
+/**
+ * Removes any pending start/pause/resume transition actions once an operation succeeds online.
+ */
+export function removeActiveTransitionActions(): void {
+  if (typeof window === "undefined") return;
+  try {
+    const queue = getPendingSessionActions();
+    const remaining = queue.filter(
+      (item) =>
+        item.action !== "start_session" &&
+        item.action !== "pause_session" &&
+        item.action !== "resume_session"
+    );
+    localStorage.setItem(STORAGE_KEYS.OFFLINE_SESSION_QUEUE, JSON.stringify(remaining));
+  } catch {}
+}
+
+/**
+ * Sanitizes existing disk queue on startup to purge any stale, contradictory transition backlog.
+ */
+export function sanitizeSessionQueue(): void {
+  if (typeof window === "undefined") return;
+  try {
+    const queue = getPendingSessionActions();
+    const activeTransitions = queue.filter(
+      (item) =>
+        item.action === "start_session" ||
+        item.action === "pause_session" ||
+        item.action === "resume_session"
+    );
+    const nonTransitions = queue.filter(
+      (item) =>
+        item.action !== "start_session" &&
+        item.action !== "pause_session" &&
+        item.action !== "resume_session"
+    );
+    // Keep at most the single latest transition
+    const latestTransition =
+      activeTransitions.length > 0 ? [activeTransitions[activeTransitions.length - 1]] : [];
+    const sanitized = [...nonTransitions, ...latestTransition];
+    localStorage.setItem(STORAGE_KEYS.OFFLINE_SESSION_QUEUE, JSON.stringify(sanitized));
   } catch {}
 }
 

@@ -134,7 +134,6 @@ export const SessionController = memo(function SessionController({
               size="md"
               variant="secondary"
               onClick={handlePause}
-              isLoading={isLoading}
               className="flex-1 space-x-2 border-amber-500/30 text-amber-300 hover:bg-amber-500/10 font-bold"
             >
               <Pause className="w-4 h-4 fill-current" />
@@ -158,7 +157,6 @@ export const SessionController = memo(function SessionController({
               size="md"
               variant="primary"
               onClick={handleResume}
-              isLoading={isLoading}
               className="flex-1 space-x-2 font-extrabold"
             >
               <RotateCcw className="w-4 h-4" />
