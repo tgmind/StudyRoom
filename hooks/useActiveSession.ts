@@ -102,12 +102,28 @@ export function useActiveSession(
   const lastActionTimestampRef = useRef<number>(0);
   const initialBreakStartIsoRef = useRef<string | null>(null);
 
-  // Clear local override when server profile catches up to the intended state
+  // Clear local override when server profile catches up to the intended state,
+  // or when an external device updates the profile and the local action has settled (>2.5s)
   useEffect(() => {
-    if (localStatusOverride && profile && profile.current_status === localStatusOverride) {
+    if (!localStatusOverride) return;
+    if (profile && profile.current_status === localStatusOverride) {
+      setLocalStatusOverride(null);
+      return;
+    }
+    const elapsedSinceAction = Date.now() - lastActionTimestampRef.current;
+    if (elapsedSinceAction > 2500) {
       setLocalStatusOverride(null);
     }
   }, [profile, localStatusOverride]);
+
+  // Safety timer to guarantee localStatusOverride never lingers beyond 3.5 seconds
+  useEffect(() => {
+    if (!localStatusOverride) return;
+    const timer = setTimeout(() => {
+      setLocalStatusOverride(null);
+    }, 3500);
+    return () => clearTimeout(timer);
+  }, [localStatusOverride]);
 
   // -----------------------------------------------------------------------
   // RESTORATION ON MOUNT: Check disk for active session (Closed-App Support)
@@ -269,6 +285,35 @@ export function useActiveSession(
       }
     } else {
       initialBreakStartIsoRef.current = null;
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.removeItem("studyroom_active_break");
+          if ((window as any).AndroidBridge?.onSessionStateResolved) {
+            if (effectiveStatus === "studying") {
+              const studyStartMs = profileRef.current?.session_start_time
+                ? new Date(profileRef.current.session_start_time).getTime() - getServerTimeOffset()
+                : Date.now();
+              (window as any).AndroidBridge.onSessionStateResolved(
+                false,
+                0,
+                elapsedStudySecondsRef.current,
+                true,
+                studyStartMs,
+                profileRef.current?.current_focus || ""
+              );
+            } else {
+              (window as any).AndroidBridge.onSessionStateResolved(
+                false,
+                0,
+                0,
+                false,
+                0,
+                ""
+              );
+            }
+          }
+        } catch {}
+      }
     }
   }, [effectiveStatus, profile?.break_started_at]);
 
@@ -320,6 +365,36 @@ export function useActiveSession(
   useEffect(() => {
     fetchSessionBlocks();
   }, [fetchSessionBlocks]);
+
+  // Real-time subscription to current user's session_blocks (Multi-device synchronization)
+  useEffect(() => {
+    if (!profile?.id || !supabase?.channel) return;
+    try {
+      const channel = (supabase as any)
+        .channel(`user:session_blocks:${profile.id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "session_blocks",
+            filter: `user_id=eq.${profile.id}`,
+          },
+          () => {
+            fetchSessionBlocks();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        try {
+          if (supabase.removeChannel) {
+            supabase.removeChannel(channel);
+          }
+        } catch {}
+      };
+    } catch {}
+  }, [supabase, profile?.id, fetchSessionBlocks]);
 
   // -----------------------------------------------------------------------
   // FINISH SESSION (STOP)
@@ -837,11 +912,20 @@ export function useActiveSession(
         await fetchSessionBlocks();
       } else if (rpcErr) {
         const msg = (rpcErr.message || "").toLowerCase();
-        if (msg.includes("not currently on break") && profileRef.current) {
-          const accruedSeconds = profileRef.current.active_study_seconds_snapshot ?? elapsedStudySeconds;
+        const isActuallyExpired = Boolean(
+          profileRef.current && isMemberBreakExpired(profileRef.current, getServerNow())
+        );
+        if (msg.includes("not currently on break") && isActuallyExpired) {
+          const accruedSeconds = profileRef.current?.active_study_seconds_snapshot ?? elapsedStudySeconds;
           setSavedStudySecondsOnBreakExpiry(accruedSeconds);
           setIsBreakExpiredNoticeOpen(true);
           return { success: false, expired: true };
+        }
+        if (msg.includes("not currently on break")) {
+          // Break was not expired; session was already resumed or stopped from another device
+          setLocalStatusOverride(null);
+          await fetchSessionBlocks();
+          return { success: true };
         }
         enqueueSessionAction("resume_session");
       }

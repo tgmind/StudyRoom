@@ -320,7 +320,12 @@ BEGIN
   FOR UPDATE;
 
   IF v_status = 'studying' THEN
-    RAISE EXCEPTION 'Session already active';
+    RETURN jsonb_build_object(
+      'success', true,
+      'already_active', true,
+      'status', 'studying',
+      'server_now', v_now
+    );
   END IF;
 
   v_trimmed_focus := NULLIF(TRIM(p_focus), '');
@@ -368,6 +373,7 @@ RETURNS JSONB AS $$
 DECLARE
   v_user_id UUID;
   v_status TEXT;
+  v_break_started_at TIMESTAMPTZ;
   v_now TIMESTAMPTZ := NOW();
   v_total_study_seconds INTEGER := 0;
 BEGIN
@@ -376,10 +382,20 @@ BEGIN
     RAISE EXCEPTION 'Not authenticated';
   END IF;
 
-  SELECT current_status INTO v_status
+  SELECT current_status, break_started_at INTO v_status, v_break_started_at
   FROM public.users
   WHERE id = v_user_id
   FOR UPDATE;
+
+  IF v_status = 'break' THEN
+    RETURN jsonb_build_object(
+      'success', true,
+      'already_paused', true,
+      'status', 'break',
+      'break_started_at', v_break_started_at,
+      'server_now', v_now
+    );
+  END IF;
 
   IF v_status <> 'studying' THEN
     RAISE EXCEPTION 'User is not currently studying';
@@ -440,6 +456,15 @@ BEGIN
   FROM public.users
   WHERE id = v_user_id
   FOR UPDATE;
+
+  IF v_status = 'studying' THEN
+    RETURN jsonb_build_object(
+      'success', true,
+      'already_resumed', true,
+      'status', 'studying',
+      'server_now', v_now
+    );
+  END IF;
 
   IF v_status <> 'break' THEN
     RAISE EXCEPTION 'User is not currently on break';
@@ -563,8 +588,9 @@ BEGIN
 
   IF v_status = 'offline' THEN
     RETURN jsonb_build_object(
-      'success', false,
-      'error', 'No active session found'
+      'success', true,
+      'already_finished', true,
+      'message', 'No active session found'
     );
   END IF;
 

@@ -226,4 +226,125 @@ describe("useActiveSession Hook - Break Expiry & RPC Resilience", () => {
 
     delete (window as any).AndroidBridge;
   });
+
+  it("does NOT open break expired notice when resume error occurs on an unexpired break (cross-device convergence)", async () => {
+    // Break started only 5 minutes ago (unexpired)
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const activeBreakProfile = {
+      id: "user-7",
+      display_name: "Test User 7",
+      current_status: "break",
+      break_started_at: fiveMinutesAgo,
+      active_study_seconds_snapshot: 1500,
+    } as unknown as UserProfile;
+
+    // Simulate backend throwing "User is not currently on break" because Device A already resumed
+    mockRpc.mockResolvedValue({
+      data: null,
+      error: new Error("User is not currently on break"),
+    });
+
+    const { result } = renderHook(() => useActiveSession(activeBreakProfile));
+
+    let resumeResult: { success: boolean; expired?: boolean } | undefined;
+    await act(async () => {
+      resumeResult = await result.current.resumeSession();
+    });
+
+    // MUST NOT trigger the break expired notice
+    expect(result.current.isBreakExpiredNoticeOpen).toBe(false);
+    expect(resumeResult?.success).toBe(true);
+    expect(resumeResult?.expired).toBeUndefined();
+  });
+
+  it("removes studyroom_active_break and notifies AndroidBridge when session transitions from break to studying", async () => {
+    localStorage.setItem("studyroom_active_break", JSON.stringify({ userId: "user-8", localBreakStartMs: Date.now() }));
+    const mockOnSessionStateResolved = vi.fn();
+    (window as any).AndroidBridge = {
+      onSessionStateResolved: mockOnSessionStateResolved,
+    };
+
+    const breakProfile = {
+      id: "user-8",
+      display_name: "Test User 8",
+      current_status: "break",
+      session_start_time: new Date(Date.now() - 1000 * 1000).toISOString(),
+      break_started_at: new Date(Date.now() - 60 * 1000).toISOString(),
+      active_study_seconds_snapshot: 900,
+    } as unknown as UserProfile;
+
+    const { rerender } = renderHook(
+      ({ profile }) => useActiveSession(profile),
+      { initialProps: { profile: breakProfile } }
+    );
+
+    // Profile updates from Device A resuming
+    const studyingProfile = {
+      ...breakProfile,
+      current_status: "studying",
+      break_started_at: null,
+    } as unknown as UserProfile;
+
+    await act(async () => {
+      rerender({ profile: studyingProfile });
+    });
+
+    // studyroom_active_break must be removed
+    expect(localStorage.getItem("studyroom_active_break")).toBeNull();
+
+    // AndroidBridge must be notified of studying state
+    expect(mockOnSessionStateResolved).toHaveBeenCalledWith(
+      false, // isOnBreak = false
+      0,
+      expect.any(Number),
+      true, // isStudying = true
+      expect.any(Number),
+      ""
+    );
+
+    delete (window as any).AndroidBridge;
+  });
+
+  it("removes studyroom_active_break and terminates AndroidBridge when session transitions to offline", async () => {
+    localStorage.setItem("studyroom_active_break", JSON.stringify({ userId: "user-9", localBreakStartMs: Date.now() }));
+    const mockOnSessionStateResolved = vi.fn();
+    (window as any).AndroidBridge = {
+      onSessionStateResolved: mockOnSessionStateResolved,
+    };
+
+    const breakProfile = {
+      id: "user-9",
+      display_name: "Test User 9",
+      current_status: "break",
+      break_started_at: new Date(Date.now() - 60 * 1000).toISOString(),
+    } as unknown as UserProfile;
+
+    const { rerender } = renderHook(
+      ({ profile }) => useActiveSession(profile),
+      { initialProps: { profile: breakProfile } }
+    );
+
+    // Profile updates from Device A stopping session
+    const offlineProfile = {
+      ...breakProfile,
+      current_status: "offline",
+      break_started_at: null,
+    } as unknown as UserProfile;
+
+    await act(async () => {
+      rerender({ profile: offlineProfile });
+    });
+
+    expect(localStorage.getItem("studyroom_active_break")).toBeNull();
+    expect(mockOnSessionStateResolved).toHaveBeenCalledWith(
+      false,
+      0,
+      0,
+      false,
+      0,
+      ""
+    );
+
+    delete (window as any).AndroidBridge;
+  });
 });
