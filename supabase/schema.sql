@@ -26,6 +26,9 @@ CREATE TABLE IF NOT EXISTS public.users (
   has_achiever_badge BOOLEAN NOT NULL DEFAULT FALSE,
   is_admin BOOLEAN NOT NULL DEFAULT FALSE,
   last_break_expired_study_seconds INTEGER DEFAULT NULL,
+  pending_goal_session_id UUID REFERENCES public.study_sessions(id) ON DELETE SET NULL,
+  pending_goal_seconds INTEGER DEFAULT NULL,
+  pending_goal_reason TEXT DEFAULT NULL,
   last_offline_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -36,6 +39,9 @@ ALTER TABLE public.users ADD COLUMN IF NOT EXISTS break_started_at TIMESTAMPTZ;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS active_study_seconds_snapshot INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_break_expired_study_seconds INTEGER DEFAULT NULL;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS pending_goal_session_id UUID REFERENCES public.study_sessions(id) ON DELETE SET NULL;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS pending_goal_seconds INTEGER DEFAULT NULL;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS pending_goal_reason TEXT DEFAULT NULL;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_offline_at TIMESTAMPTZ;
 
 -- Clean up legacy push notification artifacts if upgrading an existing database
@@ -289,6 +295,7 @@ BEGIN
         'rpc_admin_delete_user',
         'rpc_admin_force_end_session',
         'rpc_stop_user_session',
+        'rpc_complete_session_goals',
         'rpc_acknowledge_break_expiry',
         'rpc_cleanup_expired_breaks'
       )
@@ -555,7 +562,10 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- RPC: Finish Session (Atomic Transaction for Stop Hook with Midnight Splitting)
-CREATE OR REPLACE FUNCTION public.rpc_finish_session(p_completed_task_ids TEXT[] DEFAULT ARRAY[]::TEXT[])
+CREATE OR REPLACE FUNCTION public.rpc_finish_session(
+  p_completed_task_ids TEXT[] DEFAULT ARRAY[]::TEXT[],
+  p_reason TEXT DEFAULT 'manual_stop'
+)
 RETURNS JSONB AS $$
 DECLARE
   v_user_id UUID;
@@ -582,6 +592,7 @@ DECLARE
   v_is_completed BOOLEAN;
   v_task_text TEXT;
   v_block RECORD;
+  v_has_completed_tasks BOOLEAN := false;
 BEGIN
   v_user_id := auth.uid();
   IF v_user_id IS NULL THEN
@@ -636,47 +647,48 @@ BEGIN
     END LOOP;
   END IF;
 
-  -- Update Goal Task completions if active unexpired goal window exists
-  -- OR if goal was active when this session started / within session grace window
-  SELECT id, tasks INTO v_active_goal_id, v_tasks
-  FROM public.daily_goals
-  WHERE user_id = v_user_id
-    AND (
-      expires_at > v_now
-      OR (v_session_start IS NOT NULL AND expires_at >= v_session_start)
-      OR expires_at >= (v_now - INTERVAL '4 hours')
-    )
-  ORDER BY created_at DESC
-  LIMIT 1
-  FOR UPDATE;
+  -- Check if tasks were passed directly
+  IF p_completed_task_ids IS NOT NULL AND array_length(p_completed_task_ids, 1) > 0 THEN
+    v_has_completed_tasks := true;
+    SELECT id, tasks INTO v_active_goal_id, v_tasks
+    FROM public.daily_goals
+    WHERE user_id = v_user_id
+      AND (
+        expires_at > v_now
+        OR (v_session_start IS NOT NULL AND expires_at >= v_session_start)
+        OR expires_at >= (v_now - INTERVAL '4 hours')
+      )
+    ORDER BY created_at DESC
+    LIMIT 1
+    FOR UPDATE;
 
-  IF v_active_goal_id IS NOT NULL AND v_tasks IS NOT NULL THEN
-    v_updated_tasks := '[]'::JSONB;
-    FOR v_elem IN SELECT * FROM jsonb_array_elements(v_tasks)
-    LOOP
-      v_task_id := v_elem->>'id';
-      v_is_completed := COALESCE((v_elem->>'completed')::BOOLEAN, false);
-      v_task_text := v_elem->>'task';
+    IF v_active_goal_id IS NOT NULL AND v_tasks IS NOT NULL THEN
+      v_updated_tasks := '[]'::JSONB;
+      FOR v_elem IN SELECT * FROM jsonb_array_elements(v_tasks)
+      LOOP
+        v_task_id := v_elem->>'id';
+        v_is_completed := COALESCE((v_elem->>'completed')::BOOLEAN, false);
+        v_task_text := v_elem->>'task';
 
-      -- Check if task ID is in p_completed_task_ids
-      IF p_completed_task_ids IS NOT NULL AND v_task_id = ANY(p_completed_task_ids) THEN
-        v_is_completed := true;
-        v_session_completed_tasks := v_session_completed_tasks || jsonb_build_object(
+        IF v_task_id = ANY(p_completed_task_ids) THEN
+          v_is_completed := true;
+          v_session_completed_tasks := v_session_completed_tasks || jsonb_build_object(
+            'id', v_task_id,
+            'task', v_task_text
+          );
+        END IF;
+
+        v_updated_tasks := v_updated_tasks || jsonb_build_object(
           'id', v_task_id,
-          'task', v_task_text
+          'task', v_task_text,
+          'completed', v_is_completed
         );
-      END IF;
+      END LOOP;
 
-      v_updated_tasks := v_updated_tasks || jsonb_build_object(
-        'id', v_task_id,
-        'task', v_task_text,
-        'completed', v_is_completed
-      );
-    END LOOP;
-
-    UPDATE public.daily_goals
-    SET tasks = v_updated_tasks
-    WHERE id = v_active_goal_id;
+      UPDATE public.daily_goals
+      SET tasks = v_updated_tasks
+      WHERE id = v_active_goal_id;
+    END IF;
   END IF;
 
   -- Handle Session and Block insertion
@@ -759,7 +771,7 @@ BEGIN
     WHERE user_id = v_user_id AND session_id IS NULL;
   END IF;
 
-  -- Reset user to offline and clear active snapshots
+  -- Reset user to offline and set pending_goal state if tasks not already submitted
   UPDATE public.users
   SET current_status = 'offline',
       current_focus = NULL,
@@ -768,6 +780,9 @@ BEGIN
       break_started_at = NULL,
       active_study_seconds_snapshot = 0,
       last_break_expired_study_seconds = NULL,
+      pending_goal_session_id = CASE WHEN v_has_completed_tasks THEN NULL ELSE v_session_id END,
+      pending_goal_seconds = CASE WHEN v_has_completed_tasks THEN NULL ELSE (v_duration_minutes * 60) END,
+      pending_goal_reason = CASE WHEN v_has_completed_tasks THEN NULL ELSE COALESCE(p_reason, 'manual_stop') END,
       last_offline_at = v_now
   WHERE id = v_user_id;
 
@@ -782,6 +797,9 @@ BEGIN
     'start_time', v_session_start,
     'end_time', v_now,
     'completed_tasks', v_session_completed_tasks,
+    'pending_goal_session_id', CASE WHEN v_has_completed_tasks THEN NULL ELSE v_session_id END,
+    'pending_goal_seconds', CASE WHEN v_has_completed_tasks THEN NULL ELSE (v_duration_minutes * 60) END,
+    'pending_goal_reason', CASE WHEN v_has_completed_tasks THEN NULL ELSE COALESCE(p_reason, 'manual_stop') END,
     'server_now', v_now
   );
 END;
@@ -1070,7 +1088,8 @@ BEGIN
              ), 0
            ) AS completion_pct
     FROM public.daily_goals g
-    WHERE g.created_at >= v_week_start AND g.created_at < v_week_end
+    WHERE (g.created_at >= v_week_start AND g.created_at < v_week_end)
+       OR (g.expires_at > v_week_start AND g.created_at < v_week_start)
     GROUP BY g.user_id
   ),
   qualifying_days AS (
@@ -1633,6 +1652,9 @@ BEGIN
       break_started_at = NULL,
       active_study_seconds_snapshot = 0,
       last_break_expired_study_seconds = CASE WHEN v_status = 'break' THEN v_total_study_seconds::INTEGER ELSE NULL END,
+      pending_goal_session_id = v_session_id,
+      pending_goal_seconds = (v_duration_minutes * 60),
+      pending_goal_reason = CASE WHEN v_status = 'break' THEN 'break_expired' ELSE 'session_limit' END,
       last_offline_at = v_now
   WHERE id = p_user_id;
 
@@ -1640,6 +1662,99 @@ BEGIN
     'success', true,
     'session_id', v_session_id,
     'duration_minutes', v_duration_minutes,
+    'pending_goal_session_id', v_session_id,
+    'pending_goal_seconds', (v_duration_minutes * 60),
+    'pending_goal_reason', CASE WHEN v_status = 'break' THEN 'break_expired' ELSE 'session_limit' END,
+    'server_now', v_now
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- RPC: Complete Session Goals (Authoritative Cross-Device Goal Completion RPC)
+DROP FUNCTION IF EXISTS public.rpc_complete_session_goals(UUID, TEXT[]) CASCADE;
+
+CREATE OR REPLACE FUNCTION public.rpc_complete_session_goals(
+  p_session_id UUID,
+  p_completed_task_ids TEXT[] DEFAULT ARRAY[]::TEXT[]
+)
+RETURNS JSONB AS $$
+DECLARE
+  v_user_id UUID := auth.uid();
+  v_active_goal_id UUID;
+  v_tasks JSONB;
+  v_updated_tasks JSONB;
+  v_elem JSONB;
+  v_task_id TEXT;
+  v_is_completed BOOLEAN;
+  v_task_text TEXT;
+  v_session_completed_tasks JSONB := '[]'::JSONB;
+  v_now TIMESTAMPTZ := NOW();
+BEGIN
+  IF v_user_id IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  -- 1. If tasks were completed, update daily_goals and build completed array
+  IF p_completed_task_ids IS NOT NULL AND array_length(p_completed_task_ids, 1) > 0 THEN
+    SELECT id, tasks INTO v_active_goal_id, v_tasks
+    FROM public.daily_goals
+    WHERE user_id = v_user_id
+      AND (
+        expires_at > v_now
+        OR expires_at >= (v_now - INTERVAL '24 hours')
+      )
+    ORDER BY created_at DESC
+    LIMIT 1
+    FOR UPDATE;
+
+    IF v_active_goal_id IS NOT NULL AND v_tasks IS NOT NULL THEN
+      v_updated_tasks := '[]'::JSONB;
+      FOR v_elem IN SELECT * FROM jsonb_array_elements(v_tasks)
+      LOOP
+        v_task_id := v_elem->>'id';
+        v_is_completed := COALESCE((v_elem->>'completed')::BOOLEAN, false);
+        v_task_text := v_elem->>'task';
+
+        IF v_task_id = ANY(p_completed_task_ids) THEN
+          v_is_completed := true;
+          v_session_completed_tasks := v_session_completed_tasks || jsonb_build_object(
+            'id', v_task_id,
+            'task', v_task_text
+          );
+        END IF;
+
+        v_updated_tasks := v_updated_tasks || jsonb_build_object(
+          'id', v_task_id,
+          'task', v_task_text,
+          'completed', v_is_completed
+        );
+      END LOOP;
+
+      UPDATE public.daily_goals
+      SET tasks = v_updated_tasks
+      WHERE id = v_active_goal_id;
+    END IF;
+
+    -- 2. Link completed tasks to the target study_session
+    IF p_session_id IS NOT NULL AND jsonb_array_length(v_session_completed_tasks) > 0 THEN
+      UPDATE public.study_sessions
+      SET completed_tasks = COALESCE(completed_tasks, '[]'::JSONB) || v_session_completed_tasks
+      WHERE id = p_session_id AND user_id = v_user_id;
+    END IF;
+  END IF;
+
+  -- 3. Atomically clear pending goal state on user profile
+  UPDATE public.users
+  SET pending_goal_session_id = NULL,
+      pending_goal_seconds = NULL,
+      pending_goal_reason = NULL,
+      last_break_expired_study_seconds = NULL
+  WHERE id = v_user_id;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'session_id', p_session_id,
+    'completed_tasks', v_session_completed_tasks,
     'server_now', v_now
   );
 END;

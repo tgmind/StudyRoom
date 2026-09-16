@@ -70,6 +70,35 @@ export function clearOfflineActiveSession(): void {
   } catch {}
 }
 
+export function purgeStaleActiveSession(): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem(STORAGE_KEYS.OFFLINE_ACTIVE_SESSION);
+    localStorage.removeItem(STORAGE_KEYS.ACTIVE_STUDY);
+    localStorage.removeItem(STORAGE_KEYS.ACTIVE_BREAK);
+  } catch {}
+}
+
+export function saveActiveStudyState(data: {
+  userId?: string;
+  sessionStartTime?: string;
+  lastResumedAt?: string;
+  snapshotSeconds?: number;
+  focus?: string;
+}): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(STORAGE_KEYS.ACTIVE_STUDY, JSON.stringify(data));
+  } catch {}
+}
+
+export function clearActiveStudyState(): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem(STORAGE_KEYS.ACTIVE_STUDY);
+  } catch {}
+}
+
 export function updateOfflineActiveSession(
   updater: (prev: OfflineActiveSession) => OfflineActiveSession
 ): OfflineActiveSession | null {
@@ -470,10 +499,10 @@ export async function flushSessionActionQueue(
           removeSessionAction(item.id);
           flushedCount++;
         } else if (item.action === "finish_session") {
-          // Session was started online and finished offline or during network hang
           const { error: rpcErr } = await with10sTimeout(
             (supabase as unknown as RpcCaller).rpc("rpc_finish_session", {
               p_completed_task_ids: item.completedTaskIds || [],
+              p_reason: (item.payload?.reason as string) || "manual_stop",
             }),
             "Finish session RPC"
           );
@@ -487,6 +516,24 @@ export async function flushSessionActionQueue(
               continue;
             }
             throw rpcErr;
+          }
+
+          removeSessionAction(item.id);
+          flushedCount++;
+        } else if (item.action === "complete_session_goals" && item.payload?.sessionId) {
+          const { error: rpcErr } = await with10sTimeout(
+            (supabase as unknown as RpcCaller).rpc("rpc_complete_session_goals", {
+              p_session_id: item.payload.sessionId,
+              p_completed_task_ids: item.completedTaskIds || [],
+            }),
+            "Complete session goals RPC"
+          );
+
+          if (rpcErr) {
+            const msg = (rpcErr.message || "").toLowerCase();
+            if (msg.includes("not authenticated")) {
+              throw rpcErr;
+            }
           }
 
           removeSessionAction(item.id);

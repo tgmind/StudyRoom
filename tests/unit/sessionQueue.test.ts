@@ -170,7 +170,10 @@ describe("Offline Session Queue & Durability Engine", () => {
       expect(result.flushed).toBe(3);
       expect(mockRpc).toHaveBeenCalledWith("rpc_start_session", { p_focus: null });
       expect(mockRpc).toHaveBeenCalledWith("rpc_pause_session");
-      expect(mockRpc).toHaveBeenCalledWith("rpc_finish_session", { p_completed_task_ids: ["task-1"] });
+      expect(mockRpc).toHaveBeenCalledWith("rpc_finish_session", {
+        p_completed_task_ids: ["task-1"],
+        p_reason: "manual_stop",
+      });
 
       expect(getPendingSessionActions()).toHaveLength(0);
     });

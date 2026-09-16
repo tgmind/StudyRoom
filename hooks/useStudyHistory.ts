@@ -51,10 +51,6 @@ export function useStudyHistory(userId?: string) {
 
   const [currentWeekSessions, setCurrentWeekSessions] = useState<StudySession[]>(() => {
     if (userId && cachedHistoryUserId === userId) return cachedCurrentWeekSessions;
-    if (typeof window !== "undefined") {
-      const disk = getCachedSessions<StudySession[]>();
-      if (disk && Array.isArray(disk)) return disk;
-    }
     return [];
   });
   const [pastSessions, setPastSessions] = useState<StudySession[]>([]);
@@ -224,6 +220,13 @@ export function useStudyHistory(userId?: string) {
   }, [supabase, userId]);
 
   useEffect(() => {
+    if (userId && cachedCurrentWeekSessions.length === 0) {
+      const disk = getCachedSessions<StudySession[]>();
+      if (disk && Array.isArray(disk) && disk.length > 0) {
+        setCurrentWeekSessions(disk);
+      }
+    }
+
     fetchHistory();
 
     const handleQueueFlushed = () => {

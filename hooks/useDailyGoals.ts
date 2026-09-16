@@ -25,25 +25,12 @@ export function useDailyGoals(
   sessionStartTime?: string | null,
   isSessionActive = false
 ) {
-  const [activeGoal, setActiveGoal] = useState<DailyGoal | null>(() => {
-    if (typeof window !== "undefined") {
-      return getCachedActiveGoal<DailyGoal>();
-    }
-    return null;
-  });
+  const [activeGoal, setActiveGoal] = useState<DailyGoal | null>(null);
 
-  const [countdown, setCountdown] = useState<GoalCountdownResult>(() => {
-    if (typeof window !== "undefined") {
-      const cached = getCachedActiveGoal<DailyGoal>();
-      if (cached?.expires_at) {
-        return calculateGoalCountdown(cached.expires_at, new Date());
-      }
-    }
-    return {
-      remainingSeconds: 0,
-      formattedText: "EXPIRED",
-      isExpired: true,
-    };
+  const [countdown, setCountdown] = useState<GoalCountdownResult>({
+    remainingSeconds: 0,
+    formattedText: "EXPIRED",
+    isExpired: true,
   });
 
   const [loading, setLoading] = useState(true);
@@ -130,6 +117,15 @@ export function useDailyGoals(
   }, [supabase, userId, sessionStartTime, isSessionActive]);
 
   useEffect(() => {
+    // Restore cached active goal on mount without SSR hydration mismatch
+    const cached = getCachedActiveGoal<DailyGoal>();
+    if (cached) {
+      setActiveGoal(cached);
+      if (cached.expires_at) {
+        setCountdown(calculateGoalCountdown(cached.expires_at, new Date()));
+      }
+    }
+
     fetchActiveGoal();
 
     const handleVisibility = () => {

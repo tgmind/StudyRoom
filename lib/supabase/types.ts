@@ -17,6 +17,9 @@ export interface UserProfile {
   total_sessions_count?: number;
   weekly_sessions_count?: number;
   last_break_expired_study_seconds?: number | null;
+  pending_goal_session_id?: string | null;
+  pending_goal_seconds?: number | null;
+  pending_goal_reason?: "manual_stop" | "session_limit" | "break_expired" | string | null;
   weekly_study_seconds?: number;
   last_offline_at?: string | null;
 }

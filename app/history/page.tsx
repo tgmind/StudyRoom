@@ -24,8 +24,8 @@ import {
   ChevronDown,
   ChevronUp,
   Loader2,
-  XCircle,
 } from "lucide-react";
+import { LapsedGoalHistoryCard } from "@/components/goals/LapsedGoalHistoryCard";
 
 export default function HistoryPage() {
   const { user, profile } = useAuth();
@@ -323,51 +323,7 @@ export default function HistoryPage() {
 
                       {/* Matching UI Red Card for Lapsed Goals at the end of that day's tree */}
                       {dayLapsedGoals.map((lapsedGoal) => (
-                        <div key={lapsedGoal.id} className="relative">
-                          {/* Timeline Node Dot (Matching Rose/Red) */}
-                          <div className="absolute -left-4 sm:-left-6 top-4 -translate-x-1/2 w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-rose-500 border-2 border-zinc-950 shadow-sm ring-2 ring-rose-500/20" />
-
-                          <div className="bg-zinc-900/80 border border-rose-500/30 hover:border-rose-500/50 rounded-xl p-3 sm:p-4 shadow-sm transition-all space-y-2">
-                            {/* Top Line: Red Lapsed Badge + Window Ended Time */}
-                            <div className="flex flex-wrap items-center justify-between gap-1.5 sm:gap-2">
-                              <div className="flex items-center space-x-2 sm:space-x-2.5 min-w-0">
-                                <span className="px-2 py-0.5 sm:px-2.5 sm:py-0.5 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-300 font-mono text-xs sm:text-sm font-black shadow-sm shrink-0 tabular-nums">
-                                  Lapsed Goals
-                                </span>
-
-                                <div className="text-xs sm:text-sm text-zinc-300 font-mono flex items-center space-x-1.5 whitespace-nowrap tabular-nums">
-                                  <Clock className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-                                  <span>
-                                    {lapsedGoal.created_at
-                                      ? `Set ${formatSessionTime(lapsedGoal.created_at)} • Ended ${formatSessionTime(lapsedGoal.expires_at)}`
-                                      : `Window ended ${formatSessionTime(lapsedGoal.expires_at)}`}
-                                  </span>
-                                </div>
-                              </div>
-
-                              <span className="text-[10px] sm:text-xs font-mono font-bold text-rose-400/90 bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20">
-                                {lapsedGoal.lapsedTasks.length} {lapsedGoal.lapsedTasks.length === 1 ? "task" : "tasks"} unfinished
-                              </span>
-                            </div>
-
-                            {/* Bottom Line: Lapsed Goal Chips */}
-                            <div className="pt-1.5 border-t border-rose-950/40 flex flex-wrap gap-1.5 items-center">
-                              <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-rose-400 mr-1 flex items-center space-x-1 shrink-0">
-                                <XCircle className="w-3 h-3 text-rose-400" />
-                                <span>Lapsed:</span>
-                              </span>
-                              {lapsedGoal.lapsedTasks.map((t) => (
-                                <span
-                                  key={t.id}
-                                  className="inline-flex items-center space-x-1 px-2 py-0.5 sm:px-2.5 sm:py-0.5 rounded-md bg-rose-500/10 border border-rose-500/20 text-rose-200 text-[11px] sm:text-xs font-medium max-w-full shadow-sm break-words"
-                                >
-                                  <span className="text-rose-400 font-bold shrink-0">✕</span>
-                                  <span className="break-words line-through decoration-rose-500/50">{t.task}</span>
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
+                        <LapsedGoalHistoryCard key={lapsedGoal.id} lapsedGoal={lapsedGoal} />
                       ))}
                     </div>
                   </section>
@@ -507,51 +463,7 @@ export default function HistoryPage() {
 
                             {/* Matching UI Red Card for Lapsed Goals at the end of that day's tree */}
                             {dayLapsedGoals.map((lapsedGoal) => (
-                              <div key={lapsedGoal.id} className="relative">
-                                {/* Timeline Node Dot (Matching Rose/Red) */}
-                                <div className="absolute -left-4 sm:-left-6 top-4 -translate-x-1/2 w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-rose-500 border-2 border-zinc-950 shadow-sm ring-2 ring-rose-500/20" />
-
-                                <div className="bg-zinc-900/80 border border-rose-500/30 hover:border-rose-500/50 rounded-xl p-3 sm:p-4 shadow-sm transition-all space-y-2">
-                                  {/* Top Line: Red Lapsed Badge + Window Ended Time */}
-                                  <div className="flex flex-wrap items-center justify-between gap-1.5 sm:gap-2">
-                                    <div className="flex items-center space-x-2 sm:space-x-2.5 min-w-0">
-                                      <span className="px-2 py-0.5 sm:px-2.5 sm:py-0.5 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-300 font-mono text-xs sm:text-sm font-black shadow-sm shrink-0 tabular-nums">
-                                        Lapsed Goals
-                                      </span>
-
-                                      <div className="text-xs sm:text-sm text-zinc-300 font-mono flex items-center space-x-1.5 whitespace-nowrap tabular-nums">
-                                        <Clock className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-                                        <span>
-                                          {lapsedGoal.created_at
-                                            ? `Set ${formatSessionTime(lapsedGoal.created_at)} • Ended ${formatSessionTime(lapsedGoal.expires_at)}`
-                                            : `Window ended ${formatSessionTime(lapsedGoal.expires_at)}`}
-                                        </span>
-                                      </div>
-                                    </div>
-
-                                    <span className="text-[10px] sm:text-xs font-mono font-bold text-rose-400/90 bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20">
-                                      {lapsedGoal.lapsedTasks.length} {lapsedGoal.lapsedTasks.length === 1 ? "task" : "tasks"} unfinished
-                                    </span>
-                                  </div>
-
-                                  {/* Bottom Line: Lapsed Goal Chips */}
-                                  <div className="pt-1.5 border-t border-rose-950/40 flex flex-wrap gap-1.5 items-center">
-                                    <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-rose-400 mr-1 flex items-center space-x-1 shrink-0">
-                                      <XCircle className="w-3 h-3 text-rose-400" />
-                                      <span>Lapsed:</span>
-                                    </span>
-                                    {lapsedGoal.lapsedTasks.map((t) => (
-                                      <span
-                                        key={t.id}
-                                        className="inline-flex items-center space-x-1 px-2 py-0.5 sm:px-2.5 sm:py-0.5 rounded-md bg-rose-500/10 border border-rose-500/20 text-rose-200 text-[11px] sm:text-xs font-medium max-w-full shadow-sm break-words"
-                                      >
-                                        <span className="text-rose-400 font-bold shrink-0">✕</span>
-                                        <span className="break-words line-through decoration-rose-500/50">{t.task}</span>
-                                      </span>
-                                    ))}
-                                  </div>
-                                </div>
-                              </div>
+                              <LapsedGoalHistoryCard key={lapsedGoal.id} lapsedGoal={lapsedGoal} />
                             ))}
                           </div>
                         </section>

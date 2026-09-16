@@ -3,7 +3,6 @@
 import React, { useState, memo } from "react";
 import { Button } from "@/components/ui/Button";
 import { ActiveTimer } from "@/components/session/ActiveTimer";
-import { StopHookModal } from "@/components/session/StopHookModal";
 import { CreateGoalModal } from "@/components/goals/CreateGoalModal";
 import { UserStatus, DailyGoal } from "@/lib/supabase/types";
 import { GoalCountdownResult } from "@/lib/time/countdown";
@@ -17,7 +16,7 @@ interface SessionControllerProps {
   onStartSession: () => Promise<void>;
   onPauseSession: () => Promise<void>;
   onResumeSession: () => Promise<void>;
-  onFinishSession: (completedTaskIds: string[]) => Promise<void>;
+  onFinishSession: (completedTaskIds?: string[]) => Promise<void>;
   onCreateGoal: (tasks: string[]) => Promise<void>;
   activeGoal: DailyGoal | null;
   countdown: GoalCountdownResult;
@@ -37,7 +36,6 @@ export const SessionController = memo(function SessionController({
   countdown,
   isLoading = false,
 }: SessionControllerProps) {
-  const [isStopModalOpen, setIsStopModalOpen] = useState(false);
   const [isGoalSetupModalOpen, setIsGoalSetupModalOpen] = useState(false);
 
   const isIdle = status === "offline";
@@ -59,6 +57,14 @@ export const SessionController = memo(function SessionController({
     }
   };
 
+  const handleStop = async () => {
+    try {
+      await onFinishSession([]);
+    } catch {
+      // handled by parent
+    }
+  };
+
   const handleGoalCreated = async (tasks: string[]) => {
     try {
       await onCreateGoal(tasks);
@@ -70,21 +76,21 @@ export const SessionController = memo(function SessionController({
     }
   };
 
-  const handlePause = async () => {
+  const handlePause = React.useCallback(async () => {
     try {
       await onPauseSession();
     } catch {
       // handled by parent
     }
-  };
+  }, [onPauseSession]);
 
-  const handleResume = async () => {
+  const handleResume = React.useCallback(async () => {
     try {
       await onResumeSession();
     } catch {
       // handled by parent
     }
-  };
+  }, [onResumeSession]);
 
   React.useEffect(() => {
     if (isBreak) {
@@ -98,7 +104,7 @@ export const SessionController = memo(function SessionController({
         delete (window as unknown as { __studyRoomTakeBreak?: () => Promise<void> }).__studyRoomTakeBreak;
       };
     }
-  }, [isBreak, isStudying, onResumeSession, onPauseSession]);
+  }, [isBreak, isStudying, handleResume, handlePause]);
 
   return (
     <div className="w-full bg-zinc-900/70 border border-zinc-800/90 rounded-2xl p-4 sm:p-5 shadow-xl space-y-4 backdrop-blur-md">
@@ -142,7 +148,8 @@ export const SessionController = memo(function SessionController({
             <Button
               size="md"
               variant="danger"
-              onClick={() => setIsStopModalOpen(true)}
+              onClick={handleStop}
+              isLoading={isLoading}
               className="flex-1 space-x-2 font-bold"
             >
               <Square className="w-4 h-4 fill-current" />
@@ -165,7 +172,8 @@ export const SessionController = memo(function SessionController({
             <Button
               size="md"
               variant="danger"
-              onClick={() => setIsStopModalOpen(true)}
+              onClick={handleStop}
+              isLoading={isLoading}
               className="flex-1 space-x-2 font-bold"
             >
               <Square className="w-4 h-4 fill-current" />
@@ -180,16 +188,6 @@ export const SessionController = memo(function SessionController({
         isOpen={isGoalSetupModalOpen}
         onClose={() => setIsGoalSetupModalOpen(false)}
         onConfirmCreate={handleGoalCreated}
-        isLoading={isLoading}
-      />
-
-      {/* Stop Hook Modal */}
-      <StopHookModal
-        isOpen={isStopModalOpen}
-        onClose={() => setIsStopModalOpen(false)}
-        onConfirmFinish={onFinishSession}
-        activeGoal={activeGoal}
-        elapsedSeconds={elapsedSeconds}
         isLoading={isLoading}
       />
     </div>

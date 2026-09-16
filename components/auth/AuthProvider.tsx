@@ -21,12 +21,7 @@ export const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<UserProfile | null>(() => {
-    if (typeof window !== "undefined") {
-      return getCachedUserProfile<UserProfile>();
-    }
-    return null;
-  });
+  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,6 +58,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let isMounted = true;
     let lastFetchedUid = "";
+
+    // Hydrate cached profile immediately on mount to prevent SSR hydration mismatch while preserving instant offline UX
+    const cached = getCachedUserProfile<UserProfile>();
+    if (cached && isMounted) {
+      setProfile(cached);
+    }
 
     async function initAuth() {
       try {

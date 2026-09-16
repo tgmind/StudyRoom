@@ -3,6 +3,7 @@ import {
   formatDurationSeconds,
   formatMinutesToHours,
   formatSecondsToHuman,
+  formatLapsedDateTime,
   calculateActiveStudySeconds,
   calculateMemberElapsedStudySeconds,
   calculateMemberLiveBreakSeconds,
@@ -23,6 +24,14 @@ describe("Time Formatting & Active Study Calculation", () => {
     expect(formatMinutesToHours(30)).toBe("30m");
     expect(formatMinutesToHours(60)).toBe("1.0h");
     expect(formatMinutesToHours(145)).toBe("2.4h");
+  });
+
+  it("formats lapsed goal ending timestamp into concise date and time", () => {
+    // 2026-09-14 04:09:00 UTC -> 9:39 AM IST (Sep 14)
+    expect(formatLapsedDateTime("2026-09-14T04:09:00Z", "Asia/Kolkata")).toBe("Sep 14, 9:39 AM");
+    // Invalid or empty string gracefully returns empty
+    expect(formatLapsedDateTime("")).toBe("");
+    expect(formatLapsedDateTime("invalid-timestamp")).toBe("");
   });
 
   it("calculates active study time from timestamps while STRICTLY EXCLUDING breaks", () => {

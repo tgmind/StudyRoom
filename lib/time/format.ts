@@ -397,3 +397,31 @@ export function calculateMemberOfflineHours(
   };
 }
 
+/**
+ * Formats an ISO timestamp into a clean, minimalistic ending date and time string strictly in the target timezone (default Asia/Kolkata).
+ * Example: "Sep 14, 9:39 AM"
+ */
+export function formatLapsedDateTime(
+  isoString: string,
+  timezone: string = process.env.NEXT_PUBLIC_APP_TIMEZONE || "Asia/Kolkata"
+): string {
+  try {
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return "";
+    const datePart = d.toLocaleDateString("en-US", {
+      timeZone: timezone,
+      month: "short",
+      day: "numeric",
+    });
+    const timePart = d.toLocaleTimeString("en-US", {
+      timeZone: timezone,
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+    return `${datePart}, ${timePart}`;
+  } catch {
+    return "";
+  }
+}
+

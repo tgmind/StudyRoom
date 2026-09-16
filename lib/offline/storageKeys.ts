@@ -8,6 +8,8 @@ export const STORAGE_KEYS = {
   CACHED_SESSIONS: "studyroom_cached_sessions",
   CACHED_ROOM_MEMBERS: "studyroom_cached_room_members",
   OFFLINE_COMPLETED_SESSIONS: "studyroom_offline_completed_sessions",
+  ACTIVE_STUDY: "studyroom_active_study",
+  ACTIVE_BREAK: "studyroom_active_break",
 } as const;
 
 export interface OfflineSessionBlock {
@@ -47,6 +49,7 @@ export type QueuedActionType =
   | "pause_session"
   | "resume_session"
   | "finish_session"
+  | "complete_session_goals"
   | "create_goal"
   | "add_goal_tasks";
 

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { memo } from "react";
+import React, { memo, useState, useEffect } from "react";
 import Link from "next/link";
 import { UserProfile } from "@/lib/supabase/types";
 import { Star } from "lucide-react";
@@ -18,6 +18,11 @@ export const TopHeader = memo(function TopHeader({
   profile,
   expectedPeakHours,
 }: TopHeaderProps) {
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
   const initials = profile?.display_name
     ? profile.display_name.substring(0, 2).toUpperCase()
     : "??";
@@ -60,7 +65,7 @@ export const TopHeader = memo(function TopHeader({
         </div>
 
         {/* User Profile Avatar / Achiever Badge */}
-        {profile && (
+        {profile && isMounted && (
           <Link
             href="/settings"
             className="flex items-center space-x-2 p-1 rounded-full hover:bg-zinc-900 transition-colors"

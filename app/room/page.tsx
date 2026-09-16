@@ -3,15 +3,17 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useLiveRoom } from "@/hooks/useLiveRoom";
-import { useActiveSession } from "@/hooks/useActiveSession";
+import { useActiveSession, requestNotificationPermission } from "@/hooks/useActiveSession";
 import { useDailyGoals } from "@/hooks/useDailyGoals";
 import { TopHeader } from "@/components/navigation/TopHeader";
 import { BottomNav } from "@/components/navigation/BottomNav";
 import { SessionController } from "@/components/session/SessionController";
 import { MemberList } from "@/components/room/MemberList";
+import { SessionGoalUpdateModal } from "@/components/session/SessionGoalUpdateModal";
 import { BreakGoalUpdateModal } from "@/components/session/BreakGoalUpdateModal";
 import { SessionLimitModal } from "@/components/session/SessionLimitModal";
 import { CreateGoalModal } from "@/components/goals/CreateGoalModal";
+import { TenMinuteWarningBanner } from "@/components/session/TenMinuteWarningBanner";
 import { getServerNow } from "@/lib/time/clockSync";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 
@@ -48,6 +50,14 @@ export default function RoomPage() {
     isSessionLimitNoticeOpen,
     savedStudySecondsOnLimit,
     closeSessionLimitNotice,
+    isGoalUpdateModalOpen,
+    pendingGoalSessionId,
+    pendingGoalSeconds,
+    pendingGoalReason,
+    completeSessionGoals,
+    closeGoalUpdateModal,
+    tenMinuteWarning,
+    dismissTenMinuteWarning,
     startSession,
     pauseSession,
     resumeSession,
@@ -63,6 +73,10 @@ export default function RoomPage() {
       });
     }
   });
+
+  useEffect(() => {
+    requestNotificationPermission();
+  }, []);
 
 
   const [isGoalSetupModalOpen, setIsGoalSetupModalOpen] = useState(false);
@@ -138,7 +152,7 @@ export default function RoomPage() {
     }
   };
 
-  const handleFinishSession = async (completedTaskIds: string[]) => {
+  const handleFinishSession = async (completedTaskIds: string[] = []) => {
     if (user) {
       broadcastStatusChange({
         id: user.id,
@@ -149,7 +163,7 @@ export default function RoomPage() {
         current_focus: null,
       });
     }
-    await finishSession(completedTaskIds);
+    await finishSession(completedTaskIds, "manual_stop");
     await Promise.allSettled([refreshGoals(), refreshProfile(), refreshMembers()]);
   };
 
@@ -200,6 +214,15 @@ export default function RoomPage() {
           </div>
         )}
 
+        {/* 10-Minute Earlier Warning Banner */}
+        {tenMinuteWarning && tenMinuteWarning.active && (
+          <TenMinuteWarningBanner
+            type={tenMinuteWarning.type}
+            remainingSeconds={tenMinuteWarning.remainingSeconds}
+            onDismiss={dismissTenMinuteWarning}
+          />
+        )}
+
         {/* Session Controller Panel */}
         <section aria-label="Session Controller">
           <SessionController
@@ -232,34 +255,77 @@ export default function RoomPage() {
         </section>
       </main>
 
-      {/* 3-Hour Maximum Session Limit Reached Modal */}
-      <SessionLimitModal
-        isOpen={isSessionLimitNoticeOpen}
-        onClose={closeSessionLimitNotice}
-        onConfirmSaveGoals={async (completedTaskIds) => {
-          try {
-            if (completedTaskIds.length > 0) {
-              await completeGoalTasks(completedTaskIds);
-              await Promise.allSettled([refreshGoals(), refreshProfile(), refreshMembers()]);
-            }
-          } finally {
-            closeSessionLimitNotice();
+      {/* Realtime Unified Cross-Device Goal Update Popup */}
+      <SessionGoalUpdateModal
+        isOpen={isGoalUpdateModalOpen}
+        onClose={async () => {
+          await closeGoalUpdateModal();
+          if (isBreakExpiredNoticeOpen) await closeBreakExpiredNotice();
+          if (isSessionLimitNoticeOpen) closeSessionLimitNotice();
+          if (user) {
+            broadcastStatusChange({
+              id: user.id,
+              pending_goal_session_id: null,
+            });
           }
+          await Promise.allSettled([refreshGoals(), refreshProfile(), refreshMembers()]);
+        }}
+        onConfirmSaveGoals={async (completedTaskIds) => {
+          if (pendingGoalSessionId) {
+            await completeSessionGoals(pendingGoalSessionId, completedTaskIds);
+          }
+          if (isBreakExpiredNoticeOpen) await closeBreakExpiredNotice();
+          if (isSessionLimitNoticeOpen) closeSessionLimitNotice();
+          if (user) {
+            broadcastStatusChange({
+              id: user.id,
+              pending_goal_session_id: null,
+            });
+          }
+          await Promise.allSettled([refreshGoals(), refreshProfile(), refreshMembers()]);
         }}
         activeGoal={activeGoal}
-        savedStudySeconds={savedStudySecondsOnLimit || 10800}
-        isLoading={goalActionLoading}
-      />
-
-      {/* Persistent Goal Updates Prompt Modal after 1-hour Break Expiry */}
-      <BreakGoalUpdateModal
-        isOpen={isBreakExpiredNoticeOpen}
-        onClose={closeBreakExpiredNotice}
-        onConfirmSaveGoals={handleSaveGoalsAfterBreak}
-        activeGoal={activeGoal}
-        savedStudySeconds={savedStudySecondsOnBreakExpiry}
+        savedStudySeconds={
+          pendingGoalSeconds || savedStudySecondsOnLimit || savedStudySecondsOnBreakExpiry
+        }
+        reason={
+          (pendingGoalReason as "manual_stop" | "session_limit" | "break_expired") || "manual_stop"
+        }
         isLoading={goalActionLoading || actionLoading}
       />
+
+      {/* Fallback 3-Hour Maximum Session Limit Reached Modal */}
+      {!isGoalUpdateModalOpen && isSessionLimitNoticeOpen && (
+        <SessionLimitModal
+          isOpen={isSessionLimitNoticeOpen}
+          onClose={closeSessionLimitNotice}
+          onConfirmSaveGoals={async (completedTaskIds) => {
+            try {
+              if (completedTaskIds.length > 0) {
+                await completeGoalTasks(completedTaskIds);
+                await Promise.allSettled([refreshGoals(), refreshProfile(), refreshMembers()]);
+              }
+            } finally {
+              closeSessionLimitNotice();
+            }
+          }}
+          activeGoal={activeGoal}
+          savedStudySeconds={savedStudySecondsOnLimit || 10800}
+          isLoading={goalActionLoading}
+        />
+      )}
+
+      {/* Fallback Goal Updates Prompt Modal after 1-hour Break Expiry */}
+      {!isGoalUpdateModalOpen && isBreakExpiredNoticeOpen && (
+        <BreakGoalUpdateModal
+          isOpen={isBreakExpiredNoticeOpen}
+          onClose={closeBreakExpiredNotice}
+          onConfirmSaveGoals={handleSaveGoalsAfterBreak}
+          activeGoal={activeGoal}
+          savedStudySeconds={savedStudySecondsOnBreakExpiry}
+          isLoading={goalActionLoading || actionLoading}
+        />
+      )}
 
       {/* Goal Setup Modal when starting after break */}
       <CreateGoalModal

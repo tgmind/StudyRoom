@@ -18,6 +18,9 @@ vi.mock("@/lib/supabase/client", () => ({
 describe("useActiveSession Hook - Break Expiry & RPC Resilience", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    if (typeof localStorage !== "undefined") {
+      localStorage.clear();
+    }
     mockFrom.mockReturnValue({
       select: vi.fn().mockReturnValue({
         eq: vi.fn().mockReturnValue({
@@ -59,6 +62,7 @@ describe("useActiveSession Hook - Break Expiry & RPC Resilience", () => {
     expect(result.current.savedStudySecondsOnBreakExpiry).toBe(3000);
     expect(mockRpc).toHaveBeenCalledWith("rpc_finish_session", {
       p_completed_task_ids: [],
+      p_reason: "break_expired",
     });
   });
 
@@ -141,6 +145,7 @@ describe("useActiveSession Hook - Break Expiry & RPC Resilience", () => {
     expect(result.current.isBreakExpiredNoticeOpen).toBe(false);
     expect(mockRpc).toHaveBeenCalledWith("rpc_finish_session", {
       p_completed_task_ids: ["task-1"],
+      p_reason: "manual_stop",
     });
   });
 
