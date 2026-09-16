@@ -31,6 +31,15 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- Android App Linking: opens app when user taps studyalive.netlify.app links -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="studyalive.netlify.app" android:pathPrefix="/room" />
+                <data android:scheme="https" android:host="studyalive.netlify.app" android:pathPrefix="/login" />
+            </intent-filter>
         </activity>
 
         <!-- Native Foreground Service for Live Notification Chronometer -->

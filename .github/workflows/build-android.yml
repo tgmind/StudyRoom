@@ -51,7 +51,44 @@ jobs:
           java-version: "17"
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        run: |
+          # Use the sdkmanager pre-installed on the GitHub runner.
+          # We do NOT install the legacy 'tools' package — Google removed it
+          # from their SDK repository, causing android-actions/setup-android@v3 to fail.
+          SDK_ROOT="${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}"
+          echo "ANDROID_SDK_ROOT=${SDK_ROOT}" >> $GITHUB_ENV
+          echo "ANDROID_HOME=${SDK_ROOT}" >> $GITHUB_ENV
+
+          # Locate sdkmanager (runner may have it under 'latest' or a versioned folder)
+          SDKMGR=""
+          for candidate in \
+              "${SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" \
+              "${SDK_ROOT}/cmdline-tools/16.0/bin/sdkmanager" \
+              "${SDK_ROOT}/tools/bin/sdkmanager"; do
+            if [ -f "$candidate" ]; then
+              SDKMGR="$candidate"
+              break
+            fi
+          done
+
+          if [ -z "$SDKMGR" ]; then
+            echo "sdkmanager not found – downloading cmdline-tools..."
+            mkdir -p "${SDK_ROOT}/cmdline-tools"
+            wget -q -O /tmp/cmdline-tools.zip \
+              "https://dl.google.com/android/repository/commandlinetools-linux-12266719_latest.zip"
+            unzip -q /tmp/cmdline-tools.zip -d /tmp/cmdline-tools-extract
+            mv /tmp/cmdline-tools-extract/cmdline-tools "${SDK_ROOT}/cmdline-tools/latest"
+            SDKMGR="${SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager"
+          fi
+
+          echo "Using sdkmanager at: $SDKMGR"
+          chmod +x "$SDKMGR"
+
+          # Accept all licences non-interactively
+          yes | "$SDKMGR" --licenses 2>/dev/null || true
+
+          # Install only what Gradle actually needs (skip the deleted 'tools' package)
+          "$SDKMGR" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
       - name: Cache Gradle Packages
         uses: actions/cache@v4
@@ -138,6 +175,7 @@ jobs:
             - **🔄 Smart Back Navigation**: Pressing back returns directly to the Room page; pressing back again exits cleanly.
             - **🪶 Ultra-Lightweight**: Minimal battery consumption, 60–120 FPS hardware acceleration.
             - **🔒 Rock-Solid Timer**: Continues tracking your study session accurately even if the app is closed or the phone is rebooted.
+            - **🔗 Deep Linking**: Tapping "Continue Studying" in email notifications opens the app directly to the Room — no browser redirect.
 
             ### 📲 Installation Instructions:
             1. Download `StudyRoom-v${{ env.VERSION }}.apk` below on your Android phone.

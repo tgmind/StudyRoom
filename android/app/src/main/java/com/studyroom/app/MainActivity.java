@@ -129,6 +129,23 @@ public class MainActivity extends AppCompatActivity {
                 }
                 dispatchTakeBreakWithRetry();
             }
+        } else if (Intent.ACTION_VIEW.equals(intent.getAction())) {
+            // Deep link: open the specific path inside the WebView
+            Uri data = intent.getData();
+            if (data != null && webView != null) {
+                String targetUrl = data.toString();
+                if (targetUrl.startsWith(baseUrl)) {
+                    webView.loadUrl(targetUrl);
+                } else {
+                    // Map external HTTPS deep link to in-app path
+                    String path = data.getPath();
+                    if (path != null && !path.isEmpty()) {
+                        webView.loadUrl(baseUrl + path);
+                    } else {
+                        webView.loadUrl(baseUrl + "/room");
+                    }
+                }
+            }
         }
     }
 
