@@ -603,12 +603,21 @@ export async function flushSessionActionQueue(
           removeSessionAction(item.id);
           flushedCount++;
         } else if (item.action === "create_goal" && item.payload?.tasks) {
-          await with10sTimeout(
+          const { data, error: rpcErr } = await with10sTimeout(
             (supabase as unknown as RpcCaller).rpc("rpc_create_daily_goal", {
               p_tasks: item.payload.tasks,
             }),
             "Create goal RPC"
           );
+          if (rpcErr) {
+            const msg = (rpcErr.message || "").toLowerCase();
+            if (msg.includes("already exists")) {
+              removeSessionAction(item.id);
+              flushedCount++;
+              continue;
+            }
+            throw rpcErr;
+          }
           removeSessionAction(item.id);
           flushedCount++;
         } else if (item.action === "add_goal_tasks" && item.payload?.tasks) {

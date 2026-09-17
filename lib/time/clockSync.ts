@@ -15,10 +15,12 @@ if (typeof window !== "undefined") {
     const cached = sessionStorage.getItem("studyroom_server_clock_offset");
     if (cached !== null) {
       const parsed = parseInt(cached, 10);
-      if (!isNaN(parsed) && Math.abs(parsed) < 86400000 * 7) {
-        // Sanity check: within 7 days
+      // Sanity check: plausible device clock skew within +/- 2 hours
+      if (!isNaN(parsed) && Math.abs(parsed) < 7200000) {
         serverTimeOffsetMs = parsed;
         isCalibrated = true;
+      } else {
+        sessionStorage.removeItem("studyroom_server_clock_offset");
       }
     }
   } catch {
@@ -54,6 +56,9 @@ export function calibrateWithServerTime(
   const clientNow = Date.now();
 
   const measuredOffset = estimatedServerNow - clientNow;
+
+  // Discard absurd offsets greater than 2 hours (e.g. stale goal created_at timestamps)
+  if (Math.abs(measuredOffset) > 7200000) return;
 
   if (!isCalibrated) {
     serverTimeOffsetMs = measuredOffset;

@@ -10,8 +10,6 @@ import { BottomNav } from "@/components/navigation/BottomNav";
 import { SessionController } from "@/components/session/SessionController";
 import { MemberList } from "@/components/room/MemberList";
 import { SessionGoalUpdateModal } from "@/components/session/SessionGoalUpdateModal";
-import { BreakGoalUpdateModal } from "@/components/session/BreakGoalUpdateModal";
-import { SessionLimitModal } from "@/components/session/SessionLimitModal";
 import { CreateGoalModal } from "@/components/goals/CreateGoalModal";
 import { TenMinuteWarningBanner } from "@/components/session/TenMinuteWarningBanner";
 import { getServerNow } from "@/lib/time/clockSync";
@@ -106,89 +104,24 @@ export default function RoomPage() {
   const hasPendingGoals = Boolean(activeGoal?.tasks && activeGoal.tasks.some((t) => !t.completed));
 
   const handleStartSession = async () => {
-    const nowIso = getServerNow().toISOString();
     await startSession();
-    if (user) {
-      broadcastStatusChange({
-        id: user.id,
-        current_status: "studying",
-        session_start_time: nowIso,
-        last_resumed_at: nowIso,
-        break_started_at: null,
-        active_study_seconds_snapshot: 0,
-        current_focus: null,
-      });
-    }
   };
 
   const handlePauseSession = async () => {
-    const accruedBeforePause = elapsedStudySeconds;
-    const nowIso = getServerNow().toISOString();
-    if (user) {
-      broadcastStatusChange({
-        id: user.id,
-        current_status: "break",
-        break_started_at: nowIso,
-        active_study_seconds_snapshot: accruedBeforePause,
-      });
-    }
     await pauseSession();
   };
 
   const handleResumeSession = async () => {
-    const nowIso = getServerNow().toISOString();
-    if (user) {
-      broadcastStatusChange({
-        id: user.id,
-        current_status: "studying",
-        break_started_at: null,
-        last_resumed_at: nowIso,
-      });
-    }
-    const res = await resumeSession();
-    if (user && res?.expired) {
-      broadcastStatusChange({
-        id: user.id,
-        current_status: "offline",
-        session_start_time: null,
-        last_resumed_at: null,
-        break_started_at: null,
-        current_focus: null,
-      });
-    }
+    await resumeSession();
   };
 
   const handleFinishSession = async (completedTaskIds: string[] = []) => {
-    if (user) {
-      broadcastStatusChange({
-        id: user.id,
-        current_status: "offline",
-        session_start_time: null,
-        last_resumed_at: null,
-        break_started_at: null,
-        current_focus: null,
-      });
-    }
     await finishSession(completedTaskIds, "manual_stop");
     await Promise.allSettled([refreshGoals(), refreshProfile(), refreshMembers()]);
   };
 
   const handleCreateGoal = async (tasks: string[]) => {
     await createGoal(tasks);
-  };
-
-  const handleSaveGoalsAfterBreak = async (completedTaskIds: string[]) => {
-    try {
-      if (completedTaskIds.length > 0) {
-        await completeGoalTasks(completedTaskIds);
-      }
-      await closeBreakExpiredNotice();
-      await Promise.allSettled([refreshGoals(), refreshProfile(), refreshMembers()]);
-    } catch (err) {
-      console.error("Failed to save goals after break:", err);
-      await closeBreakExpiredNotice();
-      await Promise.allSettled([refreshGoals(), refreshProfile(), refreshMembers()]);
-    }
   };
 
   const handleGoalCreatedFromModal = async (tasks: string[]) => {
@@ -263,7 +196,7 @@ export default function RoomPage() {
 
       {/* Realtime Unified Cross-Device Goal Update Popup */}
       <SessionGoalUpdateModal
-        isOpen={isGoalUpdateModalOpen}
+        isOpen={isGoalUpdateModalOpen || isSessionLimitNoticeOpen || isBreakExpiredNoticeOpen}
         onClose={async () => {
           await closeGoalUpdateModal();
           if (isBreakExpiredNoticeOpen) await closeBreakExpiredNotice();
@@ -279,6 +212,8 @@ export default function RoomPage() {
         onConfirmSaveGoals={async (completedTaskIds) => {
           if (pendingGoalSessionId) {
             await completeSessionGoals(pendingGoalSessionId, completedTaskIds);
+          } else if (completedTaskIds.length > 0) {
+            await completeGoalTasks(completedTaskIds);
           }
           if (isBreakExpiredNoticeOpen) await closeBreakExpiredNotice();
           if (isSessionLimitNoticeOpen) closeSessionLimitNotice();
@@ -295,43 +230,15 @@ export default function RoomPage() {
           pendingGoalSeconds || savedStudySecondsOnLimit || savedStudySecondsOnBreakExpiry
         }
         reason={
-          (pendingGoalReason as "manual_stop" | "session_limit" | "break_expired") || "manual_stop"
+          (pendingGoalReason as "manual_stop" | "session_limit" | "break_expired") ||
+          (isSessionLimitNoticeOpen
+            ? "session_limit"
+            : isBreakExpiredNoticeOpen
+            ? "break_expired"
+            : "manual_stop")
         }
         isLoading={goalActionLoading || actionLoading}
       />
-
-      {/* Fallback 3-Hour Maximum Session Limit Reached Modal */}
-      {!isGoalUpdateModalOpen && isSessionLimitNoticeOpen && (
-        <SessionLimitModal
-          isOpen={isSessionLimitNoticeOpen}
-          onClose={closeSessionLimitNotice}
-          onConfirmSaveGoals={async (completedTaskIds) => {
-            try {
-              if (completedTaskIds.length > 0) {
-                await completeGoalTasks(completedTaskIds);
-                await Promise.allSettled([refreshGoals(), refreshProfile(), refreshMembers()]);
-              }
-            } finally {
-              closeSessionLimitNotice();
-            }
-          }}
-          activeGoal={activeGoal}
-          savedStudySeconds={savedStudySecondsOnLimit || 10800}
-          isLoading={goalActionLoading}
-        />
-      )}
-
-      {/* Fallback Goal Updates Prompt Modal after 1-hour Break Expiry */}
-      {!isGoalUpdateModalOpen && isBreakExpiredNoticeOpen && (
-        <BreakGoalUpdateModal
-          isOpen={isBreakExpiredNoticeOpen}
-          onClose={closeBreakExpiredNotice}
-          onConfirmSaveGoals={handleSaveGoalsAfterBreak}
-          activeGoal={activeGoal}
-          savedStudySeconds={savedStudySecondsOnBreakExpiry}
-          isLoading={goalActionLoading || actionLoading}
-        />
-      )}
 
       {/* Goal Setup Modal when starting after break */}
       <CreateGoalModal

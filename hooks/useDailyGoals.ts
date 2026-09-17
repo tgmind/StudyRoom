@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { DailyGoal, GoalTask } from "@/lib/supabase/types";
 import { calculateGoalCountdown, GoalCountdownResult } from "@/lib/time/countdown";
-import { getServerNow, calibrateWithServerTime } from "@/lib/time/clockSync";
+import { getServerNow } from "@/lib/time/clockSync";
 import { validateGoalTasks } from "@/lib/validation/schemas";
 import {
   getCachedActiveGoal,
@@ -36,6 +36,7 @@ export function useDailyGoals(
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const isSubmittingGoalRef = useRef(false);
 
   const supabase = createClient();
 
@@ -187,10 +188,12 @@ export function useDailyGoals(
   }, [activeGoal, fetchActiveGoal, isSessionActive]);
 
   const createGoal = async (rawTaskTexts: string[]) => {
-    if (!userId || actionLoading) return;
+    if (!userId || actionLoading || isSubmittingGoalRef.current) return;
+    isSubmittingGoalRef.current = true;
 
     const validation = validateGoalTasks(rawTaskTexts);
     if (!validation.isValid) {
+      isSubmittingGoalRef.current = false;
       setError(validation.error || "Invalid task entries");
       throw new Error(validation.error || "Invalid task entries");
     }
@@ -198,7 +201,7 @@ export function useDailyGoals(
     setActionLoading(true);
     setError(null);
 
-    const now = new Date();
+    const now = getServerNow();
     const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
     const taskObjects: GoalTask[] = validation.value.map((taskText, idx) => ({
       id: `task-${Date.now()}-${idx}`,
@@ -220,9 +223,6 @@ export function useDailyGoals(
     saveCachedActiveGoal(optimisticGoal);
     setCountdown(calculateGoalCountdown(expiresAt, now));
 
-    // Queue action for durable background sync
-    enqueueSessionAction("create_goal", { payload: { tasks: taskObjects } });
-
     try {
       const { data, error: rpcErr } = await with10sTimeout(
         (supabase as unknown as RpcCaller).rpc("rpc_create_daily_goal", {
@@ -232,15 +232,16 @@ export function useDailyGoals(
       );
 
       if (!rpcErr && data) {
-        const res = data as { success: boolean; created_at?: string; server_now?: string };
-        if (res.created_at || res.server_now) {
-          calibrateWithServerTime(res.created_at || res.server_now);
-        }
         await fetchActiveGoal();
+      } else if (rpcErr) {
+        // Enqueue only if remote network failed so sync worker syncs when reconnected
+        enqueueSessionAction("create_goal", { payload: { tasks: taskObjects } });
       }
     } catch (err) {
       console.warn("Create goal timed out or offline; safely queued on disk:", err);
+      enqueueSessionAction("create_goal", { payload: { tasks: taskObjects } });
     } finally {
+      isSubmittingGoalRef.current = false;
       setActionLoading(false);
     }
   };

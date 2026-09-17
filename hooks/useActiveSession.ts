@@ -16,7 +16,6 @@ import {
 } from "@/lib/time/break";
 import {
   getServerNow,
-  calibrateWithServerTime,
   getServerTimeOffset,
 } from "@/lib/time/clockSync";
 import {
@@ -101,6 +100,7 @@ export function useActiveSession(
   const [pendingGoalSeconds, setPendingGoalSeconds] = useState(0);
   const [pendingGoalReason, setPendingGoalReason] = useState<string>("manual_stop");
   const hasCompletedGoalsRef = useRef(false);
+  const isLocallyAwaitingGoalUpdateRef = useRef(false);
 
   // 10-Minute Earlier Warning State (session limit & break limit)
   const [tenMinuteWarning, setTenMinuteWarning] = useState<TenMinuteWarningState | null>(null);
@@ -145,32 +145,40 @@ export function useActiveSession(
   localStatusOverrideRef.current = localStatusOverride;
 
   const actionSeqRef = useRef<number>(0);
-  const lastActionTimestampRef = useRef<number>(0);
+  const lastUserClickTimestampRef = useRef<number>(0);
+  const localOverrideSetTimestampRef = useRef<number>(0);
   const initialBreakStartIsoRef = useRef<string | null>(null);
+
+  const applyLocalStatusOverride = useCallback((status: UserStatus | null) => {
+    localOverrideSetTimestampRef.current = status ? Date.now() : 0;
+    setLocalStatusOverride(status);
+  }, []);
 
   // Clear local override when server profile catches up to the intended state,
   // or when an external device updates the profile and the local action has settled (>5s)
   useEffect(() => {
     if (!localStatusOverride) return;
     if (profile && profile.current_status === localStatusOverride) {
-      setLocalStatusOverride(null);
+      applyLocalStatusOverride(null);
       return;
     }
-    const elapsedSinceAction = Date.now() - lastActionTimestampRef.current;
-    if (elapsedSinceAction > 5000) {
-      setLocalStatusOverride(null);
+    if (localOverrideSetTimestampRef.current > 0) {
+      const elapsedSinceAction = Date.now() - localOverrideSetTimestampRef.current;
+      if (elapsedSinceAction > 5000) {
+        applyLocalStatusOverride(null);
+      }
     }
-  }, [profile, localStatusOverride]);
+  }, [profile, localStatusOverride, applyLocalStatusOverride]);
 
   // Absolute safety timer: guarantee localStatusOverride never lingers beyond 6 seconds.
   // 6 s = 5 s profile-catch window + 1 s buffer for slow networks / Supabase realtime lag.
   useEffect(() => {
     if (!localStatusOverride) return;
     const timer = setTimeout(() => {
-      setLocalStatusOverride(null);
+      applyLocalStatusOverride(null);
     }, 6000);
     return () => clearTimeout(timer);
-  }, [localStatusOverride]);
+  }, [localStatusOverride, applyLocalStatusOverride]);
 
   // Synchronize cross-device pending goal update popup when profile updates
   useEffect(() => {
@@ -183,10 +191,10 @@ export function useActiveSession(
       setIsGoalUpdateModalOpen(true);
     } else if (profile.pending_goal_session_id === null) {
       // Cleared across devices by another session update
-      setIsGoalUpdateModalOpen(false);
-      setPendingGoalSessionId(null);
-      setIsBreakExpiredNoticeOpen(false);
-      setIsSessionLimitNoticeOpen(false);
+      if (!isLocallyAwaitingGoalUpdateRef.current) {
+        setIsGoalUpdateModalOpen(false);
+        setPendingGoalSessionId(null);
+      }
     }
   }, [profile?.pending_goal_session_id, profile?.pending_goal_seconds, profile?.pending_goal_reason, profile]);
 
@@ -239,7 +247,14 @@ export function useActiveSession(
       return;
     }
 
-    const now = new Date();
+    const isOfflineMode = typeof navigator !== "undefined" && !navigator.onLine;
+    if (!isOfflineMode) {
+      // In online mode, the server profile is authoritative. Stale disk blocks
+      // must not override live study state or cause reload timer jumping.
+      return;
+    }
+
+    const now = getServerNow();
     const sessionBlocks = (offlineSession.blocks || []) as SessionBlock[];
 
     if (offlineSession.status === "studying") {
@@ -251,12 +266,12 @@ export function useActiveSession(
         clearOfflineActiveSession();
         setBlocks([]);
         setElapsedStudySeconds(0);
-        setLocalStatusOverride("offline");
+        applyLocalStatusOverride("offline");
         if (onStatusChangeRef.current) onStatusChangeRef.current("offline");
       } else {
         setBlocks(sessionBlocks);
         setElapsedStudySeconds(accrued);
-        setLocalStatusOverride("studying");
+        applyLocalStatusOverride("studying");
         if (onStatusChangeRef.current) onStatusChangeRef.current("studying");
       }
     } else if (offlineSession.status === "break" && offlineSession.breakStartedAt) {
@@ -269,12 +284,12 @@ export function useActiveSession(
         clearOfflineActiveSession();
         setBlocks([]);
         setElapsedStudySeconds(0);
-        setLocalStatusOverride("offline");
+        applyLocalStatusOverride("offline");
         if (onStatusChangeRef.current) onStatusChangeRef.current("offline");
       } else {
         setBlocks(sessionBlocks);
         setElapsedStudySeconds(offlineSession.elapsedStudySeconds || 0);
-        setLocalStatusOverride("break");
+        applyLocalStatusOverride("break");
         initialBreakStartIsoRef.current = offlineSession.breakStartedAt;
         if (onStatusChangeRef.current) onStatusChangeRef.current("break");
 
@@ -308,7 +323,7 @@ export function useActiveSession(
         }
       }
     }
-  }, []);
+  }, [applyLocalStatusOverride]);
 
   // Check if an offline user had an expired break that ended while offline / in background
   useEffect(() => {
@@ -528,12 +543,15 @@ export function useActiveSession(
       reason: "manual_stop" | "session_limit" | "break_expired" = "manual_stop"
     ) => {
       const now = Date.now();
-      if (now - lastActionTimestampRef.current < 250) return;
-      lastActionTimestampRef.current = now;
+      if (reason === "manual_stop" && now - lastUserClickTimestampRef.current < 250) return;
+      if (reason === "manual_stop") {
+        lastUserClickTimestampRef.current = now;
+      }
 
       const currentSeq = ++actionSeqRef.current;
       setError(null);
       setTenMinuteWarning(null);
+      isLocallyAwaitingGoalUpdateRef.current = true;
 
       initialBreakStartIsoRef.current = null;
       const nowIso = getServerNow().toISOString();
@@ -644,7 +662,7 @@ export function useActiveSession(
       }
 
       // 4. Update UI in 0ms (Student is NEVER locked)
-      setLocalStatusOverride("offline");
+      applyLocalStatusOverride("offline");
       setBlocks([]);
       setElapsedStudySeconds(0);
       dismissedBreakExpiryRef.current = true;
@@ -672,13 +690,12 @@ export function useActiveSession(
 
         if (!rpcErr && data) {
           const res = data as { success: boolean; session_id?: string; server_now?: string; error?: string };
-          if (res.server_now) calibrateWithServerTime(res.server_now);
-          if (res.session_id) {
-            setPendingGoalSessionId(res.session_id);
-            setPendingGoalSeconds(durationMinutes * 60);
-            setPendingGoalReason(reason);
-            setIsGoalUpdateModalOpen(true);
-          }
+          const targetSessionId = res.session_id || baseOfflineId;
+          setPendingGoalSessionId(targetSessionId);
+          setPendingGoalSeconds(durationMinutes * 60);
+          setPendingGoalReason(reason);
+          setIsGoalUpdateModalOpen(true);
+
           // Server accepted session; remove temporary offline duplicate & clear active transitions
           removeOfflineCompletedSession(offlineRecord.id);
           removeOfflineCompletedSession(baseOfflineId + "_1");
@@ -691,6 +708,11 @@ export function useActiveSession(
             elapsedStudySeconds: totalActiveSeconds,
             payload: { session: offlineRecord, reason },
           });
+          // Offline fallback goal modal trigger
+          setPendingGoalSessionId(baseOfflineId);
+          setPendingGoalSeconds(durationMinutes * 60);
+          setPendingGoalReason(reason);
+          setIsGoalUpdateModalOpen(true);
         }
       } catch (err) {
         console.warn("Fast finish sync timed out or offline; safely queued on disk:", err);
@@ -700,12 +722,16 @@ export function useActiveSession(
             elapsedStudySeconds: totalActiveSeconds,
             payload: { session: offlineRecord, reason },
           });
+          setPendingGoalSessionId(baseOfflineId);
+          setPendingGoalSeconds(durationMinutes * 60);
+          setPendingGoalReason(reason);
+          setIsGoalUpdateModalOpen(true);
         }
       }
 
       return { success: true };
     },
-    [supabase]
+    [supabase, applyLocalStatusOverride, currentStatus]
   );
 
   // -----------------------------------------------------------------------
@@ -713,7 +739,6 @@ export function useActiveSession(
   // -----------------------------------------------------------------------
   useEffect(() => {
     if (currentStatus !== "break") {
-      isAutoTerminatingRef.current = false;
       hasTriggeredTenMinBreakWarningRef.current = false;
       return;
     }
@@ -769,10 +794,9 @@ export function useActiveSession(
         } catch (terminateErr) {
           console.warn("Auto-termination on break expiry notice:", terminateErr);
         } finally {
+          setIsBreakExpiredNoticeOpen(true);
           setError(null);
           dismissedBreakExpiryRef.current = false;
-          setIsBreakExpiredNoticeOpen(true);
-          if (onStatusChangeRef.current) onStatusChangeRef.current("offline");
         }
       }
     };
@@ -798,7 +822,6 @@ export function useActiveSession(
   // -----------------------------------------------------------------------
   useEffect(() => {
     if (currentStatus !== "studying" && currentStatus !== "break") {
-      isAutoTerminatingLimitRef.current = false;
       hasTriggeredTenMinWarningRef.current = false;
       return;
     }
@@ -854,9 +877,8 @@ export function useActiveSession(
         } catch (terminateErr) {
           console.warn("Auto-termination on 3-hour limit:", terminateErr);
         } finally {
-          setError(null);
           setIsSessionLimitNoticeOpen(true);
-          if (onStatusChangeRef.current) onStatusChangeRef.current("offline");
+          setError(null);
         }
       }
     };
@@ -885,10 +907,10 @@ export function useActiveSession(
 
     const computeCurrentSeconds = (now: Date) => {
       const p = profileRef.current;
-      const b = blocksRef.current;
-      if (p && !localStatusOverride) {
+      if (p) {
         return calculateMemberElapsedStudySeconds(p, now);
       }
+      const b = blocksRef.current;
       return calculateActiveStudySeconds(b, now);
     };
 
@@ -918,8 +940,10 @@ export function useActiveSession(
   const startSession = async () => {
     dismissedBreakExpiryRef.current = false;
     const now = Date.now();
-    if (now - lastActionTimestampRef.current < 250) return;
-    lastActionTimestampRef.current = now;
+    if (now - lastUserClickTimestampRef.current < 250) return;
+    lastUserClickTimestampRef.current = now;
+    isAutoTerminatingRef.current = false;
+    isAutoTerminatingLimitRef.current = false;
 
     const currentSeq = ++actionSeqRef.current;
     setError(null);
@@ -954,7 +978,7 @@ export function useActiveSession(
     });
 
     // 2. Instant UI transition at t=0
-    setLocalStatusOverride("studying");
+    applyLocalStatusOverride("studying");
     setBlocks([newBlock]);
     setElapsedStudySeconds(0);
     if (onStatusChangeRef.current) {
@@ -978,8 +1002,6 @@ export function useActiveSession(
 
       if (!rpcErr && data) {
         removeActiveTransitionActions();
-        const res = data as { success: boolean; server_now?: string };
-        if (res.server_now) calibrateWithServerTime(res.server_now);
         await fetchSessionBlocks();
       } else if (rpcErr) {
         enqueueSessionAction("start_session");
@@ -997,8 +1019,9 @@ export function useActiveSession(
   // -----------------------------------------------------------------------
   const pauseSession = async () => {
     const now = Date.now();
-    if (now - lastActionTimestampRef.current < 250) return;
-    lastActionTimestampRef.current = now;
+    if (now - lastUserClickTimestampRef.current < 250) return;
+    lastUserClickTimestampRef.current = now;
+    isAutoTerminatingRef.current = false;
 
     const currentSeq = ++actionSeqRef.current;
     setError(null);
@@ -1059,7 +1082,7 @@ export function useActiveSession(
     }
 
     // 3. Instant UI transition at t=0
-    setLocalStatusOverride("break");
+    applyLocalStatusOverride("break");
     setBlocks(updatedBlocks);
     setElapsedStudySeconds(currentStudySeconds);
     if (onStatusChangeRef.current) {
@@ -1084,8 +1107,6 @@ export function useActiveSession(
 
       if (!rpcErr && data) {
         removeActiveTransitionActions();
-        const res = data as { success: boolean; server_now?: string };
-        if (res.server_now) calibrateWithServerTime(res.server_now);
         await fetchSessionBlocks();
       } else if (rpcErr) {
         enqueueSessionAction("pause_session", { elapsedStudySeconds: currentStudySeconds });
@@ -1103,8 +1124,10 @@ export function useActiveSession(
   // -----------------------------------------------------------------------
   const resumeSession = async (): Promise<{ success: boolean; expired?: boolean }> => {
     const now = Date.now();
-    if (now - lastActionTimestampRef.current < 250) return { success: false };
-    lastActionTimestampRef.current = now;
+    if (now - lastUserClickTimestampRef.current < 250) return { success: false };
+    lastUserClickTimestampRef.current = now;
+    isAutoTerminatingRef.current = false;
+    isAutoTerminatingLimitRef.current = false;
 
     const currentSeq = ++actionSeqRef.current;
     setError(null);
@@ -1160,7 +1183,7 @@ export function useActiveSession(
     }
 
     // 3. Instant UI transition at t=0
-    setLocalStatusOverride("studying");
+    applyLocalStatusOverride("studying");
     setBlocks(updatedBlocks);
     if (onStatusChangeRef.current) {
       onStatusChangeRef.current("studying", {
@@ -1182,7 +1205,6 @@ export function useActiveSession(
       if (!rpcErr && data) {
         removeActiveTransitionActions();
         const res = data as { success: boolean; server_now?: string; error?: string };
-        if (res.server_now) calibrateWithServerTime(res.server_now);
         if (!res.success && res.error === "break_expired") {
           const accruedSeconds = profileRef.current?.active_study_seconds_snapshot ?? elapsedStudySeconds;
           setSavedStudySecondsOnBreakExpiry(accruedSeconds);
@@ -1204,7 +1226,7 @@ export function useActiveSession(
         }
         if (msg.includes("not currently on break")) {
           // Break was not expired; session was already resumed or stopped from another device
-          setLocalStatusOverride(null);
+          applyLocalStatusOverride(null);
           await fetchSessionBlocks();
           return { success: true };
         }

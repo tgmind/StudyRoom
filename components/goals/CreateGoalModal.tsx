@@ -22,6 +22,15 @@ export function CreateGoalModal({
 }: CreateGoalModalProps) {
   const [taskInputs, setTaskInputs] = useState<string[]>(["", "", ""]);
   const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Reset state when modal opens
+  React.useEffect(() => {
+    if (isOpen) {
+      setIsSubmitting(false);
+      setError(null);
+    }
+  }, [isOpen]);
 
   const handleTaskChange = (index: number, value: string) => {
     setTaskInputs((prev) => {
@@ -32,17 +41,19 @@ export function CreateGoalModal({
   };
 
   const addTaskField = () => {
-    if (taskInputs.length >= 10) return;
+    if (taskInputs.length >= 10 || isSubmitting || isLoading) return;
     setTaskInputs((prev) => [...prev, ""]);
   };
 
   const removeTaskField = (index: number) => {
-    if (taskInputs.length <= 1) return;
+    if (taskInputs.length <= 1 || isSubmitting || isLoading) return;
     setTaskInputs((prev) => prev.filter((_, idx) => idx !== index));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting || isLoading) return;
+
     const validation = validateGoalTasks(taskInputs);
 
     if (!validation.isValid) {
@@ -50,6 +61,7 @@ export function CreateGoalModal({
       return;
     }
 
+    setIsSubmitting(true);
     try {
       setError(null);
       await onConfirmCreate(validation.value);
@@ -57,6 +69,8 @@ export function CreateGoalModal({
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create goal window");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -118,10 +132,10 @@ export function CreateGoalModal({
         </div>
 
         <div className="pt-2 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3">
-          <Button type="button" variant="secondary" onClick={onClose} disabled={isLoading} className="w-full sm:w-auto">
+          <Button type="button" variant="secondary" onClick={onClose} disabled={isLoading || isSubmitting} className="w-full sm:w-auto">
             Cancel
           </Button>
-          <Button type="submit" variant="primary" isLoading={isLoading} className="w-full sm:w-auto font-extrabold px-5">
+          <Button type="submit" variant="primary" isLoading={isLoading || isSubmitting} disabled={isLoading || isSubmitting} className="w-full sm:w-auto font-extrabold px-5">
             Lock & Start 24h Window
           </Button>
         </div>
