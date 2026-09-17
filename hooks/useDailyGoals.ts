@@ -37,6 +37,7 @@ export function useDailyGoals(
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isSubmittingGoalRef = useRef(false);
+  const isSubmittingAddTasksRef = useRef(false);
 
   const supabase = createClient();
 
@@ -247,7 +248,7 @@ export function useDailyGoals(
   };
 
   const addTasksToGoal = async (rawTaskTexts: string[]) => {
-    if (!userId || actionLoading) return;
+    if (!userId || actionLoading || isSubmittingAddTasksRef.current) return;
 
     const validation = validateGoalTasks(rawTaskTexts);
     if (!validation.isValid) {
@@ -255,6 +256,7 @@ export function useDailyGoals(
       throw new Error(validation.error || "Invalid task entries");
     }
 
+    isSubmittingAddTasksRef.current = true;
     setActionLoading(true);
     setError(null);
 
@@ -272,8 +274,6 @@ export function useDailyGoals(
       saveCachedActiveGoal(updatedGoal);
     }
 
-    enqueueSessionAction("add_goal_tasks", { payload: { tasks: newTaskObjects } });
-
     try {
       const { data, error: rpcErr } = await with10sTimeout(
         (supabase as unknown as RpcCaller).rpc("rpc_add_goal_tasks", {
@@ -284,10 +284,15 @@ export function useDailyGoals(
 
       if (!rpcErr && data) {
         await fetchActiveGoal();
+      } else if (rpcErr) {
+        // Enqueue only if remote network failed so sync worker syncs when reconnected
+        enqueueSessionAction("add_goal_tasks", { payload: { tasks: newTaskObjects } });
       }
     } catch (err) {
       console.warn("Add goal tasks timed out or offline; safely queued on disk:", err);
+      enqueueSessionAction("add_goal_tasks", { payload: { tasks: newTaskObjects } });
     } finally {
+      isSubmittingAddTasksRef.current = false;
       setActionLoading(false);
     }
   };

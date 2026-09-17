@@ -337,6 +337,10 @@ export function useLiveRoom(currentUserId?: string) {
             return {
               ...m,
               ...cleanUpdates,
+              active_study_seconds_snapshot:
+                cleanUpdates.active_study_seconds_snapshot !== undefined
+                  ? cleanUpdates.active_study_seconds_snapshot
+                  : m.active_study_seconds_snapshot ?? 0,
               last_offline_at: newOfflineAt,
               past_24h_study_seconds: cleanUpdates.past_24h_study_seconds ?? m.past_24h_study_seconds ?? 0,
               weekly_study_seconds: cleanUpdates.weekly_study_seconds ?? m.weekly_study_seconds ?? 0,

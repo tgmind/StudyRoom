@@ -907,7 +907,7 @@ export function useActiveSession(
 
     const computeCurrentSeconds = (now: Date) => {
       const p = profileRef.current;
-      if (p) {
+      if (p && p.current_status === "studying") {
         return calculateMemberElapsedStudySeconds(p, now);
       }
       const b = blocksRef.current;
@@ -1185,11 +1185,13 @@ export function useActiveSession(
     // 3. Instant UI transition at t=0
     applyLocalStatusOverride("studying");
     setBlocks(updatedBlocks);
+    const accruedSnapshot = elapsedStudySecondsRef.current;
     if (onStatusChangeRef.current) {
       onStatusChangeRef.current("studying", {
         current_status: "studying",
         break_started_at: null,
         last_resumed_at: nowIso,
+        active_study_seconds_snapshot: accruedSnapshot,
       });
     }
 
@@ -1244,6 +1246,7 @@ export function useActiveSession(
 
   const completeSessionGoals = useCallback(
     async (sessionId: string, completedTaskIds: string[]) => {
+      isLocallyAwaitingGoalUpdateRef.current = false;
       hasCompletedGoalsRef.current = true;
       setIsGoalUpdateModalOpen(false);
       setPendingGoalSessionId(null);
@@ -1275,6 +1278,7 @@ export function useActiveSession(
   );
 
   const closeGoalUpdateModal = useCallback(async () => {
+    isLocallyAwaitingGoalUpdateRef.current = false;
     setIsGoalUpdateModalOpen(false);
     if (hasCompletedGoalsRef.current) {
       hasCompletedGoalsRef.current = false;

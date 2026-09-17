@@ -1,13 +1,25 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderHook, waitFor } from "@testing-library/react";
+import { renderHook, waitFor, act } from "@testing-library/react";
 import { useDailyGoals } from "@/hooks/useDailyGoals";
 import { DailyGoal } from "@/lib/supabase/types";
 
 const mockFrom = vi.fn();
+const mockRpc = vi.fn();
 
 const mockClient = {
   from: mockFrom,
+  rpc: mockRpc,
 };
+
+const mockEnqueueSessionAction = vi.fn();
+
+vi.mock("@/lib/offline/sessionQueue", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/offline/sessionQueue")>();
+  return {
+    ...actual,
+    enqueueSessionAction: (...args: any[]) => mockEnqueueSessionAction(...args),
+  };
+});
 
 vi.mock("@/lib/supabase/client", () => ({
   createClient: () => mockClient,
@@ -109,5 +121,98 @@ describe("useDailyGoals Hook - Mid-Session Expiry & Grace Window", () => {
     // Goal must be null so user is prompted to create a new 24-hour goal set
     expect(result.current.activeGoal).toBeNull();
     expect(result.current.countdown.isExpired).toBe(true);
+  });
+
+  it("does NOT enqueue add_goal_tasks action to offline queue when RPC succeeds", async () => {
+    const mockGoal: DailyGoal = {
+      id: "goal-active",
+      user_id: "user-123",
+      created_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 12 * 3600 * 1000).toISOString(),
+      archived_at: null,
+      is_locked: true,
+      tasks: [{ id: "task-1", task: "Task 1", completed: false }],
+    };
+
+    mockFrom.mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnValue({
+          order: vi.fn().mockReturnValue({
+            limit: vi.fn().mockReturnValue({
+              maybeSingle: vi.fn().mockResolvedValue({ data: mockGoal, error: null }),
+            }),
+          }),
+        }),
+      }),
+    });
+
+    mockRpc.mockResolvedValue({
+      data: { success: true, goal_id: "goal-active" },
+      error: null,
+    });
+
+    const { result } = renderHook(() => useDailyGoals("user-123", null, false));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.addTasksToGoal(["Exercise"]);
+    });
+
+    expect(mockRpc).toHaveBeenCalledWith("rpc_add_goal_tasks", expect.anything());
+    expect(mockEnqueueSessionAction).not.toHaveBeenCalled();
+  });
+
+  it("enqueues add_goal_tasks action to offline queue only when RPC fails", async () => {
+    const mockGoal: DailyGoal = {
+      id: "goal-active-2",
+      user_id: "user-123",
+      created_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 12 * 3600 * 1000).toISOString(),
+      archived_at: null,
+      is_locked: true,
+      tasks: [{ id: "task-1", task: "Task 1", completed: false }],
+    };
+
+    mockFrom.mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnValue({
+          order: vi.fn().mockReturnValue({
+            limit: vi.fn().mockReturnValue({
+              maybeSingle: vi.fn().mockResolvedValue({ data: mockGoal, error: null }),
+            }),
+          }),
+        }),
+      }),
+    });
+
+    mockRpc.mockResolvedValue({
+      data: null,
+      error: new Error("Network timeout"),
+    });
+
+    const { result } = renderHook(() => useDailyGoals("user-123", null, false));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.addTasksToGoal(["Exercise"]);
+    });
+
+    expect(mockRpc).toHaveBeenCalledWith("rpc_add_goal_tasks", expect.anything());
+    expect(mockEnqueueSessionAction).toHaveBeenCalledWith(
+      "add_goal_tasks",
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          tasks: expect.arrayContaining([
+            expect.objectContaining({ task: "Exercise" }),
+          ]),
+        }),
+      })
+    );
   });
 });

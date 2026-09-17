@@ -621,12 +621,21 @@ export async function flushSessionActionQueue(
           removeSessionAction(item.id);
           flushedCount++;
         } else if (item.action === "add_goal_tasks" && item.payload?.tasks) {
-          await with10sTimeout(
+          const { error: rpcErr } = await with10sTimeout(
             (supabase as unknown as RpcCaller).rpc("rpc_add_goal_tasks", {
               p_new_tasks: item.payload.tasks,
             }),
             "Add goal tasks RPC"
           );
+          if (rpcErr) {
+            const msg = (rpcErr.message || "").toLowerCase();
+            if (msg.includes("no active 24-hour goal set")) {
+              removeSessionAction(item.id);
+              flushedCount++;
+              continue;
+            }
+            throw rpcErr;
+          }
           removeSessionAction(item.id);
           flushedCount++;
         }

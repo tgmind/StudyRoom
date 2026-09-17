@@ -975,7 +975,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Append new goal tasks to active 24-hour window (STRICTLY NO DELETION)
+-- Append new goal tasks to active 24-hour window (STRICTLY NO DELETION, DEDUPLICATED BY TASK ID)
 CREATE OR REPLACE FUNCTION public.rpc_add_goal_tasks(p_new_tasks JSONB)
 RETURNS JSONB AS $$
 DECLARE
@@ -994,6 +994,9 @@ BEGIN
     RAISE EXCEPTION 'New tasks array cannot be empty';
   END IF;
 
+  -- Strictly serialize concurrent requests for the same user via transaction advisory lock
+  PERFORM pg_advisory_xact_lock(hashtext(v_user_id::text));
+
   -- Find active unexpired goal window
   SELECT id, tasks INTO v_active_goal_id, v_current_tasks
   FROM public.daily_goals
@@ -1006,8 +1009,25 @@ BEGIN
     RAISE EXCEPTION 'No active 24-hour goal set found to add tasks to';
   END IF;
 
-  -- Append new tasks to existing tasks (NEVER delete any existing task!)
-  v_updated_tasks := COALESCE(v_current_tasks, '[]'::JSONB) || p_new_tasks;
+  v_current_tasks := COALESCE(v_current_tasks, '[]'::JSONB);
+
+  -- Append only new tasks whose 'id' does not already exist in v_current_tasks
+  -- and deduplicate within p_new_tasks itself
+  SELECT v_current_tasks || COALESCE(
+    (
+      SELECT jsonb_agg(new_elem)
+      FROM (
+        SELECT DISTINCT ON (elem->>'id') elem AS new_elem
+        FROM jsonb_array_elements(p_new_tasks) AS elem
+      ) deduplicated_new
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements(v_current_tasks) AS curr_elem
+        WHERE curr_elem->>'id' = new_elem->>'id'
+      )
+    ),
+    '[]'::JSONB
+  ) INTO v_updated_tasks;
 
   UPDATE public.daily_goals
   SET tasks = v_updated_tasks

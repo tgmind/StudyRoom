@@ -352,4 +352,88 @@ describe("useActiveSession Hook - Break Expiry & RPC Resilience", () => {
 
     delete (window as any).AndroidBridge;
   });
+
+  it("includes active_study_seconds_snapshot when resuming session from break", async () => {
+    const breakProfile = {
+      id: "user-resume-1",
+      display_name: "Resume Tester",
+      current_status: "break",
+      session_start_time: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+      break_started_at: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+      active_study_seconds_snapshot: 1500,
+    } as unknown as UserProfile;
+
+    mockRpc.mockResolvedValue({
+      data: { success: true },
+      error: null,
+    });
+
+    const onStatusChange = vi.fn();
+    const { result } = renderHook(() => useActiveSession(breakProfile, onStatusChange));
+
+    await act(async () => {
+      await result.current.resumeSession();
+    });
+
+    expect(onStatusChange).toHaveBeenCalledWith(
+      "studying",
+      expect.objectContaining({
+        current_status: "studying",
+        break_started_at: null,
+        active_study_seconds_snapshot: 1500,
+      })
+    );
+  });
+
+  it("keeps isGoalUpdateModalOpen open when finishing session even if profile refetch temporarily returns null pending_goal_session_id", async () => {
+    const studyingProfile = {
+      id: "user-finish-1",
+      display_name: "Finish Tester",
+      current_status: "studying",
+      session_start_time: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+      break_started_at: null,
+      active_study_seconds_snapshot: 3600,
+      pending_goal_session_id: null,
+    } as unknown as UserProfile;
+
+    mockRpc.mockResolvedValue({
+      data: { success: true, session_id: "sess-completed-123" },
+      error: null,
+    });
+
+    const { result, rerender } = renderHook(
+      ({ profile }) => useActiveSession(profile),
+      { initialProps: { profile: studyingProfile } }
+    );
+
+    await act(async () => {
+      await result.current.finishSession([], "manual_stop");
+    });
+
+    expect(result.current.isGoalUpdateModalOpen).toBe(true);
+    expect(result.current.pendingGoalSessionId).toBe("sess-completed-123");
+
+    // Background refetch runs while DB is processing, profile still has pending_goal_session_id: null
+    const interimProfile = {
+      ...studyingProfile,
+      current_status: "offline",
+      pending_goal_session_id: null,
+    } as unknown as UserProfile;
+
+    await act(async () => {
+      rerender({ profile: interimProfile });
+    });
+
+    // Modal must NOT be slammed shut!
+    expect(result.current.isGoalUpdateModalOpen).toBe(true);
+    expect(result.current.pendingGoalSessionId).toBe("sess-completed-123");
+
+    // Once user completes goals, modal closes
+    await act(async () => {
+      await result.current.completeSessionGoals("sess-completed-123", []);
+    });
+
+    expect(result.current.isGoalUpdateModalOpen).toBe(false);
+    expect(result.current.pendingGoalSessionId).toBeNull();
+  });
 });

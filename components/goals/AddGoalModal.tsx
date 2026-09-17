@@ -22,6 +22,15 @@ export function AddGoalModal({
 }: AddGoalModalProps) {
   const [taskInputs, setTaskInputs] = useState<string[]>([""]);
   const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Reset state when modal opens
+  React.useEffect(() => {
+    if (isOpen) {
+      setIsSubmitting(false);
+      setError(null);
+    }
+  }, [isOpen]);
 
   const handleTaskChange = (index: number, value: string) => {
     setTaskInputs((prev) => {
@@ -32,12 +41,14 @@ export function AddGoalModal({
   };
 
   const addTaskField = () => {
-    if (taskInputs.length >= 5) return;
+    if (taskInputs.length >= 5 || isSubmitting || isLoading) return;
     setTaskInputs((prev) => [...prev, ""]);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting || isLoading) return;
+
     const validation = validateGoalTasks(taskInputs);
 
     if (!validation.isValid) {
@@ -45,6 +56,7 @@ export function AddGoalModal({
       return;
     }
 
+    setIsSubmitting(true);
     try {
       setError(null);
       await onConfirmAdd(validation.value);
@@ -52,6 +64,8 @@ export function AddGoalModal({
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add goals");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -75,6 +89,7 @@ export function AddGoalModal({
                 value={taskText}
                 onChange={(e) => handleTaskChange(idx, e.target.value)}
                 maxLength={120}
+                disabled={isLoading || isSubmitting}
                 autoFocus={idx === 0}
               />
             </div>
@@ -87,6 +102,7 @@ export function AddGoalModal({
             variant="ghost"
             size="sm"
             onClick={addTaskField}
+            disabled={isLoading || isSubmitting}
             className="w-full text-xs space-x-1 border border-dashed border-zinc-800"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -104,10 +120,22 @@ export function AddGoalModal({
         </div>
 
         <div className="pt-2 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3">
-          <Button type="button" variant="secondary" onClick={onClose} disabled={isLoading} className="w-full sm:w-auto">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={onClose}
+            disabled={isLoading || isSubmitting}
+            className="w-full sm:w-auto"
+          >
             Cancel
           </Button>
-          <Button type="submit" variant="primary" isLoading={isLoading} className="w-full sm:w-auto font-extrabold px-5">
+          <Button
+            type="submit"
+            variant="primary"
+            isLoading={isLoading || isSubmitting}
+            disabled={isLoading || isSubmitting}
+            className="w-full sm:w-auto font-extrabold px-5"
+          >
             Append to Active Window
           </Button>
         </div>
