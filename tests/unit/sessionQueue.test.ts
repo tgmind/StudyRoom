@@ -13,6 +13,8 @@ import {
   removeSessionAction,
   clearPendingSessionActions,
   flushSessionActionQueue,
+  getCachedActiveGoal,
+  saveCachedActiveGoal,
 } from "@/lib/offline/sessionQueue";
 import { STORAGE_KEYS, OfflineActiveSession, CompletedOfflineSessionRecord } from "@/lib/offline/storageKeys";
 
@@ -195,6 +197,44 @@ describe("Offline Session Queue & Durability Engine", () => {
       // Treated as complete, item purged from queue
       expect(result.flushed).toBe(1);
       expect(getPendingSessionActions()).toHaveLength(0);
+    });
+  });
+
+  describe("Cached Active Goal Storage & Deduplication", () => {
+    it("deduplicates tasks when saving active goal", () => {
+      const goalWithDupes = {
+        id: "goal-1",
+        tasks: [
+          { id: "task-1", task: "Task 1", completed: false },
+          { id: "task-dup", task: "Exercise", completed: false },
+          { id: "task-dup", task: "Exercise", completed: true },
+        ],
+      };
+      saveCachedActiveGoal(goalWithDupes);
+
+      const retrieved: any = getCachedActiveGoal();
+      expect(retrieved.tasks).toHaveLength(2);
+      expect(retrieved.tasks.map((t: any) => t.id)).toEqual(["task-1", "task-dup"]);
+      expect(retrieved.tasks[1].completed).toBe(true);
+    });
+
+    it("deduplicates corrupt tasks on retrieval and updates localStorage", () => {
+      const corruptRaw = {
+        id: "goal-2",
+        tasks: [
+          { id: "task-1789647748357-0", task: "Exercise", completed: false },
+          { id: "task-1789647748357-0", task: "Exercise", completed: false },
+        ],
+      };
+      localStorage.setItem(STORAGE_KEYS.CACHED_ACTIVE_GOAL, JSON.stringify(corruptRaw));
+
+      const retrieved: any = getCachedActiveGoal();
+      expect(retrieved.tasks).toHaveLength(1);
+      expect(retrieved.tasks[0].id).toBe("task-1789647748357-0");
+
+      // Verify localStorage was healed
+      const inStorage = JSON.parse(localStorage.getItem(STORAGE_KEYS.CACHED_ACTIVE_GOAL)!);
+      expect(inStorage.tasks).toHaveLength(1);
     });
   });
 });

@@ -283,12 +283,39 @@ export function saveCachedUserProfile(profile: unknown): void {
   } catch {}
 }
 
+function sanitizeGoalTasksArray<T extends { id?: string; completed?: boolean }>(tasks: T[]): T[] {
+  if (!Array.isArray(tasks) || tasks.length <= 1) return tasks || [];
+  const seen = new Set<string>();
+  const result: T[] = [];
+  for (const t of tasks) {
+    if (!t || !t.id) continue;
+    if (seen.has(t.id)) {
+      const existing = result.find((x) => x.id === t.id);
+      if (existing && t.completed) {
+        existing.completed = true;
+      }
+      continue;
+    }
+    seen.add(t.id);
+    result.push({ ...t });
+  }
+  return result;
+}
+
 export function getCachedActiveGoal<T = unknown>(): T | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.CACHED_ACTIVE_GOAL);
     if (!raw) return null;
-    return JSON.parse(raw) as T;
+    const parsed = JSON.parse(raw) as any;
+    if (parsed && Array.isArray(parsed.tasks)) {
+      const cleaned = sanitizeGoalTasksArray(parsed.tasks);
+      if (cleaned.length !== parsed.tasks.length) {
+        parsed.tasks = cleaned;
+        localStorage.setItem(STORAGE_KEYS.CACHED_ACTIVE_GOAL, JSON.stringify(parsed));
+      }
+    }
+    return parsed as T;
   } catch {
     return null;
   }
@@ -300,7 +327,11 @@ export function saveCachedActiveGoal(goal: unknown): void {
     if (!goal) {
       localStorage.removeItem(STORAGE_KEYS.CACHED_ACTIVE_GOAL);
     } else {
-      localStorage.setItem(STORAGE_KEYS.CACHED_ACTIVE_GOAL, JSON.stringify(goal));
+      const copy = { ...(goal as any) };
+      if (Array.isArray(copy.tasks)) {
+        copy.tasks = sanitizeGoalTasksArray(copy.tasks);
+      }
+      localStorage.setItem(STORAGE_KEYS.CACHED_ACTIVE_GOAL, JSON.stringify(copy));
     }
   } catch {}
 }

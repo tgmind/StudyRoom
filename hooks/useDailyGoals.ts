@@ -20,6 +20,44 @@ type RpcCaller = {
   ) => Promise<{ data: unknown; error: Error | null }>;
 };
 
+/**
+ * Safely deduplicates goal tasks by task ID while strictly preserving original order.
+ * If duplicate IDs exist, merges completion state (true if any duplicate instance is completed).
+ */
+export function deduplicateGoalTasks(tasks?: GoalTask[] | null): GoalTask[] {
+  if (!tasks || !Array.isArray(tasks) || tasks.length === 0) return [];
+  if (tasks.length === 1) return tasks[0]?.id ? [{ ...tasks[0] }] : [];
+
+  const seen = new Set<string>();
+  const result: GoalTask[] = [];
+
+  for (const item of tasks) {
+    if (!item || !item.id) continue;
+    if (seen.has(item.id)) {
+      const existing = result.find((t) => t.id === item.id);
+      if (existing && item.completed) {
+        existing.completed = true;
+      }
+      continue;
+    }
+    seen.add(item.id);
+    result.push({ ...item });
+  }
+
+  return result;
+}
+
+/**
+ * Generates a cryptographically unique task ID with timestamp, index, and random entropy.
+ */
+export function generateGoalTaskId(idx: number): string {
+  const randomPart =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID().slice(0, 8)
+      : Math.random().toString(36).substring(2, 10);
+  return `task-${Date.now()}-${idx}-${randomPart}`;
+}
+
 export function useDailyGoals(
   userId?: string,
   sessionStartTime?: string | null,
@@ -68,6 +106,15 @@ export function useDailyGoals(
 
       if (data) {
         const goal = data as DailyGoal;
+        let hasDuplicatesInDb = false;
+        if (goal.tasks && Array.isArray(goal.tasks)) {
+          const cleanedTasks = deduplicateGoalTasks(goal.tasks);
+          if (cleanedTasks.length !== goal.tasks.length) {
+            hasDuplicatesInDb = true;
+            goal.tasks = cleanedTasks;
+          }
+        }
+
         const isUnexpired = new Date(goal.expires_at).getTime() > serverNow.getTime();
 
         if (isUnexpired) {
@@ -101,6 +148,26 @@ export function useDailyGoals(
             });
           }
         }
+
+        // Automatic self-healing: if duplicates were present in the database row,
+        // sanitize it immediately so future queries and other clients receive clean data.
+        if (hasDuplicatesInDb && goal.id) {
+          console.info("[useDailyGoals] Self-healing daily_goals: removing duplicate tasks from DB for goal:", goal.id);
+          (async () => {
+            try {
+              const { error: healErr } = await (supabase.from("daily_goals") as any)
+                .update({ tasks: goal.tasks })
+                .eq("id", goal.id);
+              if (healErr) {
+                console.warn("[useDailyGoals] Self-healing update failed:", healErr);
+              } else {
+                console.info("[useDailyGoals] Self-healing update succeeded in database");
+              }
+            } catch (err) {
+              console.warn("[useDailyGoals] Self-healing error:", err);
+            }
+          })();
+        }
       } else {
         setActiveGoal(null);
         saveCachedActiveGoal(null);
@@ -122,6 +189,13 @@ export function useDailyGoals(
     // Restore cached active goal on mount without SSR hydration mismatch
     const cached = getCachedActiveGoal<DailyGoal>();
     if (cached) {
+      if (cached.tasks && Array.isArray(cached.tasks)) {
+        const cleanedTasks = deduplicateGoalTasks(cached.tasks);
+        if (cleanedTasks.length !== cached.tasks.length) {
+          cached.tasks = cleanedTasks;
+          saveCachedActiveGoal(cached);
+        }
+      }
       setActiveGoal(cached);
       if (cached.expires_at) {
         setCountdown(calculateGoalCountdown(cached.expires_at, new Date()));
@@ -205,16 +279,17 @@ export function useDailyGoals(
     const now = getServerNow();
     const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
     const taskObjects: GoalTask[] = validation.value.map((taskText, idx) => ({
-      id: `task-${Date.now()}-${idx}`,
+      id: generateGoalTaskId(idx),
       task: taskText,
       completed: false,
     }));
+    const sanitizedTasks = deduplicateGoalTasks(taskObjects);
 
     // Optimistically update local active goal immediately
     const optimisticGoal: DailyGoal = {
       id: "goal_" + Date.now(),
       user_id: userId,
-      tasks: taskObjects,
+      tasks: sanitizedTasks,
       created_at: now.toISOString(),
       expires_at: expiresAt,
       is_locked: true,
@@ -227,7 +302,7 @@ export function useDailyGoals(
     try {
       const { data, error: rpcErr } = await with10sTimeout(
         (supabase as unknown as RpcCaller).rpc("rpc_create_daily_goal", {
-          p_tasks: taskObjects,
+          p_tasks: sanitizedTasks,
         }),
         "Create goal RPC"
       );
@@ -236,11 +311,11 @@ export function useDailyGoals(
         await fetchActiveGoal();
       } else if (rpcErr) {
         // Enqueue only if remote network failed so sync worker syncs when reconnected
-        enqueueSessionAction("create_goal", { payload: { tasks: taskObjects } });
+        enqueueSessionAction("create_goal", { payload: { tasks: sanitizedTasks } });
       }
     } catch (err) {
       console.warn("Create goal timed out or offline; safely queued on disk:", err);
-      enqueueSessionAction("create_goal", { payload: { tasks: taskObjects } });
+      enqueueSessionAction("create_goal", { payload: { tasks: sanitizedTasks } });
     } finally {
       isSubmittingGoalRef.current = false;
       setActionLoading(false);
@@ -261,14 +336,17 @@ export function useDailyGoals(
     setError(null);
 
     const newTaskObjects: GoalTask[] = validation.value.map((taskText, idx) => ({
-      id: `task-${Date.now()}-${idx}`,
+      id: generateGoalTaskId(idx),
       task: taskText,
       completed: false,
     }));
 
-    // Optimistically append locally
+    // Optimistically append locally with strict deduplication
     if (activeGoal) {
-      const updatedTasks = [...(activeGoal.tasks || []), ...newTaskObjects];
+      const updatedTasks = deduplicateGoalTasks([
+        ...(activeGoal.tasks || []),
+        ...newTaskObjects,
+      ]);
       const updatedGoal = { ...activeGoal, tasks: updatedTasks };
       setActiveGoal(updatedGoal);
       saveCachedActiveGoal(updatedGoal);
@@ -303,9 +381,11 @@ export function useDailyGoals(
     setActionLoading(true);
     setError(null);
 
-    // Optimistically mark tasks complete in local state and cache
-    const updatedTasks: GoalTask[] = (activeGoal.tasks || []).map((t) =>
-      taskIds.includes(t.id) ? { ...t, completed: true } : t
+    // Optimistically mark tasks complete in local state and cache with deduplication
+    const updatedTasks: GoalTask[] = deduplicateGoalTasks(
+      (activeGoal.tasks || []).map((t) =>
+        taskIds.includes(t.id) ? { ...t, completed: true } : t
+      )
     );
     const updatedGoal = { ...activeGoal, tasks: updatedTasks };
     setActiveGoal(updatedGoal);
