@@ -193,6 +193,11 @@ export function useLiveRoom(currentUserId?: string) {
           if (sessionStartTime >= weekStartTime) {
             entry.weeklySeconds += (s.duration_minutes || 0) * 60;
             entry.weeklySessions += 1;
+          } else if (sessionEndTime > weekStartTime) {
+            // Session started before the week cutoff (e.g. Sunday late night) but ended inside current week
+            const minsInWeek = Math.max(0, Math.floor((sessionEndTime - weekStartTime) / 60000));
+            entry.weeklySeconds += Math.min(s.duration_minutes || 0, minsInWeek) * 60;
+            entry.weeklySessions += 1;
           }
           if (sessionEndTime > entry.latestSessionEndMs) {
             entry.latestSessionEndMs = sessionEndTime;
@@ -348,6 +353,13 @@ export function useLiveRoom(currentUserId?: string) {
       }
       return sortMembers(filterAdmin(next), currentUserIdRef.current);
     });
+
+    if (cleanUpdates.current_status === "offline") {
+      fetchMembers();
+      setTimeout(() => {
+        fetchMembers();
+      }, 1200);
+    }
   }, [fetchMembers]);
 
   // Broadcast function to immediately notify all peers over WebSockets without DB lag

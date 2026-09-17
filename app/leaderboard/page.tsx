@@ -104,12 +104,12 @@ export default function LeaderboardPage() {
           const total = entry.total_tasks ?? (entry.goal_completion_pct > 0 ? 1 : 0);
 
           // Weekly streak matches the Weekly Study Heatmap (resets to 0 on weekly restart, max 7)
-          let weeklyStreak = weeklyStreaksByUser.get(entry.user_id);
-          if (weeklyStreak === undefined) {
-            // If sessions were successfully loaded, user had 0 qualifying sessions this week
-            // Fallback to entry.streak_days only if sessions query completely failed
-            weeklyStreak = sessionsResult.data ? 0 : (entry.streak_days || 0);
-          }
+          // Combines client-side calculation with DB RPC calculation (which includes live in-progress study for all users)
+          const computedStreak = weeklyStreaksByUser.get(entry.user_id);
+          const rpcStreak = entry.streak_days ?? 0;
+          const weeklyStreak = computedStreak !== undefined
+            ? Math.max(computedStreak, rpcStreak)
+            : rpcStreak;
 
           const { composite_score } = calculateLeaderboardScore(
             entry.total_study_minutes || 0,
@@ -164,6 +164,13 @@ export default function LeaderboardPage() {
       }, 300);
     };
 
+    // 20-second interval to keep live study time ticking for users on the leaderboard page
+    const liveInterval = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        fetchLeaderboard(true);
+      }
+    }, 20000);
+
     // Listen to real-time events on study_sessions, daily_goals, and users
     const channel = supabase
       .channel("studyroom:leaderboard:realtime")
@@ -204,6 +211,7 @@ export default function LeaderboardPage() {
       if (refreshTimerRef.current) {
         clearTimeout(refreshTimerRef.current);
       }
+      clearInterval(liveInterval);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", handleFocus);
       window.removeEventListener("online", handleOnline);

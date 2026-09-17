@@ -1086,7 +1086,7 @@ DROP FUNCTION IF EXISTS public.rpc_get_leaderboard(TIMESTAMPTZ) CASCADE;
 DROP FUNCTION IF EXISTS public.rpc_get_leaderboard() CASCADE;
 
 -- Function to get leaderboard entries for a given week with timezone support (Default Asia/Kolkata)
--- Implements Proposal 1: Dual-Pillar Goal Index (60% Volume Output + 40% Discipline Follow-Through)
+-- Implements Dual-Pillar Goal Index + Realtime Live Study Sync
 CREATE OR REPLACE FUNCTION public.rpc_get_leaderboard(
   p_week_start TIMESTAMPTZ DEFAULT NULL,
   p_timezone TEXT DEFAULT 'Asia/Kolkata'
@@ -1122,11 +1122,69 @@ BEGIN
   -- Create temporary table of aggregate weekly statistics per user
   DROP TABLE IF EXISTS temp_user_stats;
   CREATE TEMP TABLE temp_user_stats ON COMMIT DROP AS
-  WITH weekly_study AS (
+  WITH completed_study AS (
     SELECT s.user_id, COALESCE(SUM(s.duration_minutes), 0)::INTEGER AS study_mins
     FROM public.study_sessions s
     WHERE s.start_time >= v_week_start AND s.start_time < v_week_end
     GROUP BY s.user_id
+  ),
+  live_study AS (
+    -- Compute in-progress active study minutes for users currently studying or on valid break
+    SELECT
+      u.id AS user_id,
+      FLOOR(
+        GREATEST(
+          0,
+          LEAST(
+            180 * 60, -- Max session limit: 3 hours (10800 seconds)
+            COALESCE(
+              -- Method A: Exact sum of active study blocks within current week
+              (
+                SELECT SUM(
+                  EXTRACT(EPOCH FROM (
+                    LEAST(COALESCE(b.end_time, NOW()), v_week_end) - 
+                    GREATEST(b.start_time, v_week_start)
+                  ))
+                )
+                FROM public.session_blocks b
+                WHERE b.user_id = u.id 
+                  AND b.session_id IS NULL 
+                  AND b.block_type = 'study'
+                  AND b.start_time < v_week_end
+                  AND COALESCE(b.end_time, NOW()) > v_week_start
+              ),
+              -- Method B: Fallback to user status fields if blocks not present
+              CASE 
+                WHEN NOW() >= v_week_start AND NOW() < v_week_end THEN
+                  CASE
+                    WHEN u.current_status = 'studying' THEN
+                      COALESCE(u.active_study_seconds_snapshot, 0) + 
+                      EXTRACT(EPOCH FROM (NOW() - COALESCE(u.last_resumed_at, u.session_start_time, NOW())))
+                    WHEN u.current_status = 'break' AND (NOW() - u.break_started_at) < INTERVAL '1 hour' THEN
+                      COALESCE(u.active_study_seconds_snapshot, 0)
+                    ELSE 0
+                  END
+                ELSE 0
+              END
+            )
+          )
+        ) / 60
+      )::INTEGER AS live_mins
+    FROM public.users u
+    WHERE NOW() >= v_week_start AND NOW() < v_week_end
+      AND u.current_status IN ('studying', 'break')
+      AND (
+        (u.current_status = 'studying' AND (u.session_start_time IS NULL OR NOW() - u.session_start_time < INTERVAL '4 hours'))
+        OR (u.current_status = 'break' AND u.break_started_at IS NOT NULL AND (NOW() - u.break_started_at) < INTERVAL '1 hour')
+      )
+  ),
+  weekly_study AS (
+    SELECT
+      u.id AS user_id,
+      (COALESCE(cs.study_mins, 0) + COALESCE(ls.live_mins, 0))::INTEGER AS study_mins
+    FROM public.users u
+    LEFT JOIN completed_study cs ON u.id = cs.user_id
+    LEFT JOIN live_study ls ON u.id = ls.user_id
   ),
   weekly_goals AS (
     SELECT g.user_id,
@@ -1151,12 +1209,28 @@ BEGIN
   ),
   qualifying_days AS (
     SELECT
-      s.user_id,
-      DATE_TRUNC('day', s.start_time AT TIME ZONE v_tz) AS study_day
-    FROM public.study_sessions s
-    WHERE s.start_time >= v_week_start AND s.start_time < v_week_end
-    GROUP BY s.user_id, DATE_TRUNC('day', s.start_time AT TIME ZONE v_tz)
-    HAVING SUM(s.duration_minutes) >= 30
+      u.id AS user_id,
+      d.study_day
+    FROM public.users u
+    CROSS JOIN LATERAL (
+      SELECT
+        DATE_TRUNC('day', s.start_time AT TIME ZONE v_tz) AS study_day,
+        SUM(s.duration_minutes) AS day_mins
+      FROM public.study_sessions s
+      WHERE s.user_id = u.id 
+        AND s.start_time >= v_week_start 
+        AND s.start_time < v_week_end
+      GROUP BY DATE_TRUNC('day', s.start_time AT TIME ZONE v_tz)
+      UNION ALL
+      SELECT
+        DATE_TRUNC('day', NOW() AT TIME ZONE v_tz) AS study_day,
+        COALESCE(ls.live_mins, 0) AS day_mins
+      FROM live_study ls
+      WHERE ls.user_id = u.id AND ls.live_mins > 0
+        AND NOW() >= v_week_start AND NOW() < v_week_end
+    ) d
+    GROUP BY u.id, d.study_day
+    HAVING SUM(d.day_mins) >= 30
   ),
   user_streaks AS (
     -- Days with >= 30 mins active study in local calendar days within current week
