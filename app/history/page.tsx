@@ -24,6 +24,7 @@ import {
   ChevronDown,
   ChevronUp,
   Loader2,
+  Coffee,
 } from "lucide-react";
 import { LapsedGoalHistoryCard } from "@/components/goals/LapsedGoalHistoryCard";
 
@@ -270,7 +271,15 @@ export default function HistoryPage() {
                     <div className="space-y-2.5 relative pl-4 sm:pl-6 before:absolute before:top-2 before:bottom-2 before:left-1.5 sm:before:left-2.5 before:w-px before:bg-zinc-800">
                       {dateSessions.map((session) => {
                         const completedTasks = session.completed_tasks || [];
-                        const durationStr = formatMinutesToHours(session.duration_minutes);
+                        const durationMinutes = session.duration_minutes || 0;
+                        const durationStr = formatMinutesToHours(durationMinutes);
+                        const rawBreakDiff = Math.floor((new Date(session.end_time).getTime() - new Date(session.start_time).getTime()) / 60000) - durationMinutes;
+                        const breakMinutes = typeof session.break_minutes === "number"
+                          ? session.break_minutes
+                          : (rawBreakDiff >= 2 ? rawBreakDiff : 0);
+                        const startTimeStr = formatSessionTime(session.start_time);
+                        const endTimeStr = formatSessionTime(session.end_time);
+                        const isZeroDuration = durationMinutes === 0;
 
                         return (
                           <div
@@ -281,18 +290,27 @@ export default function HistoryPage() {
                             <div className="absolute -left-4 sm:-left-6 top-4 -translate-x-1/2 w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-zinc-700 border-2 border-zinc-950 shadow-sm" />
 
                             <div className="bg-zinc-900/80 border border-zinc-800/90 hover:border-zinc-700 rounded-xl p-3 sm:p-4 shadow-sm transition-all space-y-2">
-                              {/* Top Line: Duration Pill + Time Interval */}
+                              {/* Top Line: Duration Pill + Break Badge + Time Interval */}
                               <div className="flex flex-wrap items-center justify-between gap-1.5 sm:gap-2">
-                                <div className="flex items-center space-x-2 sm:space-x-2.5 min-w-0">
+                                <div className="flex items-center space-x-2 sm:space-x-2.5 min-w-0 flex-wrap gap-y-1">
                                   {/* Soft Faded Violet Duration Badge */}
                                   <span className="px-2 py-0.5 sm:px-2.5 sm:py-0.5 rounded-lg bg-violet-500/10 border border-violet-500/25 text-violet-200 font-mono text-xs sm:text-sm font-black shadow-sm shrink-0 tabular-nums">
                                     {durationStr}
                                   </span>
 
+                                  {breakMinutes > 0 && (
+                                    <span className="px-1.5 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-300 font-mono text-[10px] sm:text-xs font-semibold shrink-0 flex items-center space-x-1">
+                                      <Coffee className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-amber-400 shrink-0" />
+                                      <span>+{formatMinutesToHours(breakMinutes)} break</span>
+                                    </span>
+                                  )}
+
                                   <div className="text-xs sm:text-sm text-zinc-300 font-mono flex items-center space-x-1.5 whitespace-nowrap tabular-nums">
                                     <Clock className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
                                     <span>
-                                      {formatSessionTime(session.start_time)} → {formatSessionTime(session.end_time)}
+                                      {isZeroDuration || startTimeStr === endTimeStr
+                                        ? startTimeStr
+                                        : `${startTimeStr} → ${endTimeStr}`}
                                     </span>
                                   </div>
                                 </div>
@@ -410,7 +428,15 @@ export default function HistoryPage() {
                           <div className="space-y-2.5 relative pl-4 sm:pl-6 before:absolute before:top-2 before:bottom-2 before:left-1.5 sm:before:left-2.5 before:w-px before:bg-zinc-800">
                             {dateSessions.map((session) => {
                               const completedTasks = session.completed_tasks || [];
-                              const durationStr = formatMinutesToHours(session.duration_minutes);
+                              const durationMinutes = session.duration_minutes || 0;
+                              const durationStr = formatMinutesToHours(durationMinutes);
+                              const rawBreakDiff = Math.floor((new Date(session.end_time).getTime() - new Date(session.start_time).getTime()) / 60000) - durationMinutes;
+                              const breakMinutes = typeof session.break_minutes === "number"
+                                ? session.break_minutes
+                                : (rawBreakDiff >= 2 ? rawBreakDiff : 0);
+                              const startTimeStr = formatSessionTime(session.start_time);
+                              const endTimeStr = formatSessionTime(session.end_time);
+                              const isZeroDuration = durationMinutes === 0;
 
                               return (
                                 <div
@@ -421,18 +447,27 @@ export default function HistoryPage() {
                                   <div className="absolute -left-4 sm:-left-6 top-4 -translate-x-1/2 w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-zinc-700 border-2 border-zinc-950 shadow-sm" />
 
                                   <div className="bg-zinc-900/80 border border-zinc-800/90 hover:border-zinc-700 rounded-xl p-3 sm:p-4 shadow-sm transition-all space-y-2">
-                                    {/* Top Line: Duration Pill + Time Interval */}
+                                    {/* Top Line: Duration Pill + Break Badge + Time Interval */}
                                     <div className="flex flex-wrap items-center justify-between gap-1.5 sm:gap-2">
-                                      <div className="flex items-center space-x-2 sm:space-x-2.5 min-w-0">
+                                      <div className="flex items-center space-x-2 sm:space-x-2.5 min-w-0 flex-wrap gap-y-1">
                                         {/* Soft Faded Violet Duration Badge */}
                                         <span className="px-2 py-0.5 sm:px-2.5 sm:py-0.5 rounded-lg bg-violet-500/10 border border-violet-500/25 text-violet-200 font-mono text-xs sm:text-sm font-black shadow-sm shrink-0 tabular-nums">
                                           {durationStr}
                                         </span>
 
+                                        {breakMinutes > 0 && (
+                                          <span className="px-1.5 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-300 font-mono text-[10px] sm:text-xs font-semibold shrink-0 flex items-center space-x-1">
+                                            <Coffee className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-amber-400 shrink-0" />
+                                            <span>+{formatMinutesToHours(breakMinutes)} break</span>
+                                          </span>
+                                        )}
+
                                         <div className="text-xs sm:text-sm text-zinc-300 font-mono flex items-center space-x-1.5 whitespace-nowrap tabular-nums">
                                           <Clock className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
                                           <span>
-                                            {formatSessionTime(session.start_time)} → {formatSessionTime(session.end_time)}
+                                            {isZeroDuration || startTimeStr === endTimeStr
+                                              ? startTimeStr
+                                              : `${startTimeStr} → ${endTimeStr}`}
                                           </span>
                                         </div>
                                       </div>

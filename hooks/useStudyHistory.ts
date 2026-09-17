@@ -97,6 +97,7 @@ export function useStudyHistory(userId?: string) {
         start_time: s.start_time,
         end_time: s.end_time,
         duration_minutes: s.duration_minutes,
+        break_minutes: s.break_minutes ?? 0,
         completed_tasks: s.completed_tasks,
         created_at: s.created_at,
       })) as StudySession[];

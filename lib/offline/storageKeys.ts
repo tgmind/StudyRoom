@@ -37,6 +37,7 @@ export interface CompletedOfflineSessionRecord {
   start_time: string;
   end_time: string;
   duration_minutes: number;
+  break_minutes?: number;
   completed_tasks: Array<{ id: string; task: string }>;
   blocks: OfflineSessionBlock[];
   created_at: string;

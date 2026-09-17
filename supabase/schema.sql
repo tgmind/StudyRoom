@@ -146,11 +146,13 @@ CREATE TABLE IF NOT EXISTS public.study_sessions (
   start_time TIMESTAMPTZ NOT NULL,
   end_time TIMESTAMPTZ NOT NULL,
   duration_minutes INTEGER NOT NULL CHECK (duration_minutes >= 0),
+  break_minutes INTEGER NOT NULL DEFAULT 0,
   completed_tasks JSONB DEFAULT '[]'::JSONB
 );
 
 -- Idempotent column migrations for existing databases
 ALTER TABLE public.study_sessions ADD COLUMN IF NOT EXISTS completed_tasks JSONB DEFAULT '[]'::JSONB;
+ALTER TABLE public.study_sessions ADD COLUMN IF NOT EXISTS break_minutes INTEGER NOT NULL DEFAULT 0;
 
 -- Indexes for Study Sessions
 CREATE INDEX IF NOT EXISTS idx_study_sessions_user_id ON public.study_sessions(user_id);
@@ -455,13 +457,18 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- RPC: Resume Session (with 1-hour break timeout protection)
-CREATE OR REPLACE FUNCTION public.rpc_resume_session()
+DROP FUNCTION IF EXISTS public.rpc_resume_session() CASCADE;
+DROP FUNCTION IF EXISTS public.rpc_resume_session(TIMESTAMPTZ) CASCADE;
+
+CREATE OR REPLACE FUNCTION public.rpc_resume_session(
+  p_resumed_at TIMESTAMPTZ DEFAULT NULL
+)
 RETURNS JSONB AS $$
 DECLARE
   v_user_id UUID;
   v_status TEXT;
   v_break_started_at TIMESTAMPTZ;
-  v_now TIMESTAMPTZ := NOW();
+  v_now TIMESTAMPTZ := COALESCE(p_resumed_at, NOW());
   v_total_study_seconds INTEGER := 0;
 BEGIN
   v_user_id := auth.uid();
@@ -572,6 +579,10 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- RPC: Finish Session (Atomic Transaction for Stop Hook with Midnight Splitting)
+DROP FUNCTION IF EXISTS public.rpc_finish_session() CASCADE;
+DROP FUNCTION IF EXISTS public.rpc_finish_session(TEXT[]) CASCADE;
+DROP FUNCTION IF EXISTS public.rpc_finish_session(TEXT[], TEXT) CASCADE;
+
 CREATE OR REPLACE FUNCTION public.rpc_finish_session(
   p_completed_task_ids TEXT[] DEFAULT ARRAY[]::TEXT[],
   p_reason TEXT DEFAULT 'manual_stop'
@@ -587,7 +598,9 @@ DECLARE
   v_midnight TIMESTAMPTZ;
   v_crossed_midnight BOOLEAN := false;
   v_total_study_seconds NUMERIC := 0;
+  v_total_break_seconds NUMERIC := 0;
   v_duration_minutes INTEGER := 0;
+  v_break_minutes INTEGER := 0;
   v_dur_1 INTEGER := 0;
   v_dur_2 INTEGER := 0;
   v_session_id UUID;
@@ -603,6 +616,8 @@ DECLARE
   v_task_text TEXT;
   v_block RECORD;
   v_has_completed_tasks BOOLEAN := false;
+  v_last_study_end TIMESTAMPTZ;
+  v_session_actual_end TIMESTAMPTZ;
 BEGIN
   v_user_id := auth.uid();
   IF v_user_id IS NULL THEN
@@ -632,10 +647,34 @@ BEGIN
     v_session_start := v_now;
   END IF;
 
+  -- Authoritative study session end time:
+  -- If user ended session while on break, active study concluded when the last study block ended.
+  SELECT COALESCE(MAX(end_time), v_session_start)
+  INTO v_last_study_end
+  FROM public.session_blocks
+  WHERE user_id = v_user_id
+    AND block_type = 'study'
+    AND session_id IS NULL;
+
+  IF v_status = 'break' THEN
+    v_session_actual_end := v_last_study_end;
+  ELSE
+    v_session_actual_end := v_now;
+  END IF;
+
+  -- Calculate total break duration from unlinked break blocks
+  SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(end_time, v_now) - start_time))), 0)
+  INTO v_total_break_seconds
+  FROM public.session_blocks
+  WHERE user_id = v_user_id
+    AND block_type = 'break'
+    AND session_id IS NULL;
+  v_break_minutes := GREATEST(0, FLOOR(v_total_break_seconds / 60)::INTEGER);
+
   -- Detect if session crossed midnight in application timezone (Asia/Kolkata)
-  IF DATE(v_session_start AT TIME ZONE v_tz) <> DATE(v_now AT TIME ZONE v_tz) THEN
+  IF DATE(v_session_start AT TIME ZONE v_tz) <> DATE(v_session_actual_end AT TIME ZONE v_tz) THEN
     v_crossed_midnight := true;
-    v_midnight := (DATE_TRUNC('day', v_now AT TIME ZONE v_tz) AT TIME ZONE v_tz);
+    v_midnight := (DATE_TRUNC('day', v_session_actual_end AT TIME ZONE v_tz) AT TIME ZONE v_tz);
 
     -- Split any unlinked block that straddles v_midnight
     FOR v_block IN
@@ -723,18 +762,23 @@ BEGIN
       AND start_time >= v_midnight;
     v_dur_2 := LEAST(180, GREATEST(0, FLOOR(v_total_study_seconds / 60)::INTEGER));
 
-    -- Fallback if no study blocks exist
+    -- Fallback: If blocks missing, use active_study_seconds_snapshot rather than blind wall-clock
     IF v_dur_1 = 0 AND v_dur_2 = 0 THEN
-      v_dur_1 := LEAST(180, GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (v_midnight - v_session_start)) / 60)::INTEGER));
-      v_dur_2 := LEAST(180, GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (v_now - v_midnight)) / 60)::INTEGER));
+      SELECT COALESCE(active_study_seconds_snapshot, 0)
+      INTO v_total_study_seconds
+      FROM public.users WHERE id = v_user_id;
+
+      IF v_total_study_seconds > 0 THEN
+        v_dur_1 := LEAST(180, FLOOR(v_total_study_seconds / 60)::INTEGER);
+      END IF;
     END IF;
 
     v_duration_minutes := v_dur_1 + v_dur_2;
 
     -- Insert Part 1 (Day 1)
     IF v_dur_1 > 0 OR v_dur_2 = 0 THEN
-      INSERT INTO public.study_sessions (user_id, start_time, end_time, duration_minutes, completed_tasks)
-      VALUES (v_user_id, v_session_start, v_midnight, v_dur_1, CASE WHEN v_dur_2 = 0 THEN v_session_completed_tasks ELSE '[]'::JSONB END)
+      INSERT INTO public.study_sessions (user_id, start_time, end_time, duration_minutes, break_minutes, completed_tasks)
+      VALUES (v_user_id, v_session_start, v_midnight, v_dur_1, 0, CASE WHEN v_dur_2 = 0 THEN v_session_completed_tasks ELSE '[]'::JSONB END)
       RETURNING id INTO v_session_id_1;
 
       UPDATE public.session_blocks
@@ -744,8 +788,8 @@ BEGIN
 
     -- Insert Part 2 (Day 2)
     IF v_dur_2 > 0 THEN
-      INSERT INTO public.study_sessions (user_id, start_time, end_time, duration_minutes, completed_tasks)
-      VALUES (v_user_id, v_midnight, v_now, v_dur_2, v_session_completed_tasks)
+      INSERT INTO public.study_sessions (user_id, start_time, end_time, duration_minutes, break_minutes, completed_tasks)
+      VALUES (v_user_id, v_midnight, v_session_actual_end, v_dur_2, v_break_minutes, v_session_completed_tasks)
       RETURNING id INTO v_session_id_2;
 
       UPDATE public.session_blocks
@@ -770,9 +814,9 @@ BEGIN
 
     v_duration_minutes := LEAST(180, GREATEST(0, FLOOR(v_total_study_seconds / 60)::INTEGER));
 
-    -- Insert study session record with completed tasks
-    INSERT INTO public.study_sessions (user_id, start_time, end_time, duration_minutes, completed_tasks)
-    VALUES (v_user_id, v_session_start, v_now, v_duration_minutes, v_session_completed_tasks)
+    -- Insert study session record with actual study end time and break minutes
+    INSERT INTO public.study_sessions (user_id, start_time, end_time, duration_minutes, break_minutes, completed_tasks)
+    VALUES (v_user_id, v_session_start, v_session_actual_end, v_duration_minutes, v_break_minutes, v_session_completed_tasks)
     RETURNING id INTO v_session_id;
 
     -- Associate unlinked blocks with this session
@@ -802,10 +846,11 @@ BEGIN
     'session_id_1', v_session_id_1,
     'session_id_2', v_session_id_2,
     'duration_minutes', v_duration_minutes,
+    'break_minutes', v_break_minutes,
     'duration_minutes_1', v_dur_1,
     'duration_minutes_2', v_dur_2,
     'start_time', v_session_start,
-    'end_time', v_now,
+    'end_time', v_session_actual_end,
     'completed_tasks', v_session_completed_tasks,
     'pending_goal_session_id', CASE WHEN v_has_completed_tasks THEN NULL ELSE v_session_id END,
     'pending_goal_seconds', CASE WHEN v_has_completed_tasks THEN NULL ELSE (v_duration_minutes * 60) END,
@@ -976,6 +1021,7 @@ RETURNS TABLE (
   start_time TIMESTAMPTZ,
   end_time TIMESTAMPTZ,
   duration_minutes INTEGER,
+  break_minutes INTEGER,
   completed_tasks JSONB
 ) AS $$
 DECLARE
@@ -998,6 +1044,7 @@ BEGIN
     s.start_time,
     s.end_time,
     s.duration_minutes,
+    COALESCE(s.break_minutes, 0) AS break_minutes,
     COALESCE(s.completed_tasks, '[]'::JSONB) AS completed_tasks
   FROM public.study_sessions s
   WHERE s.user_id = v_uid
@@ -1488,8 +1535,12 @@ DECLARE
   v_focus TEXT;
   v_now TIMESTAMPTZ := NOW();
   v_total_study_seconds NUMERIC := 0;
+  v_total_break_seconds NUMERIC := 0;
   v_duration_minutes INTEGER := 0;
+  v_break_minutes INTEGER := 0;
   v_session_id UUID;
+  v_last_study_end TIMESTAMPTZ;
+  v_session_actual_end TIMESTAMPTZ;
 BEGIN
   IF NOT public.check_is_admin() THEN
     RAISE EXCEPTION 'Unauthorized: Caller is not an administrator';
@@ -1523,6 +1574,18 @@ BEGIN
   IF v_session_start IS NULL THEN
     v_session_start := v_now;
   END IF;
+  SELECT COALESCE(MAX(end_time), v_session_start)
+  INTO v_last_study_end
+  FROM public.session_blocks
+  WHERE user_id = p_target_user_id
+    AND block_type = 'study'
+    AND session_id IS NULL;
+
+  IF v_status = 'break' THEN
+    v_session_actual_end := v_last_study_end;
+  ELSE
+    v_session_actual_end := v_now;
+  END IF;
 
   SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(end_time, v_now) - start_time))), 0)
   INTO v_total_study_seconds
@@ -1533,8 +1596,17 @@ BEGIN
 
   v_duration_minutes := LEAST(180, GREATEST(0, FLOOR(v_total_study_seconds / 60)::INTEGER));
 
-  INSERT INTO public.study_sessions (user_id, start_time, end_time, duration_minutes, completed_tasks)
-  VALUES (p_target_user_id, v_session_start, v_now, v_duration_minutes, '[]'::JSONB)
+  SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(end_time, v_now) - start_time))), 0)
+  INTO v_total_break_seconds
+  FROM public.session_blocks
+  WHERE user_id = p_target_user_id
+    AND block_type = 'break'
+    AND session_id IS NULL;
+
+  v_break_minutes := GREATEST(0, FLOOR(v_total_break_seconds / 60)::INTEGER);
+
+  INSERT INTO public.study_sessions (user_id, start_time, end_time, duration_minutes, break_minutes, completed_tasks)
+  VALUES (p_target_user_id, v_session_start, v_session_actual_end, v_duration_minutes, v_break_minutes, '[]'::JSONB)
   RETURNING id INTO v_session_id;
 
   UPDATE public.session_blocks
@@ -1556,6 +1628,7 @@ BEGIN
     'success', true,
     'session_id', v_session_id,
     'duration_minutes', v_duration_minutes,
+    'break_minutes', v_break_minutes,
     'server_now', v_now,
     'message', 'Session suspended and saved by administrator'
   );
@@ -1623,8 +1696,12 @@ DECLARE
   v_focus TEXT;
   v_now TIMESTAMPTZ := NOW();
   v_total_study_seconds NUMERIC := 0;
+  v_total_break_seconds NUMERIC := 0;
   v_duration_minutes INTEGER := 0;
+  v_break_minutes INTEGER := 0;
   v_session_id UUID;
+  v_last_study_end TIMESTAMPTZ;
+  v_session_actual_end TIMESTAMPTZ;
 BEGIN
   SELECT current_status, session_start_time, current_focus
   INTO v_status, v_session_start, v_focus
@@ -1644,6 +1721,19 @@ BEGIN
     v_session_start := v_now;
   END IF;
 
+  SELECT COALESCE(MAX(end_time), v_session_start)
+  INTO v_last_study_end
+  FROM public.session_blocks
+  WHERE user_id = p_user_id
+    AND block_type = 'study'
+    AND session_id IS NULL;
+
+  IF v_status = 'break' THEN
+    v_session_actual_end := v_last_study_end;
+  ELSE
+    v_session_actual_end := v_now;
+  END IF;
+
   SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(end_time, v_now) - start_time))), 0)
   INTO v_total_study_seconds
   FROM public.session_blocks
@@ -1653,8 +1743,17 @@ BEGIN
 
   v_duration_minutes := LEAST(180, GREATEST(0, FLOOR(v_total_study_seconds / 60)::INTEGER));
 
-  INSERT INTO public.study_sessions (user_id, start_time, end_time, duration_minutes, completed_tasks)
-  VALUES (p_user_id, v_session_start, v_now, v_duration_minutes, '[]'::JSONB)
+  SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(end_time, v_now) - start_time))), 0)
+  INTO v_total_break_seconds
+  FROM public.session_blocks
+  WHERE user_id = p_user_id
+    AND block_type = 'break'
+    AND session_id IS NULL;
+
+  v_break_minutes := GREATEST(0, FLOOR(v_total_break_seconds / 60)::INTEGER);
+
+  INSERT INTO public.study_sessions (user_id, start_time, end_time, duration_minutes, break_minutes, completed_tasks)
+  VALUES (p_user_id, v_session_start, v_session_actual_end, v_duration_minutes, v_break_minutes, '[]'::JSONB)
   RETURNING id INTO v_session_id;
 
   UPDATE public.session_blocks
@@ -1679,6 +1778,7 @@ BEGIN
     'success', true,
     'session_id', v_session_id,
     'duration_minutes', v_duration_minutes,
+    'break_minutes', v_break_minutes,
     'pending_goal_session_id', v_session_id,
     'pending_goal_seconds', (v_duration_minutes * 60),
     'pending_goal_reason', CASE WHEN v_status = 'break' THEN 'break_expired' ELSE 'session_limit' END,

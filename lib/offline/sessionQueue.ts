@@ -386,6 +386,7 @@ export async function flushSessionActionQueue(
                     start_time: sessionPayload.start_time,
                     end_time: midnightIso,
                     duration_minutes: minsBefore,
+                    break_minutes: 0,
                     completed_tasks: minsAfter === 0 ? sessionPayload.completed_tasks : [],
                   })
                   .select("id")
@@ -404,6 +405,7 @@ export async function flushSessionActionQueue(
                     start_time: midnightIso,
                     end_time: sessionPayload.end_time,
                     duration_minutes: minsAfter,
+                    break_minutes: sessionPayload.break_minutes ?? 0,
                     completed_tasks: sessionPayload.completed_tasks,
                   })
                   .select("id")
@@ -422,6 +424,7 @@ export async function flushSessionActionQueue(
                   start_time: sessionPayload.start_time,
                   end_time: sessionPayload.end_time,
                   duration_minutes: sessionPayload.duration_minutes,
+                  break_minutes: sessionPayload.break_minutes ?? 0,
                   completed_tasks: sessionPayload.completed_tasks,
                 })
                 .select("id")
@@ -539,8 +542,12 @@ export async function flushSessionActionQueue(
           removeSessionAction(item.id);
           flushedCount++;
         } else if (item.action === "pause_session") {
+          const pausedAtIso = item.createdAtIso || new Date().toISOString();
           const { error: rpcErr } = await with10sTimeout(
-            (supabase as unknown as RpcCaller).rpc("rpc_pause_session"),
+            (supabase as unknown as RpcCaller).rpc("rpc_pause_session", {
+              p_paused_at: pausedAtIso,
+              p_elapsed_study_seconds: item.elapsedStudySeconds,
+            }),
             "Pause session RPC"
           );
 
@@ -557,8 +564,11 @@ export async function flushSessionActionQueue(
           removeSessionAction(item.id);
           flushedCount++;
         } else if (item.action === "resume_session") {
+          const resumedAtIso = item.createdAtIso || new Date().toISOString();
           const { error: rpcErr } = await with10sTimeout(
-            (supabase as unknown as RpcCaller).rpc("rpc_resume_session"),
+            (supabase as unknown as RpcCaller).rpc("rpc_resume_session", {
+              p_resumed_at: resumedAtIso,
+            }),
             "Resume session RPC"
           );
 

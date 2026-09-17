@@ -244,7 +244,7 @@ export const MemberCard = memo(function MemberCard({
               className={`${compact ? "h-2.5 mt-0.2 text-[9px]" : "h-3.5 mt-0.5 text-[10px]"} flex items-center justify-center gap-1 text-zinc-400 font-medium tabular-nums whitespace-nowrap`}
               title={`Active study session duration: ${formatDurationSeconds(elapsedSeconds)}`}
             >
-              <span>Session:</span>
+              <span>Study:</span>
               <span className="font-mono font-bold text-zinc-200">{formatDurationSeconds(elapsedSeconds)}</span>
             </div>
           </>

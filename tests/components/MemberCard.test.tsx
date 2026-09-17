@@ -76,8 +76,8 @@ describe("MemberCard Component", () => {
     expect(screen.getByText("On Break")).toBeInTheDocument();
     expect(screen.getByText("Break 05:00")).toBeInTheDocument();
 
-    // Session time shown as subtext
-    expect(screen.getByText("Session:")).toBeInTheDocument();
+    // Study time shown as subtext
+    expect(screen.getByText("Study:")).toBeInTheDocument();
     expect(screen.getByText("45:15")).toBeInTheDocument();
   });
 
@@ -100,7 +100,7 @@ describe("MemberCard Component", () => {
     );
 
     expect(screen.getByText("Break 08:00")).toBeInTheDocument();
-    expect(screen.getByText("Session:")).toBeInTheDocument();
+    expect(screen.getByText("Study:")).toBeInTheDocument();
     expect(screen.getByText("31:00")).toBeInTheDocument();
   });
 
@@ -123,6 +123,7 @@ describe("MemberCard Component", () => {
     expect(screen.getByText(/Offline/i)).toBeInTheDocument();
     expect(screen.queryByText("On Break")).not.toBeInTheDocument();
     expect(screen.queryByText(/Break 65:/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Study:/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Session:/i)).not.toBeInTheDocument();
   });
 

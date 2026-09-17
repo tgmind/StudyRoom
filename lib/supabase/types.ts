@@ -51,6 +51,7 @@ export interface StudySession {
   start_time: string;
   end_time: string;
   duration_minutes: number;
+  break_minutes?: number;
   completed_tasks?: CompletedSessionTask[];
 }
 

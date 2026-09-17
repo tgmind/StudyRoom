@@ -4,7 +4,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { TenMinuteWarningBanner } from "@/components/session/TenMinuteWarningBanner";
 
 describe("TenMinuteWarningBanner Component", () => {
-  it("renders session expiring soon banner with formatted remaining time", () => {
+  it("renders session expiring soon banner with compact minimal text", () => {
     const handleDismiss = vi.fn();
     render(
       <TenMinuteWarningBanner
@@ -14,12 +14,12 @@ describe("TenMinuteWarningBanner Component", () => {
       />
     );
 
-    expect(screen.getByText("Session Expiring Soon")).toBeInTheDocument();
-    expect(screen.getByText(/09:00/)).toBeInTheDocument();
-    expect(screen.getByText(/Your 3-hour study session ends in 10 minutes/i)).toBeInTheDocument();
+    expect(screen.getByText("Session limit in")).toBeInTheDocument();
+    expect(screen.getByText("09:00")).toBeInTheDocument();
+    expect(screen.getByText(/Wrap up goals/i)).toBeInTheDocument();
   });
 
-  it("renders break expiring soon banner with formatted remaining time", () => {
+  it("renders break expiring soon banner with compact minimal text", () => {
     const handleDismiss = vi.fn();
     render(
       <TenMinuteWarningBanner
@@ -29,9 +29,9 @@ describe("TenMinuteWarningBanner Component", () => {
       />
     );
 
-    expect(screen.getByText("Break Expiring Soon")).toBeInTheDocument();
-    expect(screen.getByText(/05:00/)).toBeInTheDocument();
-    expect(screen.getByText(/Your 1-hour break expires in 10 minutes/i)).toBeInTheDocument();
+    expect(screen.getByText("Break expires in")).toBeInTheDocument();
+    expect(screen.getByText("05:00")).toBeInTheDocument();
+    expect(screen.getByText(/Resume soon/i)).toBeInTheDocument();
   });
 
   it("calls onDismiss when close button is clicked", () => {
@@ -50,3 +50,4 @@ describe("TenMinuteWarningBanner Component", () => {
     expect(handleDismiss).toHaveBeenCalledTimes(1);
   });
 });
+

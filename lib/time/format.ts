@@ -95,8 +95,11 @@ export function calculateMemberElapsedStudySeconds(
         const addedSeconds = Math.max(0, Math.floor((now.getTime() - resumeMs) / 1000));
         rawSeconds = baseSeconds + addedSeconds;
       }
-    } else if (member.session_start_time) {
-      // Fallback for sessions without resume timestamp
+    } else if (baseSeconds > 0) {
+      // Accrued study duration before break is preserved
+      rawSeconds = baseSeconds;
+    } else if (member.session_start_time && !member.break_started_at) {
+      // Clean initial start fallback (no breaks ever occurred)
       const startMs = new Date(member.session_start_time).getTime();
       if (!isNaN(startMs)) {
         rawSeconds = Math.max(0, Math.floor((now.getTime() - startMs) / 1000));

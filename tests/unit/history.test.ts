@@ -154,4 +154,47 @@ describe("Goal Appending & Study History Logic", () => {
     expect(pastWeekSessions.length).toBe(2);
     expect(pastWeekSessions.map((s) => s.id)).toEqual(["sess-past-sunday", "sess-past-friday"]);
   });
+
+  it("handles break time separation and avoids false interval spans for 0m sessions", () => {
+    // Session starting at 12:18 PM with 0m study and 58m break (as in user screenshot)
+    const sessionZeroStudyWithBreak: StudySession = {
+      id: "sess-break-only",
+      user_id: "u1",
+      start_time: "2026-09-17T06:48:00Z", // 12:18 PM IST
+      end_time: "2026-09-17T06:48:00Z", // actual study end is same as start
+      duration_minutes: 0,
+      break_minutes: 58,
+      completed_tasks: [],
+    };
+
+    const startStr = formatSessionTime(sessionZeroStudyWithBreak.start_time, "Asia/Kolkata");
+    const endStr = formatSessionTime(sessionZeroStudyWithBreak.end_time, "Asia/Kolkata");
+    const isZero = (sessionZeroStudyWithBreak.duration_minutes || 0) === 0;
+
+    const displayInterval = isZero || startStr === endStr ? startStr : `${startStr} → ${endStr}`;
+    expect(displayInterval).toBe("12:18 PM");
+    expect(sessionZeroStudyWithBreak.duration_minutes).toBe(0);
+    expect(sessionZeroStudyWithBreak.break_minutes).toBe(58);
+
+    // Active session with 45m study and 15m break
+    const sessionWithBreak: StudySession = {
+      id: "sess-study-break",
+      user_id: "u1",
+      start_time: "2026-09-17T04:30:00Z", // 10:00 AM IST
+      end_time: "2026-09-17T05:30:00Z", // 11:00 AM IST
+      duration_minutes: 45,
+      break_minutes: 15,
+      completed_tasks: [],
+    };
+
+    const sStartStr = formatSessionTime(sessionWithBreak.start_time, "Asia/Kolkata");
+    const sEndStr = formatSessionTime(sessionWithBreak.end_time, "Asia/Kolkata");
+    const sIsZero = (sessionWithBreak.duration_minutes || 0) === 0;
+    const sInterval = sIsZero || sStartStr === sEndStr ? sStartStr : `${sStartStr} → ${sEndStr}`;
+
+    expect(sInterval).toBe("10:00 AM → 11:00 AM");
+    expect(formatMinutesToHours(sessionWithBreak.duration_minutes)).toBe("45m");
+    expect(formatMinutesToHours(sessionWithBreak.break_minutes!)).toBe("15m");
+  });
 });
+

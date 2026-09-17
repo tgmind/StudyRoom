@@ -549,19 +549,39 @@ export function useActiveSession(
       const totalActiveSeconds = calculateActiveStudySeconds(finalBlocks, new Date(nowIso));
       const durationMinutes = Math.min(180, Math.max(0, Math.floor(totalActiveSeconds / 60)));
 
+      // Determine authoritative study end time:
+      // If ending while on break, active study concluded when the last study block ended.
+      const studyBlocks = finalBlocks.filter((b) => b.block_type === "study");
+      const lastStudyBlock = studyBlocks[studyBlocks.length - 1];
+      const actualStudyEndIso =
+        currentStatus === "break" && lastStudyBlock?.end_time
+          ? lastStudyBlock.end_time
+          : nowIso;
+
+      // Calculate total break minutes from break blocks
+      const totalBreakSeconds = finalBlocks
+        .filter((b) => b.block_type === "break")
+        .reduce((sum, b) => {
+          const s = new Date(b.start_time).getTime();
+          const e = new Date(b.end_time || nowIso).getTime();
+          return sum + Math.max(0, !isNaN(s) && !isNaN(e) && e >= s ? (e - s) / 1000 : 0);
+        }, 0);
+      const breakMinutes = Math.max(0, Math.floor(totalBreakSeconds / 60));
+
       // 3. Build offline completed session record for immediate History view (with midnight splitting)
       const baseOfflineId = offlineSession?.sessionId || "offline_" + now;
       const sessionStartIso = offlineSession?.startTime || finalBlocks[0]?.start_time || nowIso;
       const timezone = process.env.NEXT_PUBLIC_APP_TIMEZONE || "Asia/Kolkata";
       const startDateKey = getDateInTimezone(new Date(sessionStartIso), timezone);
-      const endDateKey = getDateInTimezone(new Date(nowIso), timezone);
+      const endDateKey = getDateInTimezone(new Date(actualStudyEndIso), timezone);
 
       const offlineRecord: CompletedOfflineSessionRecord = {
         id: baseOfflineId,
         user_id: profileRef.current?.id || offlineSession?.userId || "offline_user",
         start_time: sessionStartIso,
-        end_time: nowIso,
+        end_time: actualStudyEndIso,
         duration_minutes: durationMinutes,
+        break_minutes: breakMinutes,
         completed_tasks: (completedTaskIds || []).map((id) => ({ id, task: "Completed Task" })),
         blocks: finalBlocks.map((b) => ({
           id: b.id,

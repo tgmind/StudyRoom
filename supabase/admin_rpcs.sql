@@ -264,13 +264,17 @@ DECLARE
   v_midnight TIMESTAMPTZ;
   v_crossed_midnight BOOLEAN := false;
   v_total_study_seconds NUMERIC := 0;
+  v_total_break_seconds NUMERIC := 0;
   v_duration_minutes INTEGER := 0;
+  v_break_minutes INTEGER := 0;
   v_dur_1 INTEGER := 0;
   v_dur_2 INTEGER := 0;
   v_session_id UUID;
   v_session_id_1 UUID := NULL;
   v_session_id_2 UUID := NULL;
   v_block RECORD;
+  v_last_study_end TIMESTAMPTZ;
+  v_session_actual_end TIMESTAMPTZ;
 BEGIN
   IF NOT public.check_is_admin() THEN
     RAISE EXCEPTION 'Unauthorized: Caller is not an administrator';
@@ -306,10 +310,32 @@ BEGIN
     v_session_start := v_now;
   END IF;
 
+  SELECT COALESCE(MAX(end_time), v_session_start)
+  INTO v_last_study_end
+  FROM public.session_blocks
+  WHERE user_id = p_target_user_id
+    AND block_type = 'study'
+    AND session_id IS NULL;
+
+  IF v_status = 'break' THEN
+    v_session_actual_end := v_last_study_end;
+  ELSE
+    v_session_actual_end := v_now;
+  END IF;
+
+  SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(end_time, v_now) - start_time))), 0)
+  INTO v_total_break_seconds
+  FROM public.session_blocks
+  WHERE user_id = p_target_user_id
+    AND block_type = 'break'
+    AND session_id IS NULL;
+
+  v_break_minutes := GREATEST(0, FLOOR(v_total_break_seconds / 60)::INTEGER);
+
   -- Detect if session crossed midnight in application timezone (Asia/Kolkata)
-  IF DATE(v_session_start AT TIME ZONE v_tz) <> DATE(v_now AT TIME ZONE v_tz) THEN
+  IF DATE(v_session_start AT TIME ZONE v_tz) <> DATE(v_session_actual_end AT TIME ZONE v_tz) THEN
     v_crossed_midnight := true;
-    v_midnight := (DATE_TRUNC('day', v_now AT TIME ZONE v_tz) AT TIME ZONE v_tz);
+    v_midnight := (DATE_TRUNC('day', v_session_actual_end AT TIME ZONE v_tz) AT TIME ZONE v_tz);
 
     -- Split any unlinked block that straddles v_midnight
     FOR v_block IN
@@ -349,15 +375,20 @@ BEGIN
     v_dur_2 := LEAST(180, GREATEST(0, FLOOR(v_total_study_seconds / 60)::INTEGER));
 
     IF v_dur_1 = 0 AND v_dur_2 = 0 THEN
-      v_dur_1 := LEAST(180, GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (v_midnight - v_session_start)) / 60)::INTEGER));
-      v_dur_2 := LEAST(180, GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (v_now - v_midnight)) / 60)::INTEGER));
+      SELECT COALESCE(active_study_seconds_snapshot, 0)
+      INTO v_total_study_seconds
+      FROM public.users WHERE id = p_target_user_id;
+
+      IF v_total_study_seconds > 0 THEN
+        v_dur_1 := LEAST(180, FLOOR(v_total_study_seconds / 60)::INTEGER);
+      END IF;
     END IF;
 
     v_duration_minutes := v_dur_1 + v_dur_2;
 
     IF v_dur_1 > 0 OR v_dur_2 = 0 THEN
-      INSERT INTO public.study_sessions (user_id, start_time, end_time, duration_minutes, completed_tasks)
-      VALUES (p_target_user_id, v_session_start, v_midnight, v_dur_1, '[]'::JSONB)
+      INSERT INTO public.study_sessions (user_id, start_time, end_time, duration_minutes, break_minutes, completed_tasks)
+      VALUES (p_target_user_id, v_session_start, v_midnight, v_dur_1, 0, '[]'::JSONB)
       RETURNING id INTO v_session_id_1;
 
       UPDATE public.session_blocks
@@ -366,8 +397,8 @@ BEGIN
     END IF;
 
     IF v_dur_2 > 0 THEN
-      INSERT INTO public.study_sessions (user_id, start_time, end_time, duration_minutes, completed_tasks)
-      VALUES (p_target_user_id, v_midnight, v_now, v_dur_2, '[]'::JSONB)
+      INSERT INTO public.study_sessions (user_id, start_time, end_time, duration_minutes, break_minutes, completed_tasks)
+      VALUES (p_target_user_id, v_midnight, v_session_actual_end, v_dur_2, v_break_minutes, '[]'::JSONB)
       RETURNING id INTO v_session_id_2;
 
       UPDATE public.session_blocks
@@ -390,8 +421,8 @@ BEGIN
 
     v_duration_minutes := LEAST(180, GREATEST(0, FLOOR(v_total_study_seconds / 60)::INTEGER));
 
-    INSERT INTO public.study_sessions (user_id, start_time, end_time, duration_minutes, completed_tasks)
-    VALUES (p_target_user_id, v_session_start, v_now, v_duration_minutes, '[]'::JSONB)
+    INSERT INTO public.study_sessions (user_id, start_time, end_time, duration_minutes, break_minutes, completed_tasks)
+    VALUES (p_target_user_id, v_session_start, v_session_actual_end, v_duration_minutes, v_break_minutes, '[]'::JSONB)
     RETURNING id INTO v_session_id;
 
     UPDATE public.session_blocks

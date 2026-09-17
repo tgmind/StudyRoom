@@ -12,6 +12,7 @@ import {
   AlertCircle,
   Calendar,
   Lock,
+  Coffee,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 
@@ -139,39 +140,61 @@ export const DayDetailModal = memo(function DayDetailModal({
 
                   {/* Completed Sessions */}
                   {day.sessions &&
-                    day.sessions.map((s, idx) => (
-                      <div
-                        key={s.id || idx}
-                        className="rounded-lg bg-zinc-900/70 border border-zinc-800/80 p-2.5 flex items-center justify-between text-xs"
-                      >
-                        <div className="flex items-center space-x-2.5 min-w-0 flex-1">
-                          <div className="w-7 h-7 rounded-md bg-zinc-800 flex items-center justify-center text-zinc-300 font-bold shrink-0">
-                            #{idx + 1}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center space-x-1.5">
-                              <BookOpen className="w-3 h-3 text-amber-400 shrink-0" />
-                              <span className="font-bold text-zinc-100 break-words line-clamp-2 leading-snug">
-                                {`Session #${idx + 1}`}
-                              </span>
-                            </div>
-                            <div className="flex items-center space-x-1 text-[11px] text-zinc-400 mt-0.5">
-                              <Clock className="w-3 h-3 text-zinc-500 shrink-0" />
-                              <span className="tabular-nums">
-                                {formatSessionTime(s.start_time)}
-                                {s.end_time ? ` – ${formatSessionTime(s.end_time)}` : " (Live)"}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
+                    day.sessions.map((s, idx) => {
+                      const sDuration = s.duration_minutes || 0;
+                      const sRawBreakDiff = Math.floor((new Date(s.end_time).getTime() - new Date(s.start_time).getTime()) / 60000) - sDuration;
+                      const sBreakMins = typeof s.break_minutes === "number"
+                        ? s.break_minutes
+                        : (sRawBreakDiff >= 2 ? sRawBreakDiff : 0);
+                      const startStr = formatSessionTime(s.start_time);
+                      const endStr = s.end_time ? formatSessionTime(s.end_time) : "";
+                      const isZero = sDuration === 0;
 
-                        <div className="text-right shrink-0">
-                          <span className="font-extrabold text-amber-300 tabular-nums whitespace-nowrap">
-                            {formatMinutesToHours(s.duration_minutes || 0)}
-                          </span>
+                      return (
+                        <div
+                          key={s.id || idx}
+                          className="rounded-lg bg-zinc-900/70 border border-zinc-800/80 p-2.5 flex items-center justify-between text-xs gap-2"
+                        >
+                          <div className="flex items-center space-x-2.5 min-w-0 flex-1">
+                            <div className="w-7 h-7 rounded-md bg-zinc-800 flex items-center justify-center text-zinc-300 font-bold shrink-0">
+                              #{idx + 1}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center space-x-1.5 flex-wrap gap-y-0.5">
+                                <div className="flex items-center space-x-1.5 min-w-0">
+                                  <BookOpen className="w-3 h-3 text-amber-400 shrink-0" />
+                                  <span className="font-bold text-zinc-100 break-words line-clamp-1 leading-snug">
+                                    {`Session #${idx + 1}`}
+                                  </span>
+                                </div>
+                                {sBreakMins > 0 && (
+                                  <span className="px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-300 font-mono text-[10px] font-semibold shrink-0 flex items-center space-x-1">
+                                    <Coffee className="w-2.5 h-2.5 text-amber-400 shrink-0" />
+                                    <span>+{formatMinutesToHours(sBreakMins)} break</span>
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center space-x-1 text-[11px] text-zinc-400 mt-0.5">
+                                <Clock className="w-3 h-3 text-zinc-500 shrink-0" />
+                                <span className="tabular-nums">
+                                  {!s.end_time
+                                    ? `${startStr} (Live)`
+                                    : isZero || startStr === endStr
+                                    ? startStr
+                                    : `${startStr} – ${endStr}`}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="text-right shrink-0">
+                            <span className="font-extrabold text-amber-300 tabular-nums whitespace-nowrap">
+                              {formatMinutesToHours(sDuration)}
+                            </span>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                 </div>
               ) : (
                 <div className="p-4 rounded-lg bg-zinc-900/40 border border-zinc-800/50 text-center text-zinc-500 text-xs">

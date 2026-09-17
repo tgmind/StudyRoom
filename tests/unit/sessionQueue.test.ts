@@ -169,7 +169,9 @@ describe("Offline Session Queue & Durability Engine", () => {
       const result = await flushSessionActionQueue(mockSupabase);
       expect(result.flushed).toBe(3);
       expect(mockRpc).toHaveBeenCalledWith("rpc_start_session", { p_focus: null });
-      expect(mockRpc).toHaveBeenCalledWith("rpc_pause_session");
+      expect(mockRpc).toHaveBeenCalledWith("rpc_pause_session", expect.objectContaining({
+        p_paused_at: expect.any(String),
+      }));
       expect(mockRpc).toHaveBeenCalledWith("rpc_finish_session", {
         p_completed_task_ids: ["task-1"],
         p_reason: "manual_stop",
