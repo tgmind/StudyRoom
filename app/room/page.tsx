@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useLiveRoom } from "@/hooks/useLiveRoom";
 import { useActiveSession, requestNotificationPermission } from "@/hooks/useActiveSession";
@@ -32,11 +32,14 @@ export default function RoomPage() {
     broadcastStatusChange,
   } = useLiveRoom(user?.id);
 
-  const effectiveProfile = useMemo(() => {
-    if (!profile) return null;
-    const liveMatch = members.find((m) => m.id === profile.id);
-    return liveMatch || profile;
-  }, [profile, members]);
+  // Own profile is always the canonical source for session state.
+  // members[] carries realtime data for OTHER users (room list rendering).
+  // Picking own profile from members[] caused buttons to revert: after a button
+  // press, Supabase realtime echoes the OLD pre-action server state back into
+  // members[] (~200–800 ms), making effectiveProfile appear "offline" and wiping
+  // the optimistic localStatusOverride. Using the AuthProvider profile directly
+  // avoids this race entirely while preserving all cross-device sync for others.
+  const effectiveProfile = profile;
 
   const {
     status,
@@ -62,7 +65,7 @@ export default function RoomPage() {
     pauseSession,
     resumeSession,
     finishSession,
-  } = useActiveSession(effectiveProfile, (newStatus) => {
+  } = useActiveSession(effectiveProfile, (newStatus, details) => {
     if (user && newStatus) {
       broadcastStatusChange({
         id: user.id,
@@ -70,6 +73,7 @@ export default function RoomPage() {
         session_start_time: newStatus === "offline" ? null : undefined,
         break_started_at: newStatus === "break" ? getServerNow().toISOString() : null,
         current_focus: newStatus === "offline" ? null : undefined,
+        ...details,
       });
     }
   });
@@ -81,11 +85,13 @@ export default function RoomPage() {
 
   const [isGoalSetupModalOpen, setIsGoalSetupModalOpen] = useState(false);
 
-  // Mid-Session Goal Grace: Preserve active goals while user is studying, on break, or viewing completion notices
+  // Mid-Session Goal Grace: Preserve active goals while user is studying, on break, or updating goals post-session
   const isSessionActive =
     status !== "offline" ||
     isBreakExpiredNoticeOpen ||
-    isSessionLimitNoticeOpen;
+    isSessionLimitNoticeOpen ||
+    isGoalUpdateModalOpen ||
+    Boolean(pendingGoalSessionId);
   const sessionStartTime = effectiveProfile?.session_start_time || null;
 
   const {

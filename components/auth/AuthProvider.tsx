@@ -7,6 +7,7 @@ import { User } from "@supabase/supabase-js";
 import { isAdminEmail } from "@/hooks/useAdmin";
 
 import { getCachedUserProfile, saveCachedUserProfile, with10sTimeout } from "@/lib/offline/sessionQueue";
+import { syncServerClockOnce } from "@/lib/time/clockSync";
 
 export interface AuthContextValue {
   user: User | null;
@@ -132,6 +133,76 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await fetchProfile(user.id);
     }
   }, [user, fetchProfile]);
+
+  // Live-sync own profile from Supabase Realtime.
+  // This is intentionally separate from useLiveRoom's global users subscription:
+  // - Fires only on changes to THIS user's row (targeted filter)
+  // - Keeps AuthProvider's `profile` state authoritative and realtime
+  // - Allows useActiveSession's localStatusOverride to clear correctly once
+  //   the server confirms a session action (start/pause/resume/stop)
+  // - Ensures cross-device sync: if another device stops/expires the session,
+  //   the profile update propagates here and triggers the goal update popup
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = supabase
+      .channel(`auth:profile:${user.id}`)
+      .on(
+        "postgres_changes" as Parameters<ReturnType<typeof supabase.channel>["on"]>[0],
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "users",
+          filter: `id=eq.${user.id}`,
+        },
+        (payload: { new: Record<string, unknown> }) => {
+          setProfile((prev) => {
+            if (!prev) return payload.new as unknown as UserProfile;
+            const updated = { ...prev, ...(payload.new as Partial<UserProfile>) };
+            saveCachedUserProfile(updated);
+            return updated;
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      try {
+        supabase.removeChannel(channel);
+      } catch {
+        // ignore cleanup errors
+      }
+    };
+  }, [supabase, user?.id]);
+
+  // Resync own profile & clock immediately when returning from background, unlocking device, or reconnecting to network
+  useEffect(() => {
+    syncServerClockOnce();
+
+    if (!user?.id) return;
+
+    const handleWakeup = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        fetchProfile(user.id);
+        syncServerClockOnce();
+      }
+    };
+
+    const handleOnline = () => {
+      fetchProfile(user.id);
+      syncServerClockOnce();
+    };
+
+    document.addEventListener("visibilitychange", handleWakeup);
+    window.addEventListener("focus", handleWakeup);
+    window.addEventListener("online", handleOnline);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleWakeup);
+      window.removeEventListener("focus", handleWakeup);
+      window.removeEventListener("online", handleOnline);
+    };
+  }, [user?.id, fetchProfile]);
 
   const signOut = useCallback(async () => {
     try {

@@ -40,6 +40,7 @@ import {
 } from "@/lib/offline/sessionQueue";
 import { getDateInTimezone, getTimeUntilMidnight } from "@/lib/scoring/streak";
 import { triggerHapticFeedback } from "@/lib/utils/haptics";
+import { useScreenWakeLock } from "@/hooks/useScreenWakeLock";
 
 export interface TenMinuteWarningState {
   active: boolean;
@@ -70,7 +71,7 @@ type RpcCaller = {
 
 export function useActiveSession(
   profile: UserProfile | null,
-  onStatusChange?: (newStatus?: UserStatus) => void
+  onStatusChange?: (newStatus?: UserStatus, details?: Partial<UserProfile>) => void
 ) {
   const [blocks, setBlocks] = useState<SessionBlock[]>([]);
   const [elapsedStudySeconds, setElapsedStudySeconds] = useState(0);
@@ -92,12 +93,14 @@ export function useActiveSession(
   const isAutoTerminatingLimitRef = useRef(false);
   const hasTriggeredTenMinWarningRef = useRef(false);
   const hasTriggeredTenMinBreakWarningRef = useRef(false);
+  const isTenMinWarningDismissedRef = useRef(false);
 
   // Realtime Unified Cross-Device Goal Update Popup State
   const [isGoalUpdateModalOpen, setIsGoalUpdateModalOpen] = useState(false);
   const [pendingGoalSessionId, setPendingGoalSessionId] = useState<string | null>(null);
   const [pendingGoalSeconds, setPendingGoalSeconds] = useState(0);
   const [pendingGoalReason, setPendingGoalReason] = useState<string>("manual_stop");
+  const hasCompletedGoalsRef = useRef(false);
 
   // 10-Minute Earlier Warning State (session limit & break limit)
   const [tenMinuteWarning, setTenMinuteWarning] = useState<TenMinuteWarningState | null>(null);
@@ -117,6 +120,14 @@ export function useActiveSession(
 
   const currentStatus: UserStatus = localStatusOverride ?? serverRawStatus;
   const effectiveStatus: UserStatus = localStatusOverride ?? serverEffectiveStatus;
+
+  // Screen Wake Lock: keep screen active during live study mode
+  useScreenWakeLock(effectiveStatus === "studying");
+
+  // Reset 10-minute warning dismissal when session status changes
+  useEffect(() => {
+    isTenMinWarningDismissedRef.current = false;
+  }, [currentStatus]);
 
   const actionLoadingRef = useRef(actionLoading);
   actionLoadingRef.current = actionLoading;
@@ -138,7 +149,7 @@ export function useActiveSession(
   const initialBreakStartIsoRef = useRef<string | null>(null);
 
   // Clear local override when server profile catches up to the intended state,
-  // or when an external device updates the profile and the local action has settled (>2.5s)
+  // or when an external device updates the profile and the local action has settled (>5s)
   useEffect(() => {
     if (!localStatusOverride) return;
     if (profile && profile.current_status === localStatusOverride) {
@@ -146,17 +157,18 @@ export function useActiveSession(
       return;
     }
     const elapsedSinceAction = Date.now() - lastActionTimestampRef.current;
-    if (elapsedSinceAction > 2500) {
+    if (elapsedSinceAction > 5000) {
       setLocalStatusOverride(null);
     }
   }, [profile, localStatusOverride]);
 
-  // Safety timer to guarantee localStatusOverride never lingers beyond 3.5 seconds
+  // Absolute safety timer: guarantee localStatusOverride never lingers beyond 6 seconds.
+  // 6 s = 5 s profile-catch window + 1 s buffer for slow networks / Supabase realtime lag.
   useEffect(() => {
     if (!localStatusOverride) return;
     const timer = setTimeout(() => {
       setLocalStatusOverride(null);
-    }, 3500);
+    }, 6000);
     return () => clearTimeout(timer);
   }, [localStatusOverride]);
 
@@ -164,6 +176,7 @@ export function useActiveSession(
   useEffect(() => {
     if (!profile) return;
     if (profile.pending_goal_session_id) {
+      hasCompletedGoalsRef.current = false;
       setPendingGoalSessionId(profile.pending_goal_session_id);
       setPendingGoalSeconds(profile.pending_goal_seconds || profile.last_break_expired_study_seconds || 0);
       setPendingGoalReason(profile.pending_goal_reason || "manual_stop");
@@ -172,6 +185,8 @@ export function useActiveSession(
       // Cleared across devices by another session update
       setIsGoalUpdateModalOpen(false);
       setPendingGoalSessionId(null);
+      setIsBreakExpiredNoticeOpen(false);
+      setIsSessionLimitNoticeOpen(false);
     }
   }, [profile?.pending_goal_session_id, profile?.pending_goal_seconds, profile?.pending_goal_reason, profile]);
 
@@ -201,9 +216,24 @@ export function useActiveSession(
     const offlineSession = getOfflineActiveSession();
     if (!offlineSession) return;
 
+    // Purge stale active session if older than 24 hours (abandoned session)
+    if (
+      offlineSession.startTime &&
+      Date.now() - new Date(offlineSession.startTime).getTime() > 24 * 3600 * 1000
+    ) {
+      purgeStaleActiveSession();
+      clearOfflineActiveSession();
+      clearActiveStudyState();
+      setBlocks([]);
+      setElapsedStudySeconds(0);
+      return;
+    }
+
     // If server profile authoritatively indicates user is offline, discard stale disk cache
     if (profileRef.current && profileRef.current.current_status === "offline") {
       purgeStaleActiveSession();
+      clearOfflineActiveSession();
+      clearActiveStudyState();
       setBlocks([]);
       setElapsedStudySeconds(0);
       return;
@@ -368,6 +398,15 @@ export function useActiveSession(
               const studyStartMs = profileRef.current?.session_start_time
                 ? new Date(profileRef.current.session_start_time).getTime() - getServerTimeOffset()
                 : Date.now();
+              if (profileRef.current?.session_start_time) {
+                saveActiveStudyState({
+                  userId: profileRef.current.id,
+                  sessionStartTime: profileRef.current.session_start_time,
+                  lastResumedAt: profileRef.current.last_resumed_at || undefined,
+                  snapshotSeconds: profileRef.current.active_study_seconds_snapshot || 0,
+                  focus: profileRef.current.current_focus || "",
+                });
+              }
               (window as any).AndroidBridge.onSessionStateResolved(
                 false,
                 0,
@@ -377,6 +416,7 @@ export function useActiveSession(
                 profileRef.current?.current_focus || ""
               );
             } else {
+              clearActiveStudyState();
               (window as any).AndroidBridge.onSessionStateResolved(
                 false,
                 0,
@@ -396,6 +436,14 @@ export function useActiveSession(
   // FETCH SESSION BLOCKS (When Online)
   // -----------------------------------------------------------------------
   const fetchSessionBlocks = useCallback(async () => {
+    // Never wipe optimistic state while a local action is mid-flight.
+    // localStatusOverrideRef is set for the entire duration between a button
+    // press and the server profile propagating back (up to 6 s). Returning
+    // early here ensures the optimistic blocks/elapsed-seconds set by
+    // startSession / pauseSession / resumeSession are not overwritten by a
+    // stale server fetch triggered by the realtime session_blocks subscription.
+    if (localStatusOverrideRef.current) return;
+
     if (!profile || effectiveStatus === "offline" || profile.current_status === "offline") {
       const offlineSession = getOfflineActiveSession();
       if (!offlineSession) {
@@ -580,7 +628,15 @@ export function useActiveSession(
       setBlocks([]);
       setElapsedStudySeconds(0);
       dismissedBreakExpiryRef.current = true;
-      if (onStatusChangeRef.current) onStatusChangeRef.current("offline");
+      if (onStatusChangeRef.current) {
+        onStatusChangeRef.current("offline", {
+          current_status: "offline",
+          session_start_time: null,
+          break_started_at: null,
+          last_resumed_at: null,
+          active_study_seconds_snapshot: 0,
+        });
+      }
 
       // 5. Attempt immediate fast sync with 10s safety timeout
       try {
@@ -654,11 +710,13 @@ export function useActiveSession(
 
       // 10-Minute Warning for Break Expiry (Fires in final 600s of 3600s break)
       if (breakStatus.elapsedBreakSeconds >= 3000 && !breakStatus.isExpired) {
-        setTenMinuteWarning({
-          active: true,
-          type: "break",
-          remainingSeconds: breakStatus.remainingBreakSeconds,
-        });
+        if (!isTenMinWarningDismissedRef.current) {
+          setTenMinuteWarning({
+            active: true,
+            type: "break",
+            remainingSeconds: breakStatus.remainingBreakSeconds,
+          });
+        }
 
         if (!hasTriggeredTenMinBreakWarningRef.current) {
           hasTriggeredTenMinBreakWarningRef.current = true;
@@ -676,6 +734,7 @@ export function useActiveSession(
       } else if (breakStatus.elapsedBreakSeconds < 3000) {
         setTenMinuteWarning((prev) => (prev?.type === "break" ? null : prev));
         hasTriggeredTenMinBreakWarningRef.current = false;
+        isTenMinWarningDismissedRef.current = false;
       }
 
       if (breakStatus.isExpired) {
@@ -738,11 +797,13 @@ export function useActiveSession(
       // 10-Minute Warning for 3-Hour Session Limit (Fires in final 600s of 10800s study limit)
       if (currentAccrued >= 10200 && currentAccrued < MAX_SESSION_STUDY_SECONDS) {
         const remainingSec = Math.max(0, MAX_SESSION_STUDY_SECONDS - currentAccrued);
-        setTenMinuteWarning({
-          active: true,
-          type: "session",
-          remainingSeconds: remainingSec,
-        });
+        if (!isTenMinWarningDismissedRef.current) {
+          setTenMinuteWarning({
+            active: true,
+            type: "session",
+            remainingSeconds: remainingSec,
+          });
+        }
 
         if (!hasTriggeredTenMinWarningRef.current) {
           hasTriggeredTenMinWarningRef.current = true;
@@ -760,6 +821,7 @@ export function useActiveSession(
       } else if (currentAccrued < 10200) {
         setTenMinuteWarning((prev) => (prev?.type === "session" ? null : prev));
         hasTriggeredTenMinWarningRef.current = false;
+        isTenMinWarningDismissedRef.current = false;
       }
 
       if (currentAccrued >= MAX_SESSION_STUDY_SECONDS) {
@@ -875,7 +937,15 @@ export function useActiveSession(
     setLocalStatusOverride("studying");
     setBlocks([newBlock]);
     setElapsedStudySeconds(0);
-    if (onStatusChangeRef.current) onStatusChangeRef.current("studying");
+    if (onStatusChangeRef.current) {
+      onStatusChangeRef.current("studying", {
+        current_status: "studying",
+        session_start_time: nowIso,
+        break_started_at: null,
+        active_study_seconds_snapshot: 0,
+        last_resumed_at: nowIso,
+      });
+    }
 
     // 3. Remote RPC with 10s safety timeout
     try {
@@ -972,12 +1042,21 @@ export function useActiveSession(
     setLocalStatusOverride("break");
     setBlocks(updatedBlocks);
     setElapsedStudySeconds(currentStudySeconds);
-    if (onStatusChangeRef.current) onStatusChangeRef.current("break");
+    if (onStatusChangeRef.current) {
+      onStatusChangeRef.current("break", {
+        current_status: "break",
+        break_started_at: nowIso,
+        active_study_seconds_snapshot: currentStudySeconds,
+      });
+    }
 
     // 4. Remote RPC with 10s safety timeout
     try {
       const { data, error: rpcErr } = await with10sTimeout(
-        (supabase as unknown as RpcCaller).rpc("rpc_pause_session"),
+        (supabase as unknown as RpcCaller).rpc("rpc_pause_session", {
+          p_paused_at: nowIso,
+          p_elapsed_study_seconds: currentStudySeconds,
+        }),
         "Pause session RPC"
       );
 
@@ -1063,7 +1142,13 @@ export function useActiveSession(
     // 3. Instant UI transition at t=0
     setLocalStatusOverride("studying");
     setBlocks(updatedBlocks);
-    if (onStatusChangeRef.current) onStatusChangeRef.current("studying");
+    if (onStatusChangeRef.current) {
+      onStatusChangeRef.current("studying", {
+        current_status: "studying",
+        break_started_at: null,
+        last_resumed_at: nowIso,
+      });
+    }
 
     // 4. Remote RPC with 10s safety timeout
     try {
@@ -1117,6 +1202,7 @@ export function useActiveSession(
 
   const completeSessionGoals = useCallback(
     async (sessionId: string, completedTaskIds: string[]) => {
+      hasCompletedGoalsRef.current = true;
       setIsGoalUpdateModalOpen(false);
       setPendingGoalSessionId(null);
 
@@ -1148,6 +1234,10 @@ export function useActiveSession(
 
   const closeGoalUpdateModal = useCallback(async () => {
     setIsGoalUpdateModalOpen(false);
+    if (hasCompletedGoalsRef.current) {
+      hasCompletedGoalsRef.current = false;
+      return;
+    }
     const sid = pendingGoalSessionId;
     setPendingGoalSessionId(null);
     if (sid) {
@@ -1161,6 +1251,7 @@ export function useActiveSession(
   }, [supabase, pendingGoalSessionId]);
 
   const dismissTenMinuteWarning = useCallback(() => {
+    isTenMinWarningDismissedRef.current = true;
     setTenMinuteWarning(null);
   }, []);
 

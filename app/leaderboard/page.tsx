@@ -184,10 +184,29 @@ export default function LeaderboardPage() {
       )
       .subscribe();
 
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        fetchLeaderboard(true);
+      }
+    };
+    const handleFocus = () => {
+      fetchLeaderboard(true);
+    };
+    const handleOnline = () => {
+      fetchLeaderboard(true);
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleFocus);
+    window.addEventListener("online", handleOnline);
+
     return () => {
       if (refreshTimerRef.current) {
         clearTimeout(refreshTimerRef.current);
       }
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("online", handleOnline);
       supabase.removeChannel(channel);
     };
   }, [fetchLeaderboard, supabase]);

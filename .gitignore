@@ -40,3 +40,4 @@ android/build/
 android/keystore/
 *.apk
 *.aab
+*token*.txt

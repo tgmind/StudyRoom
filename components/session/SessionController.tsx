@@ -7,6 +7,7 @@ import { CreateGoalModal } from "@/components/goals/CreateGoalModal";
 import { UserStatus, DailyGoal } from "@/lib/supabase/types";
 import { GoalCountdownResult } from "@/lib/time/countdown";
 import { Play, Pause, Square, RotateCcw } from "lucide-react";
+import { requestNotificationPermission } from "@/hooks/useActiveSession";
 
 interface SessionControllerProps {
   status: UserStatus;
@@ -46,6 +47,8 @@ export const SessionController = memo(function SessionController({
 
   // Direct Start Studying Flow - immediately starts or prompts for goal setup
   const handleStartStudyingClick = async () => {
+    // Request notification permission during direct user gesture
+    requestNotificationPermission().catch(() => {});
     try {
       if (isGoalMissingOrExpired) {
         setIsGoalSetupModalOpen(true);

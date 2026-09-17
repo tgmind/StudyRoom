@@ -75,21 +75,24 @@ export function calculateBreakStatus(
 
 /**
  * Checks if a member profile's break has exceeded the 1-hour limit (>= 3600 seconds).
+ * Optional graceSeconds (default 0) allows peer-initiated auto-stops to wait with a safety buffer.
  */
 export function isMemberBreakExpired(
   member: { current_status: string; break_started_at?: string | null },
-  now: Date = getServerNow()
+  now: Date = getServerNow(),
+  graceSeconds: number = 0
 ): boolean {
   if (member.current_status !== "break" || !member.break_started_at) {
     return false;
   }
   const breakMs = new Date(member.break_started_at).getTime();
   if (isNaN(breakMs)) return false;
-  return now.getTime() - breakMs >= MAX_BREAK_SECONDS * 1000;
+  return now.getTime() - breakMs >= (MAX_BREAK_SECONDS + graceSeconds) * 1000;
 }
 
 /**
  * Checks if a member profile's active study session has reached the 3-hour limit (>= 10800 seconds).
+ * Optional graceSeconds (default 0) allows peer-initiated auto-stops to wait with a safety buffer.
  */
 export function isMemberStudyExpired(
   member: {
@@ -98,10 +101,11 @@ export function isMemberStudyExpired(
     last_resumed_at?: string | null;
     active_study_seconds_snapshot?: number | null;
   },
-  now: Date = getServerNow()
+  now: Date = getServerNow(),
+  graceSeconds: number = 0
 ): boolean {
   if (member.current_status !== "studying") return false;
-  return calculateMemberElapsedStudySeconds(member as Partial<UserProfile>, now) >= MAX_SESSION_STUDY_SECONDS;
+  return calculateMemberElapsedStudySeconds(member as Partial<UserProfile>, now) >= (MAX_SESSION_STUDY_SECONDS + graceSeconds);
 }
 
 /**

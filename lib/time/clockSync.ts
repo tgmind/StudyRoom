@@ -125,3 +125,27 @@ export function resetClockCalibration(): void {
     } catch {}
   }
 }
+
+/**
+ * Synchronizes client clock with the atomic server time endpoint (/api/time).
+ * Measures network round-trip time (RTT) to compute sub-second offset precision.
+ * Safe to call on application mount and tab visibility change.
+ */
+export async function syncServerClockOnce(): Promise<void> {
+  if (typeof window === "undefined") return;
+  try {
+    const t0 = Date.now();
+    const res = await fetch("/api/time", { cache: "no-store" });
+    const t1 = Date.now();
+    const rtt = Math.max(0, t1 - t0);
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.server_now) {
+        calibrateWithServerTime(data.server_now, rtt);
+      }
+    }
+  } catch {
+    // If offline or request fails, gracefully fallback to cached offset or client clock
+  }
+}
+

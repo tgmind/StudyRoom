@@ -375,13 +375,19 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- RPC: Pause Session
-CREATE OR REPLACE FUNCTION public.rpc_pause_session()
+DROP FUNCTION IF EXISTS public.rpc_pause_session() CASCADE;
+DROP FUNCTION IF EXISTS public.rpc_pause_session(TIMESTAMPTZ, INTEGER) CASCADE;
+
+CREATE OR REPLACE FUNCTION public.rpc_pause_session(
+  p_paused_at TIMESTAMPTZ DEFAULT NULL,
+  p_elapsed_study_seconds INTEGER DEFAULT NULL
+)
 RETURNS JSONB AS $$
 DECLARE
   v_user_id UUID;
   v_status TEXT;
   v_break_started_at TIMESTAMPTZ;
-  v_now TIMESTAMPTZ := NOW();
+  v_now TIMESTAMPTZ := COALESCE(p_paused_at, NOW());
   v_total_study_seconds INTEGER := 0;
 BEGIN
   v_user_id := auth.uid();
@@ -424,6 +430,10 @@ BEGIN
   WHERE user_id = v_user_id
     AND block_type = 'study'
     AND session_id IS NULL;
+
+  IF p_elapsed_study_seconds IS NOT NULL AND p_elapsed_study_seconds > v_total_study_seconds THEN
+    v_total_study_seconds := p_elapsed_study_seconds;
+  END IF;
 
   -- Update user status with frozen active study seconds snapshot and break start timestamp
   UPDATE public.users
@@ -486,7 +496,7 @@ BEGIN
     FROM public.session_blocks
     WHERE user_id = v_user_id AND block_type = 'study' AND session_id IS NULL;
 
-    PERFORM public.rpc_finish_session(ARRAY[]::TEXT[]);
+    PERFORM public.rpc_finish_session(ARRAY[]::TEXT[], 'break_expired');
 
     UPDATE public.users
     SET last_break_expired_study_seconds = v_total_study_seconds
@@ -1212,6 +1222,13 @@ BEGIN
     WHERE pubname = 'supabase_realtime' AND tablename = 'daily_goals' AND schemaname = 'public'
   ) THEN
     ALTER PUBLICATION supabase_realtime ADD TABLE public.daily_goals;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' AND tablename = 'session_blocks' AND schemaname = 'public'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.session_blocks;
   END IF;
 EXCEPTION
   WHEN OTHERS THEN NULL;

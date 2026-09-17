@@ -209,8 +209,9 @@ export function useLiveRoom(currentUserId?: string) {
         const now = getServerNow();
         const expiredUsers = (data as UserProfile[]).filter(
           (u) =>
-            (u.current_status === "break" && isMemberBreakExpired(u, now)) ||
-            (u.current_status === "studying" && isMemberStudyExpired(u, now))
+            u.id !== currentUserIdRef.current &&
+            ((u.current_status === "break" && isMemberBreakExpired(u, now, 60)) ||
+              (u.current_status === "studying" && isMemberStudyExpired(u, now, 60)))
         );
 
         if (expiredUsers.length > 0) {
@@ -313,6 +314,10 @@ export function useLiveRoom(currentUserId?: string) {
       return;
     }
 
+    const cleanUpdates = Object.fromEntries(
+      Object.entries(updatedProfile).filter(([_, v]) => v !== undefined)
+    ) as Partial<UserProfile> & { id: string };
+
     setMembers((prevMembers) => {
       const exists = prevMembers.some((m) => m.id === updatedProfile.id);
       let next: UserProfile[];
@@ -320,18 +325,18 @@ export function useLiveRoom(currentUserId?: string) {
         next = prevMembers.map((m) => {
           if (m.id === updatedProfile.id) {
             const isTransitioningToOffline =
-              updatedProfile.current_status === "offline" && m.current_status !== "offline";
+              cleanUpdates.current_status === "offline" && m.current_status !== "offline";
             const newOfflineAt = isTransitioningToOffline
               ? getServerNow().toISOString()
-              : updatedProfile.last_offline_at ?? m.last_offline_at;
+              : cleanUpdates.last_offline_at ?? m.last_offline_at;
             return {
               ...m,
-              ...updatedProfile,
+              ...cleanUpdates,
               last_offline_at: newOfflineAt,
-              past_24h_study_seconds: updatedProfile.past_24h_study_seconds ?? m.past_24h_study_seconds ?? 0,
-              weekly_study_seconds: updatedProfile.weekly_study_seconds ?? m.weekly_study_seconds ?? 0,
-              total_sessions_count: updatedProfile.total_sessions_count ?? m.total_sessions_count ?? 0,
-              weekly_sessions_count: updatedProfile.weekly_sessions_count ?? m.weekly_sessions_count ?? 0,
+              past_24h_study_seconds: cleanUpdates.past_24h_study_seconds ?? m.past_24h_study_seconds ?? 0,
+              weekly_study_seconds: cleanUpdates.weekly_study_seconds ?? m.weekly_study_seconds ?? 0,
+              total_sessions_count: cleanUpdates.total_sessions_count ?? m.total_sessions_count ?? 0,
+              weekly_sessions_count: cleanUpdates.weekly_sessions_count ?? m.weekly_sessions_count ?? 0,
             };
           }
           return m;
@@ -481,14 +486,19 @@ export function useLiveRoom(currentUserId?: string) {
     const handleWindowFocus = () => {
       fetchMembers();
     };
+    const handleOnline = () => {
+      fetchMembers();
+    };
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("focus", handleWindowFocus);
+    window.addEventListener("online", handleOnline);
 
     return () => {
       clearInterval(pollInterval);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", handleWindowFocus);
+      window.removeEventListener("online", handleOnline);
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
         channelRef.current = null;
