@@ -524,5 +524,63 @@ describe("Live Study Rivalry Detection Engine", () => {
       expect(resolution?.resolutionType).toBe("NO_CONTEST");
       expect(resolution?.winner).toBeUndefined();
     });
+
+    it("generates deterministic resolutionId across multiple peers resolving at different seconds", () => {
+      const peer1Now = new Date("2026-09-03T10:00:05.000Z"); // second 5
+      const peer2Now = new Date("2026-09-03T10:00:15.000Z"); // second 15 (10s later)
+
+      const winner = createMockMember("u1", "Alice", "studying", 38000);
+      const loser = createMockMember("u2", "Bob", "studying", 37000); // 1000s gap >= 900s
+
+      const stableId = generateStableRivalryId(["u1", "u2"]);
+      const prevRivalry = {
+        id: stableId,
+        rivalMembers: [winner, loser],
+        primaryGapSeconds: 500,
+        formattedGap: "8m 20s",
+        isTrio: false,
+        leaderWeeklySeconds: 37000,
+        participantIds: ["u1", "u2"],
+      };
+
+      const res1 = evaluateRivalryResolution(prevRivalry, [winner, loser], peer1Now);
+      const res2 = evaluateRivalryResolution(prevRivalry, [winner, loser], peer2Now);
+
+      expect(res1?.resolutionId).toBeDefined();
+      expect(res2?.resolutionId).toBeDefined();
+      // Both peers must calculate the exact same resolutionId for deduplication
+      expect(res1?.resolutionId).toBe(res2?.resolutionId);
+    });
+
+    it("preserves all 3 members in final standings when a Trio rivalry resolves", () => {
+      const fixedNow = new Date("2026-09-03T10:00:00.000Z");
+      const member1 = createMockMember("u1", "Alice", "studying", 40000); // Leader
+      const member2 = createMockMember("u2", "Bob", "studying", 38500);   // Runner up (1500s gap >= 900s)
+      const member3 = createMockMember("u3", "Chetan", "studying", 38000); // Third
+
+      const stableId = generateStableRivalryId(["u1", "u2", "u3"]);
+      const prevRivalry = {
+        id: stableId,
+        rivalMembers: [member1, member2, member3],
+        primaryGapSeconds: 500,
+        formattedGap: "8m 20s",
+        isTrio: true,
+        leaderWeeklySeconds: 38500,
+        participantIds: ["u1", "u2", "u3"],
+      };
+
+      const resolution = evaluateRivalryResolution(prevRivalry, [member1, member2, member3], fixedNow);
+      expect(resolution).not.toBeNull();
+      expect(resolution?.resolutionType).toBe("WON");
+      expect(resolution?.winner?.id).toBe("u1");
+      expect(resolution?.loser?.id).toBe("u2");
+      expect(resolution?.standings).toHaveLength(3);
+      expect(resolution?.standings[0].userId).toBe("u1");
+      expect(resolution?.standings[0].rank).toBe(1);
+      expect(resolution?.standings[1].userId).toBe("u2");
+      expect(resolution?.standings[1].rank).toBe(2);
+      expect(resolution?.standings[2].userId).toBe("u3");
+      expect(resolution?.standings[2].rank).toBe(3);
+    });
   });
 });

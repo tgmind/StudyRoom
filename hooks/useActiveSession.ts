@@ -198,6 +198,21 @@ export function useActiveSession(
     }
   }, [profile?.pending_goal_session_id, profile?.pending_goal_seconds, profile?.pending_goal_reason, profile]);
 
+  // Clean up stale in-memory state if user changes or logs out
+  const previousUserIdRef = useRef<string | undefined>(profile?.id);
+  useEffect(() => {
+    if (previousUserIdRef.current && previousUserIdRef.current !== profile?.id) {
+      setBlocks([]);
+      setElapsedStudySeconds(0);
+      applyLocalStatusOverride(null);
+      setIsGoalUpdateModalOpen(false);
+      setPendingGoalSessionId(null);
+      setIsSessionLimitNoticeOpen(false);
+      setIsBreakExpiredNoticeOpen(false);
+    }
+    previousUserIdRef.current = profile?.id;
+  }, [profile?.id, applyLocalStatusOverride]);
+
   // Clean up stale cache immediately when external device marks profile offline
   useEffect(() => {
     if (profile && profile.current_status === "offline" && !localStatusOverride) {
@@ -221,8 +236,19 @@ export function useActiveSession(
   useEffect(() => {
     sanitizeSessionQueue();
 
-    const offlineSession = getOfflineActiveSession();
+    const currentUid = profileRef.current?.id;
+    const offlineSession = getOfflineActiveSession(currentUid);
     if (!offlineSession) return;
+
+    // Reject and purge any offline session belonging to a different user account
+    if (currentUid && offlineSession.userId && offlineSession.userId !== currentUid) {
+      purgeStaleActiveSession();
+      clearOfflineActiveSession();
+      clearActiveStudyState();
+      setBlocks([]);
+      setElapsedStudySeconds(0);
+      return;
+    }
 
     // Purge stale active session if older than 24 hours (abandoned session)
     if (
@@ -705,6 +731,7 @@ export function useActiveSession(
         } else if (rpcErr) {
           // If network failed, enqueue to ensure it gets synced when reconnected
           enqueueSessionAction("finish_session", {
+            userId: profileRef.current?.id,
             completedTaskIds,
             elapsedStudySeconds: totalActiveSeconds,
             payload: { session: offlineRecord, reason },
@@ -719,6 +746,7 @@ export function useActiveSession(
         console.warn("Fast finish sync timed out or offline; safely queued on disk:", err);
         if (currentSeq === actionSeqRef.current) {
           enqueueSessionAction("finish_session", {
+            userId: profileRef.current?.id,
             completedTaskIds,
             elapsedStudySeconds: totalActiveSeconds,
             payload: { session: offlineRecord, reason },
@@ -1005,12 +1033,12 @@ export function useActiveSession(
         removeActiveTransitionActions();
         await fetchSessionBlocks();
       } else if (rpcErr) {
-        enqueueSessionAction("start_session");
+        enqueueSessionAction("start_session", { userId: profileRef.current?.id });
       }
     } catch (err) {
       console.warn("Start session fast sync timed out or offline; safely queued:", err);
       if (currentSeq === actionSeqRef.current) {
-        enqueueSessionAction("start_session");
+        enqueueSessionAction("start_session", { userId: profileRef.current?.id });
       }
     }
   };
@@ -1110,12 +1138,12 @@ export function useActiveSession(
         removeActiveTransitionActions();
         await fetchSessionBlocks();
       } else if (rpcErr) {
-        enqueueSessionAction("pause_session", { elapsedStudySeconds: currentStudySeconds });
+        enqueueSessionAction("pause_session", { userId: profileRef.current?.id, elapsedStudySeconds: currentStudySeconds });
       }
     } catch (err) {
       console.warn("Pause session fast sync timed out or offline; safely queued:", err);
       if (currentSeq === actionSeqRef.current) {
-        enqueueSessionAction("pause_session", { elapsedStudySeconds: currentStudySeconds });
+        enqueueSessionAction("pause_session", { userId: profileRef.current?.id, elapsedStudySeconds: currentStudySeconds });
       }
     }
   };
@@ -1233,12 +1261,12 @@ export function useActiveSession(
           await fetchSessionBlocks();
           return { success: true };
         }
-        enqueueSessionAction("resume_session");
+        enqueueSessionAction("resume_session", { userId: profileRef.current?.id });
       }
     } catch (err) {
       console.warn("Resume session fast sync timed out or offline; safely queued:", err);
       if (currentSeq === actionSeqRef.current) {
-        enqueueSessionAction("resume_session");
+        enqueueSessionAction("resume_session", { userId: profileRef.current?.id });
       }
     }
 
@@ -1268,6 +1296,7 @@ export function useActiveSession(
 
         if (rpcErr) {
           enqueueSessionAction("complete_session_goals", {
+            userId: profileRef.current?.id,
             completedTaskIds,
             payload: { sessionId: targetUuid || sessionId },
           });
@@ -1275,6 +1304,7 @@ export function useActiveSession(
       } catch (err) {
         console.warn("Complete session goals timed out or offline; safely queued:", err);
         enqueueSessionAction("complete_session_goals", {
+          userId: profileRef.current?.id,
           completedTaskIds,
           payload: { sessionId: targetUuid || sessionId },
         });
@@ -1293,12 +1323,14 @@ export function useActiveSession(
     const sid = pendingGoalSessionId;
     setPendingGoalSessionId(null);
     const targetUuid = isValidUuid(sid) ? sid : null;
-    try {
-      await (supabase as unknown as RpcCaller).rpc("rpc_complete_session_goals", {
-        p_session_id: targetUuid,
-        p_completed_task_ids: [],
-      });
-    } catch {}
+    if (targetUuid) {
+      try {
+        await (supabase as unknown as RpcCaller).rpc("rpc_complete_session_goals", {
+          p_session_id: targetUuid,
+          p_completed_task_ids: [],
+        });
+      } catch {}
+    }
   }, [supabase, pendingGoalSessionId]);
 
   const dismissTenMinuteWarning = useCallback(() => {

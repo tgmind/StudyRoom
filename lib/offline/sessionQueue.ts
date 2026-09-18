@@ -1,6 +1,6 @@
-import { SupabaseClient } from "@supabase/supabase-js";
 import {
   STORAGE_KEYS,
+  STORAGE_KEY_PREFIX,
   OfflineActiveSession,
   CompletedOfflineSessionRecord,
   QueuedSessionAction,
@@ -52,13 +52,27 @@ export function saveOfflineActiveSession(session: OfflineActiveSession): void {
   }
 }
 
-export function getOfflineActiveSession(): OfflineActiveSession | null {
+export function getOfflineActiveSession(expectedUserId?: string): OfflineActiveSession | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.OFFLINE_ACTIVE_SESSION);
     if (!raw) return null;
-    return JSON.parse(raw) as OfflineActiveSession;
+    const parsed = JSON.parse(raw) as OfflineActiveSession;
+    if (!parsed || typeof parsed !== "object") {
+      localStorage.removeItem(STORAGE_KEYS.OFFLINE_ACTIVE_SESSION);
+      return null;
+    }
+    if (expectedUserId && parsed.userId && parsed.userId !== expectedUserId) {
+      try {
+        localStorage.removeItem(STORAGE_KEYS.OFFLINE_ACTIVE_SESSION);
+      } catch {}
+      return null;
+    }
+    return parsed;
   } catch {
+    try {
+      localStorage.removeItem(STORAGE_KEYS.OFFLINE_ACTIVE_SESSION);
+    } catch {}
     return null;
   }
 }
@@ -113,13 +127,16 @@ export function updateOfflineActiveSession(
 // OFFLINE COMPLETED SESSIONS (For instant History viewing while offline)
 // -------------------------------------------------------------------------
 
-export function getOfflineCompletedSessions(): CompletedOfflineSessionRecord[] {
+export function getOfflineCompletedSessions(expectedUserId?: string): CompletedOfflineSessionRecord[] {
   if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.OFFLINE_COMPLETED_SESSIONS);
     if (!raw) return [];
     const list = JSON.parse(raw) as CompletedOfflineSessionRecord[];
-    if (!Array.isArray(list)) return [];
+    if (!Array.isArray(list)) {
+      localStorage.removeItem(STORAGE_KEYS.OFFLINE_COMPLETED_SESSIONS);
+      return [];
+    }
 
     // 1. Filter out 0-minute ghost records (0 min, 0 break, 0 tasks) or corrupt timestamps
     const valid = list.filter((s) => {
@@ -168,8 +185,11 @@ export function getOfflineCompletedSessions(): CompletedOfflineSessionRecord[] {
       localStorage.setItem(STORAGE_KEYS.OFFLINE_COMPLETED_SESSIONS, JSON.stringify(deduped));
     }
 
-    return deduped;
+    return expectedUserId ? deduped.filter((s) => s.user_id === expectedUserId) : deduped;
   } catch {
+    try {
+      localStorage.removeItem(STORAGE_KEYS.OFFLINE_COMPLETED_SESSIONS);
+    } catch {}
     return [];
   }
 }
@@ -211,13 +231,21 @@ export function removeOfflineCompletedSession(id: string): void {
 // PERSISTENT ACTION QUEUE
 // -------------------------------------------------------------------------
 
-export function getPendingSessionActions(): QueuedSessionAction[] {
+export function getPendingSessionActions(expectedUserId?: string): QueuedSessionAction[] {
   if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.OFFLINE_SESSION_QUEUE);
     if (!raw) return [];
-    return JSON.parse(raw) as QueuedSessionAction[];
+    const list = JSON.parse(raw) as QueuedSessionAction[];
+    if (!Array.isArray(list)) {
+      localStorage.removeItem(STORAGE_KEYS.OFFLINE_SESSION_QUEUE);
+      return [];
+    }
+    return expectedUserId ? list.filter((item) => !item.userId || item.userId === expectedUserId) : list;
   } catch {
+    try {
+      localStorage.removeItem(STORAGE_KEYS.OFFLINE_SESSION_QUEUE);
+    } catch {}
     return [];
   }
 }
@@ -225,6 +253,7 @@ export function getPendingSessionActions(): QueuedSessionAction[] {
 export function enqueueSessionAction(
   action: QueuedActionType,
   options?: {
+    userId?: string;
     elapsedStudySeconds?: number;
     completedTaskIds?: string[];
     payload?: Record<string, unknown>;
@@ -234,6 +263,7 @@ export function enqueueSessionAction(
   const newAction: QueuedSessionAction = {
     id: "act_" + Date.now() + "_" + Math.random().toString(36).substring(2, 9),
     action,
+    userId: options?.userId,
     createdAtIso: new Date().toISOString(),
     elapsedStudySeconds: options?.elapsedStudySeconds,
     completedTaskIds: options?.completedTaskIds,
@@ -326,13 +356,27 @@ export function clearPendingSessionActions(): void {
 // CACHED DATA HELPERS
 // -------------------------------------------------------------------------
 
-export function getCachedUserProfile<T = unknown>(): T | null {
+export function getCachedUserProfile<T = unknown>(expectedUserId?: string): T | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.CACHED_USER_PROFILE);
     if (!raw) return null;
-    return JSON.parse(raw) as T;
+    const parsed = JSON.parse(raw) as any;
+    if (!parsed || typeof parsed !== "object") {
+      localStorage.removeItem(STORAGE_KEYS.CACHED_USER_PROFILE);
+      return null;
+    }
+    if (expectedUserId && parsed.id && parsed.id !== expectedUserId) {
+      try {
+        localStorage.removeItem(STORAGE_KEYS.CACHED_USER_PROFILE);
+      } catch {}
+      return null;
+    }
+    return parsed as T;
   } catch {
+    try {
+      localStorage.removeItem(STORAGE_KEYS.CACHED_USER_PROFILE);
+    } catch {}
     return null;
   }
 }
@@ -363,12 +407,22 @@ function sanitizeGoalTasksArray<T extends { id?: string; completed?: boolean }>(
   return result;
 }
 
-export function getCachedActiveGoal<T = unknown>(): T | null {
+export function getCachedActiveGoal<T = unknown>(expectedUserId?: string): T | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.CACHED_ACTIVE_GOAL);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as any;
+    if (!parsed || typeof parsed !== "object") {
+      localStorage.removeItem(STORAGE_KEYS.CACHED_ACTIVE_GOAL);
+      return null;
+    }
+    if (expectedUserId && parsed.user_id && parsed.user_id !== expectedUserId) {
+      try {
+        localStorage.removeItem(STORAGE_KEYS.CACHED_ACTIVE_GOAL);
+      } catch {}
+      return null;
+    }
     if (parsed && Array.isArray(parsed.tasks)) {
       const cleaned = sanitizeGoalTasksArray(parsed.tasks);
       if (cleaned.length !== parsed.tasks.length) {
@@ -378,6 +432,9 @@ export function getCachedActiveGoal<T = unknown>(): T | null {
     }
     return parsed as T;
   } catch {
+    try {
+      localStorage.removeItem(STORAGE_KEYS.CACHED_ACTIVE_GOAL);
+    } catch {}
     return null;
   }
 }
@@ -397,13 +454,31 @@ export function saveCachedActiveGoal(goal: unknown): void {
   } catch {}
 }
 
-export function getCachedSessions<T = unknown>(): T | null {
+export function getCachedSessions<T = unknown>(expectedUserId?: string): T | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.CACHED_SESSIONS);
     if (!raw) return null;
-    return JSON.parse(raw) as T;
+    const parsed = JSON.parse(raw) as any;
+    if (!parsed) {
+      localStorage.removeItem(STORAGE_KEYS.CACHED_SESSIONS);
+      return null;
+    }
+    if (expectedUserId && Array.isArray(parsed)) {
+      const filtered = parsed.filter((s: any) => s && s.user_id === expectedUserId);
+      if (filtered.length === 0 && parsed.length > 0) {
+        try {
+          localStorage.removeItem(STORAGE_KEYS.CACHED_SESSIONS);
+        } catch {}
+        return null;
+      }
+      return filtered as T;
+    }
+    return parsed as T;
   } catch {
+    try {
+      localStorage.removeItem(STORAGE_KEYS.CACHED_SESSIONS);
+    } catch {}
     return null;
   }
 }
@@ -413,6 +488,98 @@ export function saveCachedSessions(sessions: unknown): void {
   try {
     localStorage.setItem(STORAGE_KEYS.CACHED_SESSIONS, JSON.stringify(sessions));
   } catch {}
+}
+
+export function clearUserHistoryCache(userId?: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem(STORAGE_KEYS.CACHED_SESSIONS);
+    if (userId) {
+      const completed = getOfflineCompletedSessions();
+      const remaining = completed.filter((s) => s.user_id !== userId);
+      if (remaining.length === 0) {
+        localStorage.removeItem(STORAGE_KEYS.OFFLINE_COMPLETED_SESSIONS);
+      } else {
+        localStorage.setItem(STORAGE_KEYS.OFFLINE_COMPLETED_SESSIONS, JSON.stringify(remaining));
+      }
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.OFFLINE_COMPLETED_SESSIONS);
+    }
+  } catch {}
+}
+
+export function clearAllUserStorageAndCache(userId?: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (userId) {
+      const cachedProf = getCachedUserProfile<{ id?: string }>();
+      if (cachedProf && cachedProf.id === userId) {
+        localStorage.removeItem(STORAGE_KEYS.CACHED_USER_PROFILE);
+      }
+
+      const cachedGoal = getCachedActiveGoal<{ user_id?: string }>();
+      if (cachedGoal && cachedGoal.user_id === userId) {
+        localStorage.removeItem(STORAGE_KEYS.CACHED_ACTIVE_GOAL);
+      }
+
+      const activeSess = getOfflineActiveSession();
+      if (activeSess && activeSess.userId === userId) {
+        localStorage.removeItem(STORAGE_KEYS.OFFLINE_ACTIVE_SESSION);
+        localStorage.removeItem(STORAGE_KEYS.ACTIVE_STUDY);
+        localStorage.removeItem(STORAGE_KEYS.ACTIVE_BREAK);
+      }
+
+      const completed = getOfflineCompletedSessions();
+      const remainingCompleted = completed.filter((s) => s.user_id !== userId);
+      if (remainingCompleted.length === 0) {
+        localStorage.removeItem(STORAGE_KEYS.OFFLINE_COMPLETED_SESSIONS);
+      } else {
+        localStorage.setItem(STORAGE_KEYS.OFFLINE_COMPLETED_SESSIONS, JSON.stringify(remainingCompleted));
+      }
+
+      const queue = getPendingSessionActions();
+      const remainingQueue = queue.filter((a) => a.userId !== userId);
+      if (remainingQueue.length === 0) {
+        localStorage.removeItem(STORAGE_KEYS.OFFLINE_SESSION_QUEUE);
+      } else {
+        localStorage.setItem(STORAGE_KEYS.OFFLINE_SESSION_QUEUE, JSON.stringify(remainingQueue));
+      }
+
+      localStorage.removeItem(`studyroom_launch_update_seen_${userId}`);
+      localStorage.removeItem(`studyroom_stable_app_v1_0_3_announcement_${userId}`);
+
+      const adminUid = localStorage.getItem(STORAGE_KEYS.ADMIN_UID);
+      if (adminUid === userId) {
+        localStorage.removeItem(STORAGE_KEYS.ADMIN_UID);
+      }
+    } else {
+      Object.values(STORAGE_KEYS).forEach((key) => {
+        localStorage.removeItem(key);
+      });
+
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && (k.startsWith(STORAGE_KEY_PREFIX) || k === STORAGE_KEYS.PWA_BANNER_DISMISSED)) {
+          keysToRemove.push(k);
+        }
+      }
+      keysToRemove.forEach((k) => localStorage.removeItem(k));
+
+      if (typeof sessionStorage !== "undefined") {
+        const sessionKeysToRemove: string[] = [];
+        for (let i = 0; i < sessionStorage.length; i++) {
+          const k = sessionStorage.key(i);
+          if (k && k.startsWith(STORAGE_KEY_PREFIX)) {
+            sessionKeysToRemove.push(k);
+          }
+        }
+        sessionKeysToRemove.forEach((k) => sessionStorage.removeItem(k));
+      }
+    }
+  } catch (err) {
+    console.warn("clearAllUserStorageAndCache error:", err);
+  }
 }
 
 // -------------------------------------------------------------------------
@@ -430,7 +597,8 @@ type RpcCaller = {
  * Atomically handles offline-completed sessions, finish, pause, and resume.
  */
 export async function flushSessionActionQueue(
-  supabase: any
+  supabase: any,
+  currentUserId?: string
 ): Promise<{ flushed: number; failed: number }> {
   if (isFlushingQueue) return { flushed: 0, failed: 0 };
   if (typeof window === "undefined" || !navigator.onLine) {
@@ -449,6 +617,12 @@ export async function flushSessionActionQueue(
 
     for (const item of queue) {
       try {
+        const itemUserId = item.userId || (item.payload?.session as CompletedOfflineSessionRecord | undefined)?.user_id;
+        if (currentUserId && itemUserId && itemUserId !== currentUserId) {
+          // Skip actions queued by a different user to prevent cross-account pollution
+          continue;
+        }
+
         if (item.action === "offline_session_sync") {
           // Entire session was completed offline
           const sessionPayload = item.payload?.session as CompletedOfflineSessionRecord | undefined;

@@ -294,9 +294,12 @@ export const MemberList = memo(function MemberList({
               }
             }
 
+            if (recentDeclaredWinsRef.current.size > 100) {
+              recentDeclaredWinsRef.current.clear();
+            }
             recentDeclaredWinsRef.current.set(pairKey, nowMs);
 
-            // 15-minute stable time bucket ID ensures all peers produce the exact same ID for deduplication
+            // Authoritative 15-minute resolution ID and stable event ID
             const timeBucket = Math.floor(nowMs / (15 * 60 * 1000));
             const winEvent: RivalryWinEvent = {
               id: `win-${winner.id}-${loser.id}-${timeBucket}`,

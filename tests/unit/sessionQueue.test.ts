@@ -15,6 +15,12 @@ import {
   flushSessionActionQueue,
   getCachedActiveGoal,
   saveCachedActiveGoal,
+  getCachedUserProfile,
+  saveCachedUserProfile,
+  getCachedSessions,
+  saveCachedSessions,
+  clearUserHistoryCache,
+  clearAllUserStorageAndCache,
 } from "@/lib/offline/sessionQueue";
 import { STORAGE_KEYS, OfflineActiveSession, CompletedOfflineSessionRecord } from "@/lib/offline/storageKeys";
 
@@ -237,4 +243,169 @@ describe("Offline Session Queue & Durability Engine", () => {
       expect(inStorage.tasks).toHaveLength(1);
     });
   });
+
+  describe("Multi-User Storage Isolation & Cache Clearing", () => {
+    it("clearAllUserStorageAndCache purges all studyroom keys and leaves foreign keys intact", () => {
+      localStorage.setItem("studyroom_custom_key", "val1");
+      localStorage.setItem("other_app_token", "secret123");
+      sessionStorage.setItem("studyroom_temp", "val2");
+      sessionStorage.setItem("foreign_session", "session456");
+
+      saveCachedUserProfile({ id: "u1", full_name: "Alice" } as any);
+      saveCachedActiveGoal({ id: "g1", user_id: "u1", tasks: [] });
+
+      clearAllUserStorageAndCache();
+
+      // StudyRoom keys purged
+      expect(localStorage.getItem("studyroom_custom_key")).toBeNull();
+      expect(sessionStorage.getItem("studyroom_temp")).toBeNull();
+      expect(getCachedUserProfile()).toBeNull();
+      expect(getCachedActiveGoal()).toBeNull();
+
+      // Foreign keys preserved
+      expect(localStorage.getItem("other_app_token")).toBe("secret123");
+      expect(sessionStorage.getItem("foreign_session")).toBe("session456");
+    });
+
+    it("scopes getCachedUserProfile to expectedUserId and purges stale mismatched user profile", () => {
+      saveCachedUserProfile({ id: "user-alpha", full_name: "Alpha User" } as any);
+
+      // Requesting with matching user ID returns profile
+      const alpha = getCachedUserProfile<{ id: string }>("user-alpha");
+      expect(alpha?.id).toBe("user-alpha");
+
+      // Requesting with different user ID returns null and purges cache
+      const beta = getCachedUserProfile("user-beta");
+      expect(beta).toBeNull();
+      expect(localStorage.getItem(STORAGE_KEYS.CACHED_USER_PROFILE)).toBeNull();
+    });
+
+    it("scopes getCachedActiveGoal to expectedUserId and purges stale mismatched user goal", () => {
+      saveCachedActiveGoal({ id: "goal-alpha", user_id: "user-alpha", tasks: [] });
+
+      // Match returns goal
+      expect(getCachedActiveGoal<{ id: string }>("user-alpha")?.id).toBe("goal-alpha");
+
+      // Mismatch returns null and purges
+      expect(getCachedActiveGoal("user-beta")).toBeNull();
+      expect(localStorage.getItem(STORAGE_KEYS.CACHED_ACTIVE_GOAL)).toBeNull();
+    });
+
+    it("scopes getOfflineActiveSession to expectedUserId and purges stale session", () => {
+      saveOfflineActiveSession({
+        sessionId: "sess-alpha",
+        userId: "user-alpha",
+        startTime: new Date().toISOString(),
+        status: "studying",
+        elapsedStudySeconds: 100,
+        lastResumedAt: new Date().toISOString(),
+        breakStartedAt: null,
+        blocks: [],
+        updatedAt: new Date().toISOString(),
+      });
+
+      // Match returns session
+      expect(getOfflineActiveSession("user-alpha")?.sessionId).toBe("sess-alpha");
+
+      // Mismatch returns null and purges
+      expect(getOfflineActiveSession("user-beta")).toBeNull();
+      expect(localStorage.getItem(STORAGE_KEYS.OFFLINE_ACTIVE_SESSION)).toBeNull();
+    });
+
+    it("scopes getOfflineCompletedSessions to expectedUserId", () => {
+      const records: CompletedOfflineSessionRecord[] = [
+        {
+          id: "rec-alpha",
+          user_id: "user-alpha",
+          start_time: "2026-09-18T10:00:00.000Z",
+          end_time: "2026-09-18T11:00:00.000Z",
+          duration_minutes: 60,
+          break_minutes: 0,
+          completed_tasks: [],
+          blocks: [],
+          created_at: new Date().toISOString(),
+          is_offline_created: true,
+        },
+        {
+          id: "rec-beta",
+          user_id: "user-beta",
+          start_time: "2026-09-18T12:00:00.000Z",
+          end_time: "2026-09-18T14:00:00.000Z",
+          duration_minutes: 120,
+          break_minutes: 0,
+          completed_tasks: [],
+          blocks: [],
+          created_at: new Date().toISOString(),
+          is_offline_created: true,
+        },
+      ];
+
+      records.forEach((r) => saveOfflineCompletedSession(r));
+
+      const alphaOnly = getOfflineCompletedSessions("user-alpha");
+      expect(alphaOnly).toHaveLength(1);
+      expect(alphaOnly[0].user_id).toBe("user-alpha");
+
+      const all = getOfflineCompletedSessions();
+      expect(all).toHaveLength(2);
+    });
+
+    it("scopes getCachedSessions to expectedUserId and purges mismatched history cache", () => {
+      saveCachedSessions([
+        {
+          id: "sess-1",
+          user_id: "user-alpha",
+          start_time: new Date().toISOString(),
+          duration_minutes: 30,
+        } as any,
+      ]);
+
+      expect(getCachedSessions("user-alpha")).toHaveLength(1);
+      // Mismatched user returns null and purges cache
+      expect(getCachedSessions("user-beta")).toBeNull();
+      expect(localStorage.getItem(STORAGE_KEYS.CACHED_SESSIONS)).toBeNull();
+    });
+
+    it("flushSessionActionQueue does not replay actions belonging to another user", async () => {
+      Object.defineProperty(navigator, "onLine", { value: true, configurable: true });
+
+      const mockRpc = vi.fn().mockResolvedValue({ data: { success: true }, error: null });
+      const mockSupabase = { rpc: mockRpc } as any;
+
+      // User A enqueues an action
+      enqueueSessionAction("finish_session", { completedTaskIds: [], userId: "user-alpha" });
+
+      // Current user is User B -> Action should be retained in queue, NOT flushed
+      const result = await flushSessionActionQueue(mockSupabase, "user-beta");
+      expect(result.flushed).toBe(0);
+      expect(mockRpc).not.toHaveBeenCalled();
+
+      // Flushed when User A returns
+      const flushAlpha = await flushSessionActionQueue(mockSupabase, "user-alpha");
+      expect(flushAlpha.flushed).toBe(1);
+      expect(mockRpc).toHaveBeenCalledWith("rpc_finish_session", {
+        p_completed_task_ids: [],
+        p_reason: "manual_stop",
+      });
+    });
+
+    it("cleans up corrupted JSON gracefully without crashing", () => {
+      localStorage.setItem(STORAGE_KEYS.OFFLINE_ACTIVE_SESSION, "{invalid-json-data");
+      expect(getOfflineActiveSession()).toBeNull();
+      expect(localStorage.getItem(STORAGE_KEYS.OFFLINE_ACTIVE_SESSION)).toBeNull();
+
+      localStorage.setItem(STORAGE_KEYS.CACHED_USER_PROFILE, "not-a-json");
+      expect(getCachedUserProfile()).toBeNull();
+      expect(localStorage.getItem(STORAGE_KEYS.CACHED_USER_PROFILE)).toBeNull();
+
+      localStorage.setItem(STORAGE_KEYS.CACHED_SESSIONS, "{broken[");
+      expect(getCachedSessions()).toBeNull();
+      expect(localStorage.getItem(STORAGE_KEYS.CACHED_SESSIONS)).toBeNull();
+
+      localStorage.setItem(STORAGE_KEYS.OFFLINE_SESSION_QUEUE, "[broken");
+      expect(getPendingSessionActions()).toEqual([]);
+      expect(localStorage.getItem(STORAGE_KEYS.OFFLINE_SESSION_QUEUE)).toBeNull();
+    });
+  });
 });
+

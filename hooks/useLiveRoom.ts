@@ -660,20 +660,23 @@ export function useLiveRoom(currentUserId?: string) {
         ? winEvent.standings.map((s) => s.userId)
         : [winEvent.winnerId, winEvent.loserId].filter(Boolean);
 
-      await (supabase.from("rivalry_events") as any).insert({
-        id: winEvent.id,
-        resolution_id: winEvent.resolutionId || winEvent.id,
-        rivalry_id: winEvent.rivalryId,
-        winner_id: winEvent.winnerId,
-        winner_name: winEvent.winnerName,
-        loser_id: winEvent.loserId,
-        loser_name: winEvent.loserName,
-        participant_ids: participantIds,
-        final_standings: winEvent.standings || [],
-        resolution_type: "WON",
-        occurred_at: winEvent.occurredAt || new Date(winEvent.timestamp).toISOString(),
-        created_at: new Date(winEvent.timestamp).toISOString(),
-      });
+      await (supabase.from("rivalry_events") as any).upsert(
+        {
+          id: winEvent.id,
+          resolution_id: winEvent.resolutionId || winEvent.id,
+          rivalry_id: winEvent.rivalryId,
+          winner_id: winEvent.winnerId,
+          winner_name: winEvent.winnerName,
+          loser_id: winEvent.loserId,
+          loser_name: winEvent.loserName,
+          participant_ids: participantIds,
+          final_standings: winEvent.standings || [],
+          resolution_type: "WON",
+          occurred_at: winEvent.occurredAt || new Date(winEvent.timestamp).toISOString(),
+          created_at: new Date(winEvent.timestamp).toISOString(),
+        },
+        { onConflict: "resolution_id", ignoreDuplicates: true }
+      );
     } catch (dbErr) {
       console.warn("Failed to persist rivalry event to database:", dbErr);
     }

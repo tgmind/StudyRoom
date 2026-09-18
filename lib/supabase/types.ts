@@ -149,6 +149,7 @@ export interface Database {
           rivalry_id?: string | null;
           winner_id?: string | null;
           winner_name: string;
+          loser_id?: string | null;
           loser_name: string;
           participant_ids?: string[] | null;
           final_standings?: Json | null;
@@ -162,6 +163,7 @@ export interface Database {
           rivalry_id?: string | null;
           winner_id?: string | null;
           winner_name: string;
+          loser_id?: string | null;
           loser_name: string;
           participant_ids?: string[] | null;
           final_standings?: Json | null;
@@ -175,6 +177,7 @@ export interface Database {
           rivalry_id: string | null;
           winner_id: string | null;
           winner_name: string;
+          loser_id: string | null;
           loser_name: string;
           participant_ids: string[] | null;
           final_standings: Json | null;

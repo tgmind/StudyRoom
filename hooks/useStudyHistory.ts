@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { StudySession, DailyGoal, GoalTask } from "@/lib/supabase/types";
 import { getWeekStartTimestamp, formatSessionDate } from "@/lib/time/format";
@@ -11,6 +11,7 @@ import {
   removeOfflineCompletedSession,
   getCachedSessions,
   saveCachedSessions,
+  clearUserHistoryCache,
 } from "@/lib/offline/sessionQueue";
 
 type RpcCaller = {
@@ -128,9 +129,19 @@ export function deduplicateStudySessions(sessions: StudySession[]): StudySession
 // Module-level SWR memory cache to make History tab switching instantaneous (0ms)
 let cachedHistoryUserId = "";
 let cachedCurrentWeekSessions: StudySession[] = [];
+let cachedPastSessions: StudySession[] = [];
 let cachedPastSummary = { count: 0, minutes: 0 };
 let cachedCurrentWeekLapsedGoals: Record<string, LapsedGoalWindow[]> = {};
 let cachedPastWeeksLapsedGoals: Record<string, LapsedGoalWindow[]> = {};
+
+export function resetStudyHistoryMemoryCache(): void {
+  cachedHistoryUserId = "";
+  cachedCurrentWeekSessions = [];
+  cachedPastSessions = [];
+  cachedPastSummary = { count: 0, minutes: 0 };
+  cachedCurrentWeekLapsedGoals = {};
+  cachedPastWeeksLapsedGoals = {};
+}
 
 export function useStudyHistory(userId?: string) {
   const hasCachedData = Boolean(
@@ -162,6 +173,21 @@ export function useStudyHistory(userId?: string) {
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Clean up in-memory history immediately when account changes
+  const prevUserIdRef = useRef(userId);
+  useEffect(() => {
+    if (prevUserIdRef.current !== userId) {
+      prevUserIdRef.current = userId;
+      if (!userId || cachedHistoryUserId !== userId) {
+        setCurrentWeekSessions([]);
+        setPastSessions([]);
+        setPastSummary({ count: 0, minutes: 0 });
+        setCurrentWeekLapsedGoals({});
+        setPastWeeksLapsedGoals({});
+      }
+    }
+  }, [userId]);
+
   const supabase = createClient();
 
   const fetchHistory = useCallback(async () => {
@@ -181,7 +207,7 @@ export function useStudyHistory(userId?: string) {
       const ninetyDaysAgoIso = new Date(serverNow.getTime() - 90 * 86400000).toISOString();
 
       // Read any offline-completed sessions stored locally
-      const offlineCompleted = getOfflineCompletedSessions().map((s) => ({
+      const offlineCompleted = getOfflineCompletedSessions(userId).map((s) => ({
         id: s.id,
         user_id: s.user_id,
         start_time: s.start_time,
@@ -335,8 +361,8 @@ export function useStudyHistory(userId?: string) {
   }, [supabase, userId]);
 
   useEffect(() => {
-    if (userId && cachedCurrentWeekSessions.length === 0) {
-      const disk = getCachedSessions<StudySession[]>();
+    if (userId && cachedHistoryUserId === userId && cachedCurrentWeekSessions.length === 0) {
+      const disk = getCachedSessions<StudySession[]>(userId);
       if (disk && Array.isArray(disk) && disk.length > 0) {
         setCurrentWeekSessions(deduplicateStudySessions(disk));
       }
@@ -355,7 +381,7 @@ export function useStudyHistory(userId?: string) {
       window.removeEventListener("studyroom_queue_flushed", handleQueueFlushed);
       window.removeEventListener("online", handleQueueFlushed);
     };
-  }, [fetchHistory]);
+  }, [fetchHistory, userId]);
 
   // On-demand fetch for past weeks data when user expands the archive banner
   const fetchPastSessions = useCallback(async (): Promise<boolean> => {
@@ -427,6 +453,8 @@ export function useStudyHistory(userId?: string) {
       if (deleteErr) {
         const { data, error: rpcErr } = await (supabase as unknown as RpcCaller).rpc("rpc_clear_study_history");
         if (rpcErr) throw deleteErr;
+        resetStudyHistoryMemoryCache();
+        clearUserHistoryCache(userId);
         setCurrentWeekSessions([]);
         setPastSessions([]);
         setPastSummary({ count: 0, minutes: 0 });
@@ -438,6 +466,8 @@ export function useStudyHistory(userId?: string) {
         return data;
       }
 
+      resetStudyHistoryMemoryCache();
+      clearUserHistoryCache(userId);
       setCurrentWeekSessions([]);
       setPastSessions([]);
       setPastSummary({ count: 0, minutes: 0 });

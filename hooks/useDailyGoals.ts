@@ -186,21 +186,38 @@ export function useDailyGoals(
     }
   }, [supabase, userId, sessionStartTime, isSessionActive]);
 
+  const previousUserIdRef = useRef(userId);
   useEffect(() => {
-    // Restore cached active goal on mount without SSR hydration mismatch
-    const cached = getCachedActiveGoal<DailyGoal>();
-    if (cached) {
-      if (cached.tasks && Array.isArray(cached.tasks)) {
-        const cleanedTasks = deduplicateGoalTasks(cached.tasks);
-        if (cleanedTasks.length !== cached.tasks.length) {
-          cached.tasks = cleanedTasks;
-          saveCachedActiveGoal(cached);
+    if (previousUserIdRef.current && previousUserIdRef.current !== userId) {
+      setActiveGoal(null);
+      setCountdown({
+        remainingSeconds: 0,
+        formattedText: "EXPIRED",
+        isExpired: true,
+      });
+    }
+    previousUserIdRef.current = userId;
+  }, [userId]);
+
+  useEffect(() => {
+    // Restore cached active goal on mount without SSR hydration mismatch (scoped to userId)
+    if (userId) {
+      const cached = getCachedActiveGoal<DailyGoal>(userId);
+      if (cached && cached.user_id === userId) {
+        if (cached.tasks && Array.isArray(cached.tasks)) {
+          const cleanedTasks = deduplicateGoalTasks(cached.tasks);
+          if (cleanedTasks.length !== cached.tasks.length) {
+            cached.tasks = cleanedTasks;
+            saveCachedActiveGoal(cached);
+          }
+        }
+        setActiveGoal(cached);
+        if (cached.expires_at) {
+          setCountdown(calculateGoalCountdown(cached.expires_at, new Date()));
         }
       }
-      setActiveGoal(cached);
-      if (cached.expires_at) {
-        setCountdown(calculateGoalCountdown(cached.expires_at, new Date()));
-      }
+    } else {
+      setActiveGoal(null);
     }
 
     fetchActiveGoal();
@@ -312,11 +329,11 @@ export function useDailyGoals(
         await fetchActiveGoal();
       } else if (rpcErr) {
         // Enqueue only if remote network failed so sync worker syncs when reconnected
-        enqueueSessionAction("create_goal", { payload: { tasks: sanitizedTasks } });
+        enqueueSessionAction("create_goal", { userId, payload: { tasks: sanitizedTasks } });
       }
     } catch (err) {
       console.warn("Create goal timed out or offline; safely queued on disk:", err);
-      enqueueSessionAction("create_goal", { payload: { tasks: sanitizedTasks } });
+      enqueueSessionAction("create_goal", { userId, payload: { tasks: sanitizedTasks } });
     } finally {
       isSubmittingGoalRef.current = false;
       setActionLoading(false);
@@ -365,11 +382,11 @@ export function useDailyGoals(
         await fetchActiveGoal();
       } else if (rpcErr) {
         // Enqueue only if remote network failed so sync worker syncs when reconnected
-        enqueueSessionAction("add_goal_tasks", { payload: { tasks: newTaskObjects } });
+        enqueueSessionAction("add_goal_tasks", { userId, payload: { tasks: newTaskObjects } });
       }
     } catch (err) {
       console.warn("Add goal tasks timed out or offline; safely queued on disk:", err);
-      enqueueSessionAction("add_goal_tasks", { payload: { tasks: newTaskObjects } });
+      enqueueSessionAction("add_goal_tasks", { userId, payload: { tasks: newTaskObjects } });
     } finally {
       isSubmittingAddTasksRef.current = false;
       setActionLoading(false);

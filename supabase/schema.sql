@@ -2227,10 +2227,23 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 CREATE TABLE IF NOT EXISTS public.rivalry_events (
   id TEXT PRIMARY KEY,
+  resolution_id TEXT,
+  rivalry_id TEXT,
+  winner_id UUID,
   winner_name TEXT NOT NULL,
+  loser_id UUID,
   loser_name TEXT NOT NULL,
+  participant_ids UUID[],
+  final_standings JSONB DEFAULT '[]'::JSONB,
+  resolution_type TEXT DEFAULT 'WON',
+  occurred_at TIMESTAMPTZ DEFAULT NOW(),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Performance and deduplication indexes
+CREATE INDEX IF NOT EXISTS idx_rivalry_events_occurred_at ON public.rivalry_events(occurred_at DESC);
+CREATE INDEX IF NOT EXISTS idx_rivalry_events_created_at ON public.rivalry_events(created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_rivalry_events_resolution_id_unique ON public.rivalry_events(resolution_id);
 
 -- Full replica identity for realtime subscription payloads
 ALTER TABLE public.rivalry_events REPLICA IDENTITY FULL;
@@ -2243,10 +2256,16 @@ CREATE POLICY "Public select rivalry_events"
   USING (true);
 
 DROP POLICY IF EXISTS "Public insert rivalry_events" ON public.rivalry_events;
-CREATE POLICY "Public insert rivalry_events"
+DROP POLICY IF EXISTS "Authenticated insert rivalry_events" ON public.rivalry_events;
+CREATE POLICY "Authenticated insert rivalry_events"
   ON public.rivalry_events FOR INSERT
-  TO authenticated, anon
-  WITH CHECK (true);
+  TO authenticated
+  WITH CHECK (
+    auth.uid() IS NOT NULL AND (
+      auth.uid() = winner_id
+      OR (participant_ids IS NOT NULL AND auth.uid() = ANY(participant_ids))
+    )
+  );
 
 -- Include in supabase_realtime publication for instant cross-device delivery
 DO $$
@@ -2260,3 +2279,49 @@ BEGIN
 EXCEPTION
   WHEN OTHERS THEN NULL;
 END $$;
+
+-- ------------------------------------------------------------
+-- 15. USER ALERTS AUDIT & QUEUE TABLE
+-- ------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.user_alerts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  user_name TEXT NOT NULL,
+  user_email TEXT NOT NULL,
+  alert_type TEXT NOT NULL CHECK (alert_type IN ('A', 'I', 'D', 'W')),
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'sent', 'failed', 'dismissed')),
+  consecutive_inactive_days INTEGER DEFAULT 0,
+  reason TEXT NOT NULL,
+  error_message TEXT,
+  sent_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Ensure check constraint allows all valid alert types ('A', 'I', 'D', 'W')
+DO $$
+BEGIN
+  ALTER TABLE public.user_alerts DROP CONSTRAINT IF EXISTS user_alerts_alert_type_check;
+  ALTER TABLE public.user_alerts ADD CONSTRAINT user_alerts_alert_type_check CHECK (alert_type IN ('A', 'I', 'D', 'W'));
+EXCEPTION
+  WHEN OTHERS THEN NULL;
+END $$;
+
+-- Indexes for Alert Queries & Deduplication
+CREATE INDEX IF NOT EXISTS idx_user_alerts_user_id ON public.user_alerts(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_alerts_alert_type ON public.user_alerts(alert_type);
+CREATE INDEX IF NOT EXISTS idx_user_alerts_status ON public.user_alerts(status);
+CREATE INDEX IF NOT EXISTS idx_user_alerts_created_at ON public.user_alerts(created_at DESC);
+
+-- Enable RLS
+ALTER TABLE public.user_alerts ENABLE ROW LEVEL SECURITY;
+
+-- Admins only policy
+DROP POLICY IF EXISTS "Admins can view and manage user_alerts" ON public.user_alerts;
+CREATE POLICY "Admins can view and manage user_alerts"
+  ON public.user_alerts
+  FOR ALL
+  TO authenticated
+  USING (public.check_is_admin())
+  WITH CHECK (public.check_is_admin());
+

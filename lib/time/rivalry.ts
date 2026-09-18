@@ -422,13 +422,15 @@ export function evaluateRivalryResolution(
     };
   });
 
+  const timeBucket = Math.floor(now.getTime() / RIVALRY_CONFIG.EVENT_TTL_MS);
+
   // Check 1: Weekly Rollover Check
   if (isMondayWarmupActive(now)) {
     return {
       shouldResolve: true,
       resolutionType: "WEEK_ROLLOVER",
       standings: [],
-      resolutionId: `res-${prevRivalry.id}-rollover-${Math.floor(now.getTime() / 1000)}`,
+      resolutionId: `res-${prevRivalry.id}-rollover-${timeBucket}`,
     };
   }
 
@@ -440,7 +442,7 @@ export function evaluateRivalryResolution(
       shouldResolve: true,
       resolutionType: "SESSION_STOPPED",
       standings: [],
-      resolutionId: `res-${prevRivalry.id}-stopped-${Math.floor(now.getTime() / 1000)}`,
+      resolutionId: `res-${prevRivalry.id}-stopped-${timeBucket}`,
     };
   }
 
@@ -461,7 +463,7 @@ export function evaluateRivalryResolution(
   // Check 4: True Win Resolution
   // If all participants are still active in the room and the leader pulled ahead >= RESOLUTION_GAP_SECONDS (15m = 900s)
   if (decisiveGap >= RIVALRY_CONFIG.RESOLUTION_GAP_SECONDS) {
-    const resolutionId = `res-${prevRivalry.id}-win-${Math.floor(now.getTime() / 1000)}`;
+    const resolutionId = `res-${prevRivalry.id}-win-${timeBucket}`;
     return {
       shouldResolve: true,
       resolutionType: "WON",
@@ -477,6 +479,6 @@ export function evaluateRivalryResolution(
     shouldResolve: true,
     resolutionType: "NO_CONTEST",
     standings,
-    resolutionId: `res-${prevRivalry.id}-nocontest-${Math.floor(now.getTime() / 1000)}`,
+    resolutionId: `res-${prevRivalry.id}-nocontest-${timeBucket}`,
   };
 }

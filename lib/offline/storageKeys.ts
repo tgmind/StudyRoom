@@ -10,7 +10,12 @@ export const STORAGE_KEYS = {
   OFFLINE_COMPLETED_SESSIONS: "studyroom_offline_completed_sessions",
   ACTIVE_STUDY: "studyroom_active_study",
   ACTIVE_BREAK: "studyroom_active_break",
+  ADMIN_UID: "studyroom_admin_uid",
+  ACTIVE_RIVALRY_WIN: "studyroom_active_rivalry_win",
+  PWA_BANNER_DISMISSED: "pwa_banner_dismissed",
 } as const;
+
+export const STORAGE_KEY_PREFIX = "studyroom_";
 
 export interface OfflineSessionBlock {
   id: string;
@@ -57,6 +62,7 @@ export type QueuedActionType =
 export interface QueuedSessionAction {
   id: string; // Unique idempotency ID
   action: QueuedActionType;
+  userId?: string;
   createdAtIso: string;
   elapsedStudySeconds?: number;
   completedTaskIds?: string[];

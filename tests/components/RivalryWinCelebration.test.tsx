@@ -131,4 +131,30 @@ describe("RivalryWinCelebration Component", () => {
     const { container } = render(<RivalryWinCelebration winEvent={oldWinEvent} />);
     expect(container.firstChild).toBeNull();
   });
+
+  it("dismisses active live popup when Escape key is pressed", () => {
+    const handleDismiss = vi.fn();
+    render(<RivalryWinCelebration winEvent={mockWinEvent} onDismiss={handleDismiss} />);
+
+    expect(screen.getByText("Victory Claimed!")).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    // Live popup should be dismissed
+    expect(screen.queryByText("Victory Claimed!")).toBeNull();
+    expect(handleDismiss).toHaveBeenCalled();
+  });
+
+  it("dismisses active live popup when backdrop is clicked", () => {
+    const handleDismiss = vi.fn();
+    render(<RivalryWinCelebration winEvent={mockWinEvent} onDismiss={handleDismiss} />);
+
+    expect(screen.getByText("Victory Claimed!")).toBeInTheDocument();
+
+    const dialog = screen.getByRole("dialog");
+    fireEvent.click(dialog);
+
+    expect(screen.queryByText("Victory Claimed!")).toBeNull();
+    expect(handleDismiss).toHaveBeenCalled();
+  });
 });

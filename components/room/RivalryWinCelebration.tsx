@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, memo, useMemo } from "react";
+import React, { useState, useEffect, useRef, memo, useMemo, useCallback } from "react";
 import { RivalryWinEvent } from "@/lib/time/rivalry";
 import { RIVALRY_CONFIG } from "@/lib/time/rivalryConfig";
 import { Trophy, X, Swords, Crown, Flame } from "lucide-react";
@@ -148,7 +148,7 @@ export const RivalryWinCelebration = memo(function RivalryWinCelebration({
     });
   }, [allEvents, dismissedIds]);
 
-  const handleDismissEvent = (eventToDismiss: RivalryWinEvent) => {
+  const handleDismissEvent = useCallback((eventToDismiss: RivalryWinEvent) => {
     const eventKey = eventToDismiss.resolutionId || eventToDismiss.id;
     setDismissedIds((prev) => {
       const next = new Set(prev);
@@ -157,9 +157,12 @@ export const RivalryWinCelebration = memo(function RivalryWinCelebration({
       return next;
     });
 
-    if (activePopupEvent && (activePopupEvent.resolutionId || activePopupEvent.id) === eventKey) {
-      setActivePopupEvent(null);
-    }
+    setActivePopupEvent((current) => {
+      if (current && (current.resolutionId || current.id) === eventKey) {
+        return null;
+      }
+      return current;
+    });
 
     triggerHapticFeedback(15);
 
@@ -179,13 +182,25 @@ export const RivalryWinCelebration = memo(function RivalryWinCelebration({
     if (onDismiss) {
       onDismiss(eventKey);
     }
-  };
+  }, [onDismiss]);
 
-  const handleDismissPopup = () => {
+  const handleDismissPopup = useCallback(() => {
     if (activePopupEvent) {
       handleDismissEvent(activePopupEvent);
     }
-  };
+  }, [activePopupEvent, handleDismissEvent]);
+
+  // Keyboard accessibility: dismiss live popup modal when Escape key is pressed
+  useEffect(() => {
+    if (!activePopupEvent) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        handleDismissPopup();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [activePopupEvent, handleDismissPopup]);
 
   // Helper to format opponents string gracefully for trios vs pairs
   const formatOpponents = (evt: RivalryWinEvent) => {
@@ -209,9 +224,17 @@ export const RivalryWinCelebration = memo(function RivalryWinCelebration({
           role="dialog"
           aria-modal="true"
           aria-label="Rivalry Winner Announcement"
-          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/40 backdrop-blur-[2px] animate-in fade-in duration-200 pointer-events-auto select-none"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              handleDismissPopup();
+            }
+          }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/40 backdrop-blur-[2px] animate-in fade-in duration-200 pointer-events-auto select-none cursor-pointer"
         >
-          <div className="relative w-full max-w-sm sm:max-w-md p-5 sm:p-6 rounded-2xl sm:rounded-3xl bg-gradient-to-b from-[#221008] via-[#150a06] to-[#0a0504] border-2 border-amber-500/70 shadow-[0_12px_45px_rgba(0,0,0,0.85),_0_0_30px_rgba(245,158,11,0.25)] text-center space-y-3.5 animate-in zoom-in-95 duration-250">
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative w-full max-w-sm sm:max-w-md p-5 sm:p-6 rounded-2xl sm:rounded-3xl bg-gradient-to-b from-[#221008] via-[#150a06] to-[#0a0504] border-2 border-amber-500/70 shadow-[0_12px_45px_rgba(0,0,0,0.85),_0_0_30px_rgba(245,158,11,0.25)] text-center space-y-3.5 animate-in zoom-in-95 duration-250 cursor-default"
+          >
             {/* Subtle top amber highlight beam */}
             <div className="absolute top-0 left-1/4 right-1/4 h-[2px] bg-gradient-to-r from-transparent via-amber-400 to-transparent shadow-[0_0_15px_rgba(251,191,36,0.9)] pointer-events-none" />
 
@@ -226,7 +249,7 @@ export const RivalryWinCelebration = memo(function RivalryWinCelebration({
             </button>
 
             {/* Trophy Crest Badge */}
-            <div className="relative mx-auto w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-tr from-amber-500 via-yellow-400 to-amber-300 flex items-center justify-center text-zinc-950 shadow-[0_0_25px_rgba(245,158,11,0.6)] animate-bounce">
+            <div className="relative mx-auto w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-tr from-amber-500 via-yellow-400 to-amber-300 flex items-center justify-center text-zinc-950 shadow-[0_0_25px_rgba(245,158,11,0.6)] animate-bounce motion-reduce:animate-none">
               <Trophy className="w-7 h-7 sm:w-8 sm:h-8 fill-current drop-shadow-sm" />
               <Crown className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-950 fill-amber-950 absolute -top-1 left-1/2 -translate-x-1/2" />
             </div>

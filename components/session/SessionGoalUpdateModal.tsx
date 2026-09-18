@@ -56,12 +56,12 @@ export function SessionGoalUpdateModal({
     triggerHapticFeedback(25);
     try {
       await onConfirmSaveGoals(selectedTaskIds);
+      onClose();
     } catch (err) {
       console.error("Save goals error in session goal update modal:", err);
     } finally {
       setSelectedTaskIds([]);
       setIsSubmitting(false);
-      onClose();
     }
   };
 
@@ -70,12 +70,12 @@ export function SessionGoalUpdateModal({
     setIsSubmitting(true);
     try {
       await onConfirmSaveGoals([]);
+      onClose();
     } catch (err) {
       console.error("Skip goals error in session goal update modal:", err);
     } finally {
       setSelectedTaskIds([]);
       setIsSubmitting(false);
-      onClose();
     }
   };
 
