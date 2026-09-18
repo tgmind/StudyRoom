@@ -16,7 +16,7 @@ describe("Mid-Session Goal Expiration & Graceful Completion Integration Audit", 
       { id: "task-2", task: "Biochemistry Flashcards", completed: false },
       { id: "task-3", task: "Already Finished Chapter", completed: true },
     ],
-    created_at: new Date(now - 25 * 3600 * 1000).toISOString(),
+    created_at: new Date(now - 20.5 * 3600 * 1000).toISOString(),
     expires_at: new Date(now - 30 * 60 * 1000).toISOString(), // Expired 30m ago mid-session
     is_locked: true,
     archived_at: null,

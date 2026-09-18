@@ -22,8 +22,8 @@ export function GoalsGuideModal({ isOpen, onClose }: GoalsGuideModalProps) {
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Rolling 24-Hour Goals Guide"
-      subtitle="How continuous 24h commitments and append-only accountability work"
+      title="Rolling 20-Hour Goals Guide"
+      subtitle="How continuous 20h commitments and append-only accountability work"
     >
       <div className="space-y-4 text-xs text-zinc-300 leading-relaxed">
         {/* Intro banner */}
@@ -36,14 +36,14 @@ export function GoalsGuideModal({ isOpen, onClose }: GoalsGuideModalProps) {
               Discipline & Follow-Through
             </h3>
             <p className="text-zinc-400 text-[11px] leading-relaxed">
-              StudyRoom eliminates arbitrary midnight resets. Your goals run for exactly 24 hours from creation, rewarding honest daily consistency and committed follow-through.
+              StudyRoom eliminates arbitrary midnight resets. Your goals run for exactly 20 hours from creation, rewarding honest daily consistency and committed follow-through.
             </p>
           </div>
         </div>
 
         {/* Feature breakdown cards */}
         <div className="space-y-3">
-          {/* 1. Continuous 24-Hour Windows */}
+          {/* 1. Continuous 20-Hour Windows */}
           <div className="p-4 bg-zinc-900/90 border border-violet-500/25 rounded-2xl space-y-2 relative overflow-hidden shadow-md">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center space-x-2.5 min-w-0">
@@ -51,15 +51,15 @@ export function GoalsGuideModal({ isOpen, onClose }: GoalsGuideModalProps) {
                   <Clock className="w-4 h-4" />
                 </div>
                 <h4 className="font-bold text-zinc-100 text-xs sm:text-sm">
-                  1. Continuous 24-Hour Windows
+                  1. Continuous 20-Hour Windows
                 </h4>
               </div>
               <span className="text-[10px] font-mono font-bold text-violet-300 px-2.5 py-1 rounded-full bg-violet-500/15 border border-violet-500/30 shrink-0 whitespace-nowrap">
-                24h Rolling
+                20h Rolling
               </span>
             </div>
             <p className="text-zinc-400 text-[11px] leading-relaxed pl-1">
-              Your goal window starts at the exact second you create your first task and expires after 1,440 minutes (24 hours). This fully supports night owls, early morning routines, and non-standard study blocks.
+              Your goal window starts at the exact second you create your first task and expires after 1,200 minutes (20 hours). This fully supports night owls, early morning routines, and non-standard study blocks.
             </p>
           </div>
 
@@ -79,7 +79,7 @@ export function GoalsGuideModal({ isOpen, onClose }: GoalsGuideModalProps) {
               </span>
             </div>
             <p className="text-zinc-400 text-[11px] leading-relaxed pl-1">
-              You can commit up to 10 goals in bulk when setting up your window, or start with just 1 or 2 high-priority tasks and append more goals as you build momentum throughout the 24 hours.
+              You can commit up to 10 goals in bulk when setting up your window, or start with just 1 or 2 high-priority tasks and append more goals as you build momentum throughout the 20 hours.
             </p>
           </div>
 
@@ -99,7 +99,7 @@ export function GoalsGuideModal({ isOpen, onClose }: GoalsGuideModalProps) {
               </span>
             </div>
             <p className="text-zinc-400 text-[11px] leading-relaxed pl-1">
-              Goals cannot be deleted or removed once committed. Any unfinished goals when the 24-hour timer expires are recorded as incomplete, teaching real-world planning and reliable self-discipline.
+              Goals cannot be deleted or removed once committed. Any unfinished goals when the 20-hour timer expires are recorded as incomplete, teaching real-world planning and reliable self-discipline.
             </p>
           </div>
 

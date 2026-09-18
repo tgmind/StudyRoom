@@ -28,10 +28,10 @@ export const GoalWindowCard = memo(function GoalWindowCard({
 
         <div className="space-y-1 max-w-sm mx-auto">
           <h3 className="text-sm sm:text-base font-extrabold text-zinc-100">
-            No Active 24-Hour Goal Set
+            No Active 20-Hour Goal Set
           </h3>
           <p className="text-xs text-zinc-400 leading-relaxed">
-            Commit your daily study targets to start your continuous 24-hour cycle.
+            Commit your daily study targets to start your continuous 20-hour cycle.
           </p>
         </div>
 
@@ -44,7 +44,7 @@ export const GoalWindowCard = memo(function GoalWindowCard({
               className="space-x-2 font-bold text-xs bg-violet-600 hover:bg-violet-500 text-white shadow-md shadow-violet-500/20 px-5 py-2.5 rounded-xl transition-all"
             >
               <Plus className="w-4 h-4" />
-              <span>Start 24-Hour Goal Set</span>
+              <span>Start 20-Hour Goal Set</span>
             </Button>
           </div>
         )}
@@ -71,7 +71,7 @@ export const GoalWindowCard = memo(function GoalWindowCard({
             <div className="flex items-center space-x-1.5 min-w-0">
               <span className="w-2 h-2 rounded-full bg-violet-400 animate-pulse shrink-0" />
               <h2 className="text-xs sm:text-sm font-bold text-zinc-100 uppercase tracking-wider whitespace-nowrap">
-                24h Window
+                20h Window
               </h2>
             </div>
           </div>
@@ -155,7 +155,7 @@ export const GoalWindowCard = memo(function GoalWindowCard({
             className="w-full space-x-1.5 text-xs font-bold bg-zinc-950/80 hover:bg-zinc-900 border-dashed border-zinc-700 hover:border-violet-500/40 text-zinc-300 hover:text-violet-200 py-2 rounded-xl transition-all touch-manipulation"
           >
             <Plus className="w-3.5 h-3.5 text-violet-400" />
-            <span>Add Goal to 24h Window</span>
+            <span>Add Goal to 20h Window</span>
           </Button>
         </div>
       )}

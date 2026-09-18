@@ -12,7 +12,7 @@ import { Trophy, HelpCircle, Star, Sparkles, Clock, Target, Flame } from "lucide
 import { getAdminUserId, isAdminUserId } from "@/hooks/useAdmin";
 import { calculateLeaderboardScore } from "@/lib/scoring/engine";
 import { calculateWeeklyStreak } from "@/lib/scoring/streak";
-import { getWeekStartTimestamp, calculateMemberElapsedStudySeconds } from "@/lib/time/format";
+import { getWeekStartTimestamp, calculateMemberElapsedStudySeconds, calculateMemberLiveWeeklyStudySeconds } from "@/lib/time/format";
 import { getServerNow } from "@/lib/time/clockSync";
 import { StudySession } from "@/lib/supabase/types";
 
@@ -77,10 +77,11 @@ export default function LeaderboardPage() {
           }
 
           for (const [uid, userSessions] of sessionsByUser.entries()) {
-            const liveMinutes =
+            const liveSeconds =
               uid === user?.id && profile?.current_status === "studying"
-                ? Math.floor(calculateMemberElapsedStudySeconds(profile, serverNow) / 60)
+                ? Math.max(0, calculateMemberLiveWeeklyStudySeconds(profile, serverNow, undefined, timezone) - (profile?.weekly_study_seconds ?? 0))
                 : 0;
+            const liveMinutes = Math.floor(liveSeconds / 60);
 
             const streak = calculateWeeklyStreak(userSessions, serverNow, liveMinutes, timezone);
             weeklyStreaksByUser.set(uid, streak);
@@ -89,7 +90,8 @@ export default function LeaderboardPage() {
 
         // If current user is studying but has no past sessions this week yet, calculate their live streak
         if (user?.id && profile?.current_status === "studying" && !weeklyStreaksByUser.has(user.id)) {
-          const liveMinutes = Math.floor(calculateMemberElapsedStudySeconds(profile, serverNow) / 60);
+          const liveSeconds = Math.max(0, calculateMemberLiveWeeklyStudySeconds(profile, serverNow, undefined, timezone) - (profile?.weekly_study_seconds ?? 0));
+          const liveMinutes = Math.floor(liveSeconds / 60);
           const streak = calculateWeeklyStreak([], serverNow, liveMinutes, timezone);
           weeklyStreaksByUser.set(user.id, streak);
         }

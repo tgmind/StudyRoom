@@ -408,6 +408,7 @@ export async function flushSessionActionQueue(
             const midnightDate = new Date(new Date(sessionPayload.start_time).getTime() + minsBeforeMidnight * 60000);
             const midnightIso = midnightDate.toISOString();
 
+            let part1Id: string | null = null;
             if (minsBefore > 0 || minsAfter === 0) {
               const insertRes1: any = await with10sTimeout(
                 supabase
@@ -418,13 +419,15 @@ export async function flushSessionActionQueue(
                     end_time: midnightIso,
                     duration_minutes: minsBefore,
                     break_minutes: 0,
-                    completed_tasks: minsAfter === 0 ? sessionPayload.completed_tasks : [],
+                    completed_tasks: sessionPayload.completed_tasks,
+                    split_part: 1,
                   })
                   .select("id")
                   .single(),
                 "Upload offline study session part 1"
               );
               if (insertRes1?.error) throw insertRes1.error;
+              part1Id = insertRes1.data?.id || null;
             }
 
             if (minsAfter > 0) {
@@ -438,12 +441,25 @@ export async function flushSessionActionQueue(
                     duration_minutes: minsAfter,
                     break_minutes: sessionPayload.break_minutes ?? 0,
                     completed_tasks: sessionPayload.completed_tasks,
+                    split_part: 2,
+                    sibling_session_id: part1Id,
                   })
                   .select("id")
                   .single(),
                 "Upload offline study session part 2"
               );
               if (insertRes2?.error) throw insertRes2.error;
+              const part2Id = insertRes2.data?.id || null;
+
+              if (part1Id && part2Id) {
+                await with10sTimeout(
+                  supabase
+                    .from("study_sessions")
+                    .update({ sibling_session_id: part2Id })
+                    .eq("id", part1Id),
+                  "Link offline split session sibling part 1"
+                ).catch(() => {});
+              }
             }
           } else {
             // 1. Insert into public.study_sessions
@@ -660,7 +676,11 @@ export async function flushSessionActionQueue(
           );
           if (rpcErr) {
             const msg = (rpcErr.message || "").toLowerCase();
-            if (msg.includes("no active 24-hour goal set")) {
+            if (
+              msg.includes("no active 20-hour goal set") ||
+              msg.includes("no active 24-hour goal set") ||
+              (msg.includes("no active") && msg.includes("goal set"))
+            ) {
               removeSessionAction(item.id);
               flushedCount++;
               continue;

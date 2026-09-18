@@ -625,7 +625,7 @@ export function useActiveSession(
             id: baseOfflineId + "_1",
             end_time: midnightIso,
             duration_minutes: minsBefore,
-            completed_tasks: minsAfter === 0 ? offlineRecord.completed_tasks : [],
+            completed_tasks: offlineRecord.completed_tasks,
           });
         }
         if (minsAfter > 0) {
@@ -634,6 +634,7 @@ export function useActiveSession(
             id: baseOfflineId + "_2",
             start_time: midnightIso,
             duration_minutes: minsAfter,
+            completed_tasks: offlineRecord.completed_tasks,
           });
         }
       } else {

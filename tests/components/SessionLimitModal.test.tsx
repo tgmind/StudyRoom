@@ -11,7 +11,7 @@ describe("SessionLimitModal Component (3-Hour Session Limit)", () => {
     is_locked: false,
     archived_at: null,
     created_at: new Date().toISOString(),
-    expires_at: new Date(Date.now() + 86400000).toISOString(),
+    expires_at: new Date(Date.now() + 72000000).toISOString(),
     tasks: [
       { id: "task-1", task: "Complete Chapter 5 Exercises", completed: false },
       { id: "task-2", task: "Review Quantum Mechanics Notes", completed: false },

@@ -1,4 +1,5 @@
 import { getServerNow } from "./clockSync";
+import { GOAL_WINDOW_SECONDS } from "./format";
 
 export interface GoalCountdownResult {
   isExpired: boolean;
@@ -7,7 +8,7 @@ export interface GoalCountdownResult {
 }
 
 /**
- * Calculates remaining time in 24-hour rolling goal window from authoritative expires_at timestamp.
+ * Calculates remaining time in 20-hour rolling goal window from authoritative expires_at timestamp.
  */
 export function calculateGoalCountdown(
   expiresAtISO: string,
@@ -24,7 +25,7 @@ export function calculateGoalCountdown(
     };
   }
 
-  const diffSeconds = Math.min(86400, Math.max(0, Math.floor((expiresAt - current) / 1000)));
+  const diffSeconds = Math.min(GOAL_WINDOW_SECONDS, Math.max(0, Math.floor((expiresAt - current) / 1000)));
   const hours = Math.floor(diffSeconds / 3600);
   const minutes = Math.floor((diffSeconds % 3600) / 60);
   const seconds = diffSeconds % 60;

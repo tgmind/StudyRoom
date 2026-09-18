@@ -9,6 +9,7 @@ import {
   calculateMemberLiveBreakSeconds,
   calculateMemberOfflineHours,
   calculateMemberOfflineSeconds,
+  calculateMemberLiveWeeklyStudySeconds,
 } from "@/lib/time/format";
 import { SessionBlock, UserProfile } from "@/lib/supabase/types";
 
@@ -308,6 +309,69 @@ describe("Time Formatting & Active Study Calculation", () => {
 
     it("returns Number.MAX_SAFE_INTEGER when no timestamps exist", () => {
       expect(calculateMemberOfflineSeconds({}, baseNow)).toBe(Number.MAX_SAFE_INTEGER);
+    });
+  });
+
+  describe("calculateMemberLiveWeeklyStudySeconds (ISO-Week Clamping & Reset Bleed Prevention)", () => {
+    it("returns past weekly study seconds directly when member is offline", () => {
+      const member: Partial<UserProfile> = {
+        current_status: "offline",
+        weekly_study_seconds: 14400,
+      };
+      expect(calculateMemberLiveWeeklyStudySeconds(member)).toBe(14400);
+    });
+
+    it("adds live elapsed study seconds in mid-week without clamping", () => {
+      // Wednesday 2026-09-02 10:30 UTC
+      const now = new Date("2026-09-02T10:30:00.000Z");
+      const startTime = new Date("2026-09-02T10:00:00.000Z").toISOString(); // 30 mins (1800s)
+      const member: Partial<UserProfile> = {
+        current_status: "studying",
+        weekly_study_seconds: 7200, // 2h past
+        session_start_time: startTime,
+        last_resumed_at: startTime,
+        active_study_seconds_snapshot: 0,
+      };
+
+      const result = calculateMemberLiveWeeklyStudySeconds(member, now, undefined, "Asia/Kolkata");
+      // 7200 + 1800 = 9000s (2.5h)
+      expect(result).toBe(9000);
+    });
+
+    it("CRITICAL (BUG-01): clamps live session seconds across Sunday->Monday transition in Asia/Kolkata", () => {
+      // Sunday 23:30 IST is 2026-09-06T18:00:00.000Z
+      // Monday 00:00 IST is 2026-09-06T18:30:00.000Z (week start)
+      // Monday 00:15 IST is 2026-09-06T18:45:00.000Z (current time)
+      const now = new Date("2026-09-06T18:45:00.000Z");
+      const sundayStart = "2026-09-06T18:00:00.000Z";
+
+      const member: Partial<UserProfile> = {
+        current_status: "studying",
+        weekly_study_seconds: 0, // Reset to 0 for the new Monday week
+        session_start_time: sundayStart,
+        last_resumed_at: sundayStart,
+        active_study_seconds_snapshot: 0,
+      };
+
+      // Total session duration is 45m (2700s), but only 15m (900s) accrued after Monday 00:00 IST
+      const result = calculateMemberLiveWeeklyStudySeconds(member, now, undefined, "Asia/Kolkata");
+      expect(result).toBe(900); // Exactly 15 minutes! No Sunday bleed!
+    });
+
+    it("respects customElapsedSeconds and clamps it if started before week start", () => {
+      const now = new Date("2026-09-06T18:45:00.000Z"); // Monday 00:15 IST
+      const sundayStart = "2026-09-06T18:00:00.000Z"; // Sunday 23:30 IST
+
+      const member: Partial<UserProfile> = {
+        current_status: "studying",
+        weekly_study_seconds: 0,
+        session_start_time: sundayStart,
+      };
+
+      // Client passes 2700s (45 mins) elapsed from timer tick
+      const result = calculateMemberLiveWeeklyStudySeconds(member, now, 2700, "Asia/Kolkata");
+      // Clamped to 900s (15 mins from 00:00 to 00:15 IST)
+      expect(result).toBe(900);
     });
   });
 });

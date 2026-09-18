@@ -211,8 +211,8 @@ describe("useStudyHistory Hook", () => {
 
   it("groups lapsed goals under the day they were created (created_at), NOT when expired", async () => {
     const lapsedTestUserId = "user-lapsed-test-unique";
-    // Goal created on Monday at 08:00 AM, expires on Tuesday at 08:00 AM (serverNow is Tuesday 09:00 AM)
-    const mondayCreatedIso = new Date(Date.now() - 25 * 3600 * 1000).toISOString();
+    // Goal created on Monday at 08:00 AM, expires on Tuesday at 04:00 AM (serverNow is Tuesday 05:00 AM)
+    const mondayCreatedIso = new Date(Date.now() - 21 * 3600 * 1000).toISOString();
     const tuesdayExpiresIso = new Date(Date.now() - 1 * 3600 * 1000).toISOString();
 
     const mockLapsedGoal = {

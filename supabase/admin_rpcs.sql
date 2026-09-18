@@ -46,7 +46,7 @@ CREATE INDEX IF NOT EXISTS idx_users_is_admin ON public.users(is_admin) WHERE is
 -- B. Partial index: Instant O(1) lookup of active unended session blocks for pause/resume/finish/force_end
 CREATE INDEX IF NOT EXISTS idx_session_blocks_open_active ON public.session_blocks(user_id, block_type) WHERE end_time IS NULL;
 
--- C. Composite index: Instant lookup of user's active 24h goal windows
+-- C. Composite index: Instant lookup of user's active 20h goal windows
 CREATE INDEX IF NOT EXISTS idx_daily_goals_user_active_unexpired ON public.daily_goals(user_id, expires_at DESC);
 
 -- D. Composite index: Fast date range queries for weekly study sessions
@@ -556,6 +556,16 @@ BEGIN
     FROM public.study_sessions s
     WHERE s.start_time >= v_week_start AND s.start_time < v_week_end
     GROUP BY s.user_id
+    UNION ALL
+    -- Account for unclosed blocks from past-week evaluations (BUG-03)
+    SELECT b.user_id, COALESCE(SUM(EXTRACT(EPOCH FROM (LEAST(COALESCE(b.end_time, NOW()), v_week_end) - b.start_time))), 0)::INTEGER / 60 AS study_mins
+    FROM public.session_blocks b
+    WHERE b.session_id IS NULL
+      AND b.block_type = 'study'
+      AND b.start_time >= v_week_start
+      AND b.start_time < v_week_end
+      AND NOW() >= v_week_end
+    GROUP BY b.user_id
   ),
   live_study AS (
     -- Compute in-progress active study minutes for users currently studying or on valid break
@@ -582,17 +592,32 @@ BEGIN
                   AND b.start_time < v_week_end
                   AND COALESCE(b.end_time, NOW()) > v_week_start
               ),
-              -- Method B: Fallback to user status fields if blocks not present
+              -- Method B: Fallback to user status fields bounded strictly by v_week_start (BUG-02)
               CASE 
                 WHEN NOW() >= v_week_start AND NOW() < v_week_end THEN
-                  CASE
-                    WHEN u.current_status = 'studying' THEN
-                      COALESCE(u.active_study_seconds_snapshot, 0) + 
-                      EXTRACT(EPOCH FROM (NOW() - COALESCE(u.last_resumed_at, u.session_start_time, NOW())))
-                    WHEN u.current_status = 'break' AND (NOW() - u.break_started_at) < INTERVAL '1 hour' THEN
-                      COALESCE(u.active_study_seconds_snapshot, 0)
-                    ELSE 0
-                  END
+                  LEAST(
+                    GREATEST(
+                      0,
+                      CASE
+                        WHEN u.current_status = 'studying' THEN
+                          CASE
+                            WHEN COALESCE(u.last_resumed_at, u.session_start_time, NOW()) >= v_week_start THEN
+                              COALESCE(u.active_study_seconds_snapshot, 0) + 
+                              EXTRACT(EPOCH FROM (NOW() - COALESCE(u.last_resumed_at, u.session_start_time, NOW())))
+                            ELSE
+                              EXTRACT(EPOCH FROM (NOW() - v_week_start))
+                          END
+                        WHEN u.current_status = 'break' AND (NOW() - u.break_started_at) < INTERVAL '1 hour' THEN
+                          CASE
+                            WHEN u.break_started_at >= v_week_start THEN
+                              COALESCE(u.active_study_seconds_snapshot, 0)
+                            ELSE 0
+                          END
+                        ELSE 0
+                      END
+                    ),
+                    EXTRACT(EPOCH FROM (NOW() - v_week_start))
+                  )
                 ELSE 0
               END
             )
@@ -612,29 +637,55 @@ BEGIN
       u.id AS user_id,
       (COALESCE(cs.study_mins, 0) + COALESCE(ls.live_mins, 0))::INTEGER AS study_mins
     FROM public.users u
-    LEFT JOIN completed_study cs ON u.id = cs.user_id
+    LEFT JOIN (
+      SELECT user_id, SUM(study_mins)::INTEGER AS study_mins
+      FROM completed_study
+      GROUP BY user_id
+    ) cs ON u.id = cs.user_id
     LEFT JOIN live_study ls ON u.id = ls.user_id
   ),
-  weekly_goals AS (
-    SELECT g.user_id,
-           COALESCE(
-             SUM( (SELECT COUNT(*) FROM jsonb_array_elements(g.tasks) t WHERE (t->>'completed')::boolean = true) ),
-             0
-           )::INTEGER AS completed_tasks_count,
-           COALESCE(
-             SUM(jsonb_array_length(g.tasks)),
-             0
-           )::INTEGER AS total_tasks_count,
-           COALESCE(
-             ROUND(
-               (SUM( (SELECT COUNT(*) FROM jsonb_array_elements(g.tasks) t WHERE (t->>'completed')::boolean = true) )::NUMERIC /
-                NULLIF(SUM(jsonb_array_length(g.tasks)), 0)::NUMERIC) * 100, 1
-             ), 0
-           ) AS completion_pct
+  completed_tasks_per_user AS (
+    SELECT user_id, COUNT(DISTINCT task_id)::INTEGER AS completed_tasks_count
+    FROM (
+      -- Tasks marked completed in daily_goals created in this week (BUG-05)
+      SELECT g.user_id, t->>'id' AS task_id
+      FROM public.daily_goals g,
+           jsonb_array_elements(COALESCE(g.tasks, '[]'::JSONB)) t
+      WHERE g.created_at >= v_week_start AND g.created_at < v_week_end
+        AND (t->>'completed')::boolean = true
+        AND t->>'id' IS NOT NULL
+      UNION
+      -- Tasks recorded in study_sessions belonging to this week (BUG-07)
+      -- Excludes Part 2 of a Sunday->Monday midnight split to prevent cross-week double attribution
+      SELECT s.user_id, t->>'id' AS task_id
+      FROM public.study_sessions s,
+           jsonb_array_elements(COALESCE(s.completed_tasks, '[]'::JSONB)) t
+      WHERE s.start_time >= v_week_start AND s.start_time < v_week_end
+        AND (s.split_part IS NULL OR s.split_part != 2 OR s.start_time > v_week_start)
+        AND t->>'id' IS NOT NULL
+    ) combined_tasks
+    GROUP BY user_id
+  ),
+  total_tasks_per_user AS (
+    SELECT g.user_id, COALESCE(SUM(jsonb_array_length(g.tasks)), 0)::INTEGER AS total_tasks_count
     FROM public.daily_goals g
-    WHERE (g.created_at >= v_week_start AND g.created_at < v_week_end)
-       OR (g.expires_at > v_week_start AND g.created_at < v_week_start)
+    WHERE g.created_at >= v_week_start AND g.created_at < v_week_end
     GROUP BY g.user_id
+  ),
+  weekly_goals AS (
+    SELECT
+      u.id AS user_id,
+      COALESCE(ct.completed_tasks_count, 0) AS completed_tasks_count,
+      GREATEST(COALESCE(ct.completed_tasks_count, 0), COALESCE(tt.total_tasks_count, 0)) AS total_tasks_count,
+      COALESCE(
+        ROUND(
+          (COALESCE(ct.completed_tasks_count, 0)::NUMERIC /
+           NULLIF(GREATEST(COALESCE(ct.completed_tasks_count, 0), COALESCE(tt.total_tasks_count, 0)), 0)::NUMERIC) * 100, 1
+        ), 0
+      ) AS completion_pct
+    FROM public.users u
+    LEFT JOIN completed_tasks_per_user ct ON u.id = ct.user_id
+    LEFT JOIN total_tasks_per_user tt ON u.id = tt.user_id
   ),
   qualifying_days AS (
     SELECT

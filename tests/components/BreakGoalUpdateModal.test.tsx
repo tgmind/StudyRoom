@@ -14,7 +14,7 @@ describe("BreakGoalUpdateModal Component", () => {
       { id: "task-3", task: "Read Organic Chemistry", completed: true },
     ],
     created_at: new Date().toISOString(),
-    expires_at: new Date(Date.now() + 86400000).toISOString(),
+    expires_at: new Date(Date.now() + 72000000).toISOString(),
     archived_at: null,
     is_locked: false,
   };
@@ -34,7 +34,7 @@ describe("BreakGoalUpdateModal Component", () => {
     expect(screen.getByText("Session ended after 1-hour break limit")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "What did you accomplish during this session? Checked tasks will be recorded in your rolling 24-hour goal set."
+        "What did you accomplish during this session? Checked tasks will be recorded in your rolling 20-hour goal set."
       )
     ).toBeInTheDocument();
 

@@ -32,8 +32,8 @@ describe("useDailyGoals Hook - Mid-Session Expiry & Grace Window", () => {
 
   it("retains activeGoal if goal expired mid-session and user is actively studying", async () => {
     const now = Date.now();
-    // Goal created 24.5 hours ago, expired 30 minutes ago
-    const expiredGoalCreatedAt = new Date(now - 24.5 * 3600 * 1000).toISOString();
+    // Goal created 20.5 hours ago, expired 30 minutes ago
+    const expiredGoalCreatedAt = new Date(now - 20.5 * 3600 * 1000).toISOString();
     const expiredGoalExpiresAt = new Date(now - 0.5 * 3600 * 1000).toISOString();
     // Session started 1 hour ago (when goal was still active!)
     const sessionStartTime = new Date(now - 1 * 3600 * 1000).toISOString();
@@ -82,7 +82,7 @@ describe("useDailyGoals Hook - Mid-Session Expiry & Grace Window", () => {
 
   it("sets activeGoal to null if goal is expired and user is offline", async () => {
     const now = Date.now();
-    const expiredGoalCreatedAt = new Date(now - 25 * 3600 * 1000).toISOString();
+    const expiredGoalCreatedAt = new Date(now - 21 * 3600 * 1000).toISOString();
     const expiredGoalExpiresAt = new Date(now - 1 * 3600 * 1000).toISOString();
 
     const mockGoal: DailyGoal = {
@@ -118,7 +118,7 @@ describe("useDailyGoals Hook - Mid-Session Expiry & Grace Window", () => {
       expect(result.current.loading).toBe(false);
     });
 
-    // Goal must be null so user is prompted to create a new 24-hour goal set
+    // Goal must be null so user is prompted to create a new 20-hour goal set
     expect(result.current.activeGoal).toBeNull();
     expect(result.current.countdown.isExpired).toBe(true);
   });

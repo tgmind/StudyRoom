@@ -1,5 +1,5 @@
 import { UserProfile } from "@/lib/supabase/types";
-import { calculateMemberElapsedStudySeconds } from "./format";
+import { calculateMemberLiveWeeklyStudySeconds } from "./format";
 import { getEffectiveMemberStatus } from "./break";
 import { getServerNow } from "./clockSync";
 
@@ -24,7 +24,8 @@ export interface RivalryWinEvent {
 
 /**
  * Computes a member's authoritative live weekly study time in seconds:
- * Past completed sessions this week + live elapsed study seconds of current active session.
+ * Past completed sessions this week + live elapsed study seconds of current active session,
+ * strictly clamped to the ISO week start boundary to prevent cross-week bleed (BUG-01).
  */
 export function getLiveMemberWeeklySeconds(
   member: UserProfile,
@@ -32,19 +33,11 @@ export function getLiveMemberWeeklySeconds(
   currentUserId?: string,
   currentUserElapsedSeconds?: number
 ): number {
-  const pastWeekly = member.weekly_study_seconds ?? 0;
-  const status = getEffectiveMemberStatus(member, now);
-
-  // If active in a session (studying or on break), add current session elapsed seconds
-  if (status === "studying" || status === "break") {
-    const elapsed =
-      member.id === currentUserId && currentUserElapsedSeconds !== undefined
-        ? currentUserElapsedSeconds
-        : calculateMemberElapsedStudySeconds(member, now);
-    return pastWeekly + elapsed;
-  }
-
-  return pastWeekly;
+  const customElapsed =
+    member.id === currentUserId && currentUserElapsedSeconds !== undefined
+      ? currentUserElapsedSeconds
+      : undefined;
+  return calculateMemberLiveWeeklyStudySeconds(member, now, customElapsed);
 }
 
 /**

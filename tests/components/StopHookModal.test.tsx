@@ -13,7 +13,7 @@ describe("StopHookModal Component", () => {
       { id: "t2", task: "Solve 20 PYQs", completed: true },
     ],
     created_at: new Date().toISOString(),
-    expires_at: new Date(Date.now() + 86400000).toISOString(),
+    expires_at: new Date(Date.now() + 72000000).toISOString(),
     is_locked: true,
     archived_at: null,
   };

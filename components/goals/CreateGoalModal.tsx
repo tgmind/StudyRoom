@@ -78,8 +78,8 @@ export function CreateGoalModal({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Create 24-Hour Goal Window"
-      subtitle="Set your study goals for the next 24 hours. Goals lock upon saving."
+      title="Create 20-Hour Goal Window"
+      subtitle="Set your study goals for the next 20 hours. Goals lock upon saving."
       fullScreenMobile
     >
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -127,7 +127,7 @@ export function CreateGoalModal({
         <div className="p-3 bg-zinc-900 border border-zinc-800 rounded-lg text-xs text-zinc-400 flex items-center space-x-2">
           <Lock className="w-4 h-4 text-zinc-400 shrink-0" />
           <span>
-            Goals expire exactly 24 hours after creation. Task text cannot be edited once locked.
+            Goals expire exactly 20 hours after creation. Task text cannot be edited once locked.
           </span>
         </div>
 
@@ -136,7 +136,7 @@ export function CreateGoalModal({
             Cancel
           </Button>
           <Button type="submit" variant="primary" isLoading={isLoading || isSubmitting} disabled={isLoading || isSubmitting} className="w-full sm:w-auto font-extrabold px-5">
-            Lock & Start 24h Window
+            Lock & Start 20h Window
           </Button>
         </div>
       </form>

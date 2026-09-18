@@ -100,7 +100,7 @@ export function SessionLimitModal({
           </span>
         </div>
 
-        {/* 24-Hour Goal Checklist */}
+        {/* 20-Hour Goal Checklist */}
         <div className="space-y-2.5">
           <div className="flex items-center justify-between flex-wrap gap-1.5">
             <label className="block text-sm sm:text-base font-extrabold text-zinc-100 tracking-tight">

@@ -40,8 +40,8 @@ The product philosophy is grounded in:
 - Sessions distinguish between active `study` blocks and `break` blocks.
 - **Break time is completely excluded** from study session duration, leaderboard scores, and streak qualifications.
 
-### 4. Rolling 24-Hour Goals (Non-Midnight Reset)
-- Goal sets expire exactly **24 hours** after creation (`expires_at = created_at + INTERVAL '24 hours'`).
+### 4. Rolling 20-Hour Goals (Non-Midnight Reset)
+- Goal sets expire exactly **20 hours** after creation (`expires_at = created_at + INTERVAL '20 hours'`).
 - Task text is immutable once locked.
 - Goal completion states are recorded progressively across sessions using the **Stop Hook**.
 
@@ -107,12 +107,12 @@ NEXT_PUBLIC_APP_TIMEZONE=UTC
 ```
 
 ### 4. Weekly Achiever Scheduling (pg_cron)
-To automatically calculate the weekly achiever every Monday at 00:00 UTC:
+To calculate the weekly achiever after all in-flight Sunday night sessions have concluded (04:00 AM IST on Monday / 22:30 UTC on Sunday, BUG-03):
 ```sql
 SELECT cron.schedule(
   'weekly-achiever-badge',
-  '0 0 * * 1',
-  $$SELECT public.rpc_calculate_weekly_achiever()$$
+  '30 22 * * 0',
+  $$SELECT public.rpc_calculate_weekly_achiever('Asia/Kolkata')$$
 );
 ```
 

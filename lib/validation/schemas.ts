@@ -55,7 +55,7 @@ export function validateTaskText(rawInput: string): ValidationResult<string> {
 }
 
 /**
- * Validates task array for 24-hour goal set creation (1 to 10 valid tasks, no duplicate blank entries).
+ * Validates task array for 20-hour goal set creation (1 to 10 valid tasks, no duplicate blank entries).
  */
 export function validateGoalTasks(tasks: string[]): ValidationResult<string[]> {
   if (!tasks || tasks.length === 0) {
@@ -75,7 +75,7 @@ export function validateGoalTasks(tasks: string[]): ValidationResult<string[]> {
   }
 
   if (cleaned.length > 10) {
-    return { isValid: false, value: cleaned.slice(0, 10), error: "Maximum 10 tasks allowed per 24-hour window" };
+    return { isValid: false, value: cleaned.slice(0, 10), error: "Maximum 10 tasks allowed per 20-hour window" };
   }
 
   return { isValid: true, value: cleaned };

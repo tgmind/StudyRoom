@@ -3,6 +3,11 @@ import { getServerNow } from "./clockSync";
 
 export const MAX_SESSION_STUDY_SECONDS = 3 * 60 * 60; // 10800 seconds (3 hours)
 
+export const GOAL_WINDOW_HOURS = 20;
+export const GOAL_WINDOW_MINUTES = 20 * 60; // 1200
+export const GOAL_WINDOW_SECONDS = 20 * 3600; // 72000
+export const GOAL_WINDOW_MS = 72000 * 1000; // 72000000
+
 /**
  * Format total seconds into HH:MM:SS string.
  */
@@ -212,6 +217,64 @@ export function getWeekStartTimestamp(
     d.setHours(0, 0, 0, 0);
     return d.getTime();
   }
+}
+
+/**
+ * Calculates a member's authoritative live weekly study time in seconds:
+ * past completed sessions of the current week (member.weekly_study_seconds) +
+ * live elapsed study seconds of the current active session strictly clamped to the current week boundary.
+ *
+ * Prevents "weekly bleed" across the Sunday->Monday ISO-week boundary (BUG-01).
+ * If a session began on Sunday 23:30 IST and now is Monday 00:15 IST, only the 15 minutes
+ * occurring within the current week are added.
+ */
+export function calculateMemberLiveWeeklyStudySeconds(
+  member: Partial<UserProfile> | UserProfile,
+  now: Date = getServerNow(),
+  customElapsedSeconds?: number,
+  timezone: string = process.env.NEXT_PUBLIC_APP_TIMEZONE || "Asia/Kolkata"
+): number {
+  const pastWeekly = member.weekly_study_seconds ?? 0;
+  if (member.current_status === "offline") return pastWeekly;
+
+  const isCurrentSessionActive = member.current_status === "studying" || member.current_status === "break";
+  const isBreakExpired =
+    member.current_status === "break" && member.break_started_at
+      ? (now.getTime() - new Date(member.break_started_at).getTime()) >= 3600 * 1000
+      : false;
+
+  if (!isCurrentSessionActive && !isBreakExpired) {
+    return pastWeekly;
+  }
+
+  // 1. Determine active study seconds in current session
+  let elapsedSeconds = 0;
+  if (customElapsedSeconds !== undefined) {
+    elapsedSeconds = customElapsedSeconds;
+  } else if (isBreakExpired) {
+    elapsedSeconds = member.active_study_seconds_snapshot ?? 0;
+  } else {
+    elapsedSeconds = calculateMemberElapsedStudySeconds(member, now);
+  }
+
+  if (elapsedSeconds <= 0) {
+    return pastWeekly;
+  }
+
+  // 2. Clamp live session seconds by ISO week start (Monday 00:00:00 in timezone)
+  const currentWeekStartMs = getWeekStartTimestamp(now, timezone);
+
+  // If session began before current week start, only count study seconds that accrued after week start
+  const startIso = member.session_start_time || member.last_resumed_at;
+  if (startIso) {
+    const startMs = new Date(startIso).getTime();
+    if (!isNaN(startMs) && startMs < currentWeekStartMs) {
+      const secondsInCurrentWeek = Math.max(0, Math.floor((now.getTime() - currentWeekStartMs) / 1000));
+      elapsedSeconds = Math.min(elapsedSeconds, secondsInCurrentWeek);
+    }
+  }
+
+  return pastWeekly + elapsedSeconds;
 }
 
 /**

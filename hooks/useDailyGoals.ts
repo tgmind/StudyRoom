@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { DailyGoal, GoalTask } from "@/lib/supabase/types";
 import { calculateGoalCountdown, GoalCountdownResult } from "@/lib/time/countdown";
 import { getServerNow } from "@/lib/time/clockSync";
+import { GOAL_WINDOW_MS } from "@/lib/time/format";
 import { validateGoalTasks } from "@/lib/validation/schemas";
 import {
   getCachedActiveGoal,
@@ -277,7 +278,7 @@ export function useDailyGoals(
     setError(null);
 
     const now = getServerNow();
-    const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
+    const expiresAt = new Date(now.getTime() + GOAL_WINDOW_MS).toISOString();
     const taskObjects: GoalTask[] = validation.value.map((taskText, idx) => ({
       id: generateGoalTaskId(idx),
       task: taskText,

@@ -73,8 +73,8 @@ export function AddGoalModal({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Add Goals to 24-Hour Window"
-      subtitle="Append additional tasks to your current active 24-hour commitment window."
+      title="Add Goals to 20-Hour Window"
+      subtitle="Append additional tasks to your current active 20-hour commitment window."
       fullScreenMobile
     >
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -115,7 +115,7 @@ export function AddGoalModal({
         <div className="p-3 bg-zinc-900 border border-zinc-800 rounded-lg text-xs text-zinc-400 flex items-start space-x-2">
           <ShieldAlert className="w-4 h-4 text-violet-400 shrink-0 mt-0.5" />
           <span>
-            <strong>Accountability Rule:</strong> Once added, goals cannot be deleted. If unfinished when the 24-hour window expires, they count against your weekly Leaderboard completion rate.
+            <strong>Accountability Rule:</strong> Once added, goals cannot be deleted. If unfinished when the 20-hour window expires, they count against your weekly Leaderboard completion rate.
           </span>
         </div>
 

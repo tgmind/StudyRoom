@@ -85,7 +85,7 @@ export function BreakGoalUpdateModal({
     >
       <div className="space-y-5">
         <p className="text-xs text-zinc-400">
-          What did you accomplish during this session? Checked tasks will be recorded in your rolling 24-hour goal set.
+          What did you accomplish during this session? Checked tasks will be recorded in your rolling 20-hour goal set.
         </p>
 
         {/* Saved Session Stats Banner */}
@@ -99,7 +99,7 @@ export function BreakGoalUpdateModal({
           </span>
         </div>
 
-        {/* 24-Hour Goal Checklist */}
+        {/* 20-Hour Goal Checklist */}
         <div className="space-y-2.5">
           <div className="flex items-center justify-between gap-2">
             <label className="block text-sm sm:text-base font-extrabold text-zinc-100 tracking-tight">
@@ -114,7 +114,7 @@ export function BreakGoalUpdateModal({
 
           {tasks.length === 0 ? (
             <div className="p-4 bg-zinc-900/40 border border-zinc-800 rounded-xl text-center text-xs text-zinc-500">
-              No active 24-hour goals found. You can set goals anytime from the Goals tab.
+              No active 20-hour goals found. You can set goals anytime from the Goals tab.
             </div>
           ) : (
             <div className="space-y-2 max-h-56 overflow-y-auto pr-1">

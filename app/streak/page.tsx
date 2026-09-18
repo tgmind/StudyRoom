@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserStreak } from "@/hooks/useUserStreak";
-import { calculateMemberElapsedStudySeconds } from "@/lib/time/format";
+import { calculateMemberElapsedStudySeconds, calculateMemberLiveWeeklyStudySeconds } from "@/lib/time/format";
 import { getServerNow } from "@/lib/time/clockSync";
 import { TopHeader } from "@/components/navigation/TopHeader";
 import { BottomNav } from "@/components/navigation/BottomNav";
@@ -20,7 +20,8 @@ export default function StreakPage() {
   // Eliminates 1-second re-renders and decouples heavy session controller logic from the streak view
   const [liveActiveMinutes, setLiveActiveMinutes] = useState(() => {
     if (profile?.current_status === "studying") {
-      return Math.floor(calculateMemberElapsedStudySeconds(profile, getServerNow()) / 60);
+      const liveSeconds = Math.max(0, calculateMemberLiveWeeklyStudySeconds(profile, getServerNow()) - (profile?.weekly_study_seconds ?? 0));
+      return Math.floor(liveSeconds / 60);
     }
     return 0;
   });
@@ -32,7 +33,8 @@ export default function StreakPage() {
     }
 
     const checkMinutes = () => {
-      const mins = Math.floor(calculateMemberElapsedStudySeconds(profile, getServerNow()) / 60);
+      const liveSeconds = Math.max(0, calculateMemberLiveWeeklyStudySeconds(profile, getServerNow()) - (profile?.weekly_study_seconds ?? 0));
+      const mins = Math.floor(liveSeconds / 60);
       setLiveActiveMinutes((prev) => (prev !== mins ? mins : prev));
     };
 

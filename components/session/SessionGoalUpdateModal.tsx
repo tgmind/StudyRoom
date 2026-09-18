@@ -114,7 +114,7 @@ export function SessionGoalUpdateModal({
             ? "To ensure fair rankings and prevent unattended timers, study sessions are capped at 3 hours. Your study time is safe! Mark any goals you achieved."
             : reason === "break_expired"
             ? "You stayed on break for more than 1 hour. Your study time before the break has been credited. Mark what you accomplished."
-            : "What did you accomplish during this study session? Checked tasks will be recorded in your rolling 24-hour goal set and credited to your session log."}
+            : "What did you accomplish during this study session? Checked tasks will be recorded in your rolling 20-hour goal set and credited to your session log."}
         </p>
 
         {/* Saved Session Stats Banner */}
@@ -133,7 +133,7 @@ export function SessionGoalUpdateModal({
           </span>
         </div>
 
-        {/* 24-Hour Goal Checklist */}
+        {/* 20-Hour Goal Checklist */}
         <div className="space-y-2.5">
           <div className="flex items-center justify-between flex-wrap gap-1.5">
             <label className="block text-sm sm:text-base font-extrabold text-zinc-100 tracking-tight">
@@ -207,7 +207,7 @@ export function SessionGoalUpdateModal({
             </div>
           ) : (
             <div className="p-4 bg-zinc-900/40 border border-zinc-800 rounded-xl text-center text-xs text-zinc-500">
-              No active 24-hour goals found. You can set new goals anytime from the Goals tab.
+              No active 20-hour goals found. You can set new goals anytime from the Goals tab.
             </div>
           )}
         </div>

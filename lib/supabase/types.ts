@@ -53,6 +53,8 @@ export interface StudySession {
   duration_minutes: number;
   break_minutes?: number;
   completed_tasks?: CompletedSessionTask[];
+  split_part?: number | null;
+  sibling_session_id?: string | null;
 }
 
 export type BlockType = "study" | "break";

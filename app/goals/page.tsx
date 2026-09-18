@@ -52,10 +52,10 @@ export default function GoalsPage() {
             </div>
             <div className="min-w-0">
               <h1 className="text-sm sm:text-base font-black text-zinc-100 tracking-tight leading-snug">
-                Rolling 24-Hour Goals
+                Rolling 20-Hour Goals
               </h1>
               <p className="text-[10px] sm:text-xs text-zinc-400 leading-snug">
-                Continuous 24h commitment (Append-only)
+                Continuous 20h commitment (Append-only)
               </p>
             </div>
           </div>

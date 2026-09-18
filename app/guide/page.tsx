@@ -31,7 +31,7 @@ function GuideContent() {
               </h1>
             </div>
             <p className="text-xs text-violet-200/90 leading-relaxed">
-              Explore how StudyRoom ensures accountability through timestamp-based timers, rolling 24-hour goals, and consistent leaderboard scoring.
+              Explore how StudyRoom ensures accountability through timestamp-based timers, rolling 20-hour goals, and consistent leaderboard scoring.
             </p>
             <div className="pt-1">
               <Button

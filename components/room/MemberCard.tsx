@@ -7,6 +7,7 @@ import { isDeepNight, isEarlyBird } from "@/lib/time/indicators";
 import {
   formatDurationSeconds,
   calculateMemberElapsedStudySeconds,
+  calculateMemberLiveWeeklyStudySeconds,
   formatSecondsToHuman,
   calculateMemberLiveBreakSeconds,
   calculateMemberOfflineHours,
@@ -54,15 +55,13 @@ export const MemberCard = memo(function MemberCard({
   // 2. Live Break Timer (ticking by the second when on break, 0 otherwise)
   const liveBreakSeconds = isBreak ? calculateMemberLiveBreakSeconds(member, currentTimestamp) : 0;
 
-  // 3. Total Realtime Live Weekly Study Duration (past completed sessions of the week + live active session)
+  // 3. Total Realtime Live Weekly Study Duration (past completed sessions of the week + live active session, clamped to ISO week)
   const isCurrentSessionActive = isStudying || isBreak;
-  const totalWeeklyStudySeconds =
-    (member.weekly_study_seconds ?? 0) +
-    (isCurrentSessionActive
-      ? elapsedSeconds
-      : isBreakExpired
-      ? (member.active_study_seconds_snapshot ?? 0)
-      : 0);
+  const totalWeeklyStudySeconds = calculateMemberLiveWeeklyStudySeconds(
+    member,
+    currentTimestamp,
+    isCurrentUser && customElapsedSeconds !== undefined ? customElapsedSeconds : undefined
+  );
 
   // 4. Total Sessions Count (completed sessions + active in-progress session)
   const sessionsCount = (member.total_sessions_count ?? 0) + (isCurrentSessionActive || isBreakExpired ? 1 : 0);

@@ -127,7 +127,7 @@ CREATE TABLE IF NOT EXISTS public.daily_goals (
   user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
   tasks JSONB NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '24 hours'),
+  expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '20 hours'),
   is_locked BOOLEAN NOT NULL DEFAULT TRUE,
   archived_at TIMESTAMPTZ
 );
@@ -153,11 +153,15 @@ CREATE TABLE IF NOT EXISTS public.study_sessions (
 -- Idempotent column migrations for existing databases
 ALTER TABLE public.study_sessions ADD COLUMN IF NOT EXISTS completed_tasks JSONB DEFAULT '[]'::JSONB;
 ALTER TABLE public.study_sessions ADD COLUMN IF NOT EXISTS break_minutes INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE public.study_sessions ADD COLUMN IF NOT EXISTS split_part INTEGER DEFAULT NULL;
+ALTER TABLE public.study_sessions ADD COLUMN IF NOT EXISTS sibling_session_id UUID REFERENCES public.study_sessions(id) ON DELETE SET NULL;
 
 -- Indexes for Study Sessions
 CREATE INDEX IF NOT EXISTS idx_study_sessions_user_id ON public.study_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_study_sessions_start_time ON public.study_sessions(start_time);
 CREATE INDEX IF NOT EXISTS idx_study_sessions_end_time ON public.study_sessions(end_time);
+CREATE INDEX IF NOT EXISTS idx_study_sessions_sibling_id ON public.study_sessions(sibling_session_id);
+CREATE INDEX IF NOT EXISTS idx_study_sessions_split_part ON public.study_sessions(split_part);
 
 -- ------------------------------------------------------------
 -- 5. SESSION BLOCKS TABLE (Active Study vs Break Tracking)
@@ -775,10 +779,14 @@ BEGIN
 
     v_duration_minutes := v_dur_1 + v_dur_2;
 
-    -- Insert Part 1 (Day 1)
+    -- Insert Part 1 (Day 1) with completed_tasks and split_part = 1 (BUG-04)
     IF v_dur_1 > 0 OR v_dur_2 = 0 THEN
-      INSERT INTO public.study_sessions (user_id, start_time, end_time, duration_minutes, break_minutes, completed_tasks)
-      VALUES (v_user_id, v_session_start, v_midnight, v_dur_1, 0, CASE WHEN v_dur_2 = 0 THEN v_session_completed_tasks ELSE '[]'::JSONB END)
+      INSERT INTO public.study_sessions (
+        user_id, start_time, end_time, duration_minutes, break_minutes, completed_tasks, split_part
+      )
+      VALUES (
+        v_user_id, v_session_start, v_midnight, v_dur_1, 0, v_session_completed_tasks, 1
+      )
       RETURNING id INTO v_session_id_1;
 
       UPDATE public.session_blocks
@@ -786,11 +794,22 @@ BEGIN
       WHERE user_id = v_user_id AND session_id IS NULL AND end_time <= v_midnight;
     END IF;
 
-    -- Insert Part 2 (Day 2)
+    -- Insert Part 2 (Day 2) with split_part = 2, completed_tasks, and sibling_session_id linked to Part 1 (BUG-04, BUG-06)
     IF v_dur_2 > 0 THEN
-      INSERT INTO public.study_sessions (user_id, start_time, end_time, duration_minutes, break_minutes, completed_tasks)
-      VALUES (v_user_id, v_midnight, v_session_actual_end, v_dur_2, v_break_minutes, v_session_completed_tasks)
+      INSERT INTO public.study_sessions (
+        user_id, start_time, end_time, duration_minutes, break_minutes, completed_tasks, split_part, sibling_session_id
+      )
+      VALUES (
+        v_user_id, v_midnight, v_session_actual_end, v_dur_2, v_break_minutes, v_session_completed_tasks, 2, v_session_id_1
+      )
       RETURNING id INTO v_session_id_2;
+
+      -- Back-link Part 1 to Part 2
+      IF v_session_id_1 IS NOT NULL THEN
+        UPDATE public.study_sessions
+        SET sibling_session_id = v_session_id_2
+        WHERE id = v_session_id_1;
+      END IF;
 
       UPDATE public.session_blocks
       SET session_id = v_session_id_2
@@ -929,7 +948,7 @@ DECLARE
   v_existing_tasks JSONB;
   v_existing_expires TIMESTAMPTZ;
   v_now TIMESTAMPTZ := NOW();
-  v_expires TIMESTAMPTZ := v_now + INTERVAL '24 hours';
+  v_expires TIMESTAMPTZ := v_now + INTERVAL '20 hours';
   v_new_id UUID;
 BEGIN
   v_user_id := auth.uid();
@@ -953,7 +972,7 @@ BEGIN
       'already_exists', true,
       'goal_id', v_existing_id,
       'expires_at', v_existing_expires,
-      'message', 'Active 24-hour goal set already exists for this user'
+      'message', 'Active 20-hour goal set already exists for this user'
     );
   END IF;
 
@@ -975,7 +994,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Append new goal tasks to active 24-hour window (STRICTLY NO DELETION, DEDUPLICATED BY TASK ID)
+-- Append new goal tasks to active 20-hour window (STRICTLY NO DELETION, DEDUPLICATED BY TASK ID)
 CREATE OR REPLACE FUNCTION public.rpc_add_goal_tasks(p_new_tasks JSONB)
 RETURNS JSONB AS $$
 DECLARE
@@ -1006,7 +1025,7 @@ BEGIN
   FOR UPDATE;
 
   IF v_active_goal_id IS NULL THEN
-    RAISE EXCEPTION 'No active 24-hour goal set found to add tasks to';
+    RAISE EXCEPTION 'No active 20-hour goal set found to add tasks to';
   END IF;
 
   v_current_tasks := COALESCE(v_current_tasks, '[]'::JSONB);
@@ -1160,6 +1179,16 @@ BEGIN
     FROM public.study_sessions s
     WHERE s.start_time >= v_week_start AND s.start_time < v_week_end
     GROUP BY s.user_id
+    UNION ALL
+    -- Account for unclosed blocks from past-week evaluations (BUG-03)
+    SELECT b.user_id, COALESCE(SUM(EXTRACT(EPOCH FROM (LEAST(COALESCE(b.end_time, NOW()), v_week_end) - b.start_time))), 0)::INTEGER / 60 AS study_mins
+    FROM public.session_blocks b
+    WHERE b.session_id IS NULL
+      AND b.block_type = 'study'
+      AND b.start_time >= v_week_start
+      AND b.start_time < v_week_end
+      AND NOW() >= v_week_end
+    GROUP BY b.user_id
   ),
   live_study AS (
     -- Compute in-progress active study minutes for users currently studying or on valid break
@@ -1186,17 +1215,32 @@ BEGIN
                   AND b.start_time < v_week_end
                   AND COALESCE(b.end_time, NOW()) > v_week_start
               ),
-              -- Method B: Fallback to user status fields if blocks not present
+              -- Method B: Fallback to user status fields bounded strictly by v_week_start (BUG-02)
               CASE 
                 WHEN NOW() >= v_week_start AND NOW() < v_week_end THEN
-                  CASE
-                    WHEN u.current_status = 'studying' THEN
-                      COALESCE(u.active_study_seconds_snapshot, 0) + 
-                      EXTRACT(EPOCH FROM (NOW() - COALESCE(u.last_resumed_at, u.session_start_time, NOW())))
-                    WHEN u.current_status = 'break' AND (NOW() - u.break_started_at) < INTERVAL '1 hour' THEN
-                      COALESCE(u.active_study_seconds_snapshot, 0)
-                    ELSE 0
-                  END
+                  LEAST(
+                    GREATEST(
+                      0,
+                      CASE
+                        WHEN u.current_status = 'studying' THEN
+                          CASE
+                            WHEN COALESCE(u.last_resumed_at, u.session_start_time, NOW()) >= v_week_start THEN
+                              COALESCE(u.active_study_seconds_snapshot, 0) + 
+                              EXTRACT(EPOCH FROM (NOW() - COALESCE(u.last_resumed_at, u.session_start_time, NOW())))
+                            ELSE
+                              EXTRACT(EPOCH FROM (NOW() - v_week_start))
+                          END
+                        WHEN u.current_status = 'break' AND (NOW() - u.break_started_at) < INTERVAL '1 hour' THEN
+                          CASE
+                            WHEN u.break_started_at >= v_week_start THEN
+                              COALESCE(u.active_study_seconds_snapshot, 0)
+                            ELSE 0
+                          END
+                        ELSE 0
+                      END
+                    ),
+                    EXTRACT(EPOCH FROM (NOW() - v_week_start))
+                  )
                 ELSE 0
               END
             )
@@ -1216,29 +1260,55 @@ BEGIN
       u.id AS user_id,
       (COALESCE(cs.study_mins, 0) + COALESCE(ls.live_mins, 0))::INTEGER AS study_mins
     FROM public.users u
-    LEFT JOIN completed_study cs ON u.id = cs.user_id
+    LEFT JOIN (
+      SELECT user_id, SUM(study_mins)::INTEGER AS study_mins
+      FROM completed_study
+      GROUP BY user_id
+    ) cs ON u.id = cs.user_id
     LEFT JOIN live_study ls ON u.id = ls.user_id
   ),
-  weekly_goals AS (
-    SELECT g.user_id,
-           COALESCE(
-             SUM( (SELECT COUNT(*) FROM jsonb_array_elements(g.tasks) t WHERE (t->>'completed')::boolean = true) ),
-             0
-           )::INTEGER AS completed_tasks_count,
-           COALESCE(
-             SUM(jsonb_array_length(g.tasks)),
-             0
-           )::INTEGER AS total_tasks_count,
-           COALESCE(
-             ROUND(
-               (SUM( (SELECT COUNT(*) FROM jsonb_array_elements(g.tasks) t WHERE (t->>'completed')::boolean = true) )::NUMERIC /
-                NULLIF(SUM(jsonb_array_length(g.tasks)), 0)::NUMERIC) * 100, 1
-             ), 0
-           ) AS completion_pct
+  completed_tasks_per_user AS (
+    SELECT user_id, COUNT(DISTINCT task_id)::INTEGER AS completed_tasks_count
+    FROM (
+      -- Tasks marked completed in daily_goals created in this week (BUG-05)
+      SELECT g.user_id, t->>'id' AS task_id
+      FROM public.daily_goals g,
+           jsonb_array_elements(COALESCE(g.tasks, '[]'::JSONB)) t
+      WHERE g.created_at >= v_week_start AND g.created_at < v_week_end
+        AND (t->>'completed')::boolean = true
+        AND t->>'id' IS NOT NULL
+      UNION
+      -- Tasks recorded in study_sessions belonging to this week (BUG-07)
+      -- Excludes Part 2 of a Sunday->Monday midnight split to prevent cross-week double attribution
+      SELECT s.user_id, t->>'id' AS task_id
+      FROM public.study_sessions s,
+           jsonb_array_elements(COALESCE(s.completed_tasks, '[]'::JSONB)) t
+      WHERE s.start_time >= v_week_start AND s.start_time < v_week_end
+        AND (s.split_part IS NULL OR s.split_part != 2 OR s.start_time > v_week_start)
+        AND t->>'id' IS NOT NULL
+    ) combined_tasks
+    GROUP BY user_id
+  ),
+  total_tasks_per_user AS (
+    SELECT g.user_id, COALESCE(SUM(jsonb_array_length(g.tasks)), 0)::INTEGER AS total_tasks_count
     FROM public.daily_goals g
-    WHERE (g.created_at >= v_week_start AND g.created_at < v_week_end)
-       OR (g.expires_at > v_week_start AND g.created_at < v_week_start)
+    WHERE g.created_at >= v_week_start AND g.created_at < v_week_end
     GROUP BY g.user_id
+  ),
+  weekly_goals AS (
+    SELECT
+      u.id AS user_id,
+      COALESCE(ct.completed_tasks_count, 0) AS completed_tasks_count,
+      GREATEST(COALESCE(ct.completed_tasks_count, 0), COALESCE(tt.total_tasks_count, 0)) AS total_tasks_count,
+      COALESCE(
+        ROUND(
+          (COALESCE(ct.completed_tasks_count, 0)::NUMERIC /
+           NULLIF(GREATEST(COALESCE(ct.completed_tasks_count, 0), COALESCE(tt.total_tasks_count, 0)), 0)::NUMERIC) * 100, 1
+        ), 0
+      ) AS completion_pct
+    FROM public.users u
+    LEFT JOIN completed_tasks_per_user ct ON u.id = ct.user_id
+    LEFT JOIN total_tasks_per_user tt ON u.id = tt.user_id
   ),
   qualifying_days AS (
     SELECT
@@ -1918,6 +1988,9 @@ BEGIN
     RAISE EXCEPTION 'Not authenticated';
   END IF;
 
+  -- Strictly serialize concurrent requests for the same user via transaction advisory lock
+  PERFORM pg_advisory_xact_lock(hashtext(v_user_id::text));
+
   -- 1. If tasks were completed, update daily_goals and build completed array
   IF p_completed_task_ids IS NOT NULL AND array_length(p_completed_task_ids, 1) > 0 THEN
     SELECT id, tasks INTO v_active_goal_id, v_tasks
@@ -1925,7 +1998,7 @@ BEGIN
     WHERE user_id = v_user_id
       AND (
         expires_at > v_now
-        OR expires_at >= (v_now - INTERVAL '24 hours')
+        OR expires_at >= (v_now - INTERVAL '20 hours')
       )
     ORDER BY created_at DESC
     LIMIT 1
@@ -1959,11 +2032,31 @@ BEGIN
       WHERE id = v_active_goal_id;
     END IF;
 
-    -- 2. Link completed tasks to the target study_session
+    -- 2. Link completed tasks to the target study_session and its split sibling (idempotent deduplication, BUG-06)
     IF p_session_id IS NOT NULL AND jsonb_array_length(v_session_completed_tasks) > 0 THEN
       UPDATE public.study_sessions
-      SET completed_tasks = COALESCE(completed_tasks, '[]'::JSONB) || v_session_completed_tasks
-      WHERE id = p_session_id AND user_id = v_user_id;
+      SET completed_tasks = (
+        SELECT COALESCE(jsonb_agg(elem), '[]'::JSONB)
+        FROM (
+          SELECT DISTINCT ON (t->>'id') t AS elem
+          FROM (
+            SELECT jsonb_array_elements(COALESCE(completed_tasks, '[]'::JSONB)) AS t
+            UNION ALL
+            SELECT jsonb_array_elements(v_session_completed_tasks) AS t
+          ) combined
+          WHERE t->>'id' IS NOT NULL
+        ) deduplicated
+      )
+      WHERE user_id = v_user_id
+        AND (
+          id = p_session_id
+          OR id = (
+            SELECT sibling_session_id
+            FROM public.study_sessions
+            WHERE id = p_session_id AND user_id = v_user_id
+          )
+          OR sibling_session_id = p_session_id
+        );
     END IF;
   END IF;
 
@@ -2008,6 +2101,7 @@ RETURNS JSONB AS $$
 DECLARE
   v_user_id UUID := auth.uid();
   v_session_id UUID;
+  v_sibling_id UUID;
   v_active_goal_id UUID;
   v_tasks JSONB;
   v_updated_tasks JSONB;
@@ -2022,6 +2116,9 @@ BEGIN
     RAISE EXCEPTION 'Not authenticated';
   END IF;
 
+  -- Strictly serialize concurrent requests for the same user via transaction advisory lock
+  PERFORM pg_advisory_xact_lock(hashtext(v_user_id::text));
+
   -- Update daily goals if tasks were selected
   IF p_completed_task_ids IS NOT NULL AND array_length(p_completed_task_ids, 1) > 0 THEN
     SELECT id, tasks INTO v_active_goal_id, v_tasks
@@ -2029,7 +2126,7 @@ BEGIN
     WHERE user_id = v_user_id
       AND (
         expires_at > v_now
-        OR expires_at >= (v_now - INTERVAL '24 hours')
+        OR expires_at >= (v_now - INTERVAL '20 hours')
       )
     ORDER BY created_at DESC
     LIMIT 1
@@ -2063,8 +2160,8 @@ BEGIN
       WHERE id = v_active_goal_id;
     END IF;
 
-    -- Attach completed tasks to the latest study session
-    SELECT id INTO v_session_id
+    -- Attach completed tasks to the latest study session and its split sibling if applicable (BUG-06)
+    SELECT id, sibling_session_id INTO v_session_id, v_sibling_id
     FROM public.study_sessions
     WHERE user_id = v_user_id
     ORDER BY end_time DESC
@@ -2072,8 +2169,20 @@ BEGIN
 
     IF v_session_id IS NOT NULL AND jsonb_array_length(v_session_completed_tasks) > 0 THEN
       UPDATE public.study_sessions
-      SET completed_tasks = COALESCE(completed_tasks, '[]'::JSONB) || v_session_completed_tasks
-      WHERE id = v_session_id;
+      SET completed_tasks = (
+        SELECT COALESCE(jsonb_agg(elem), '[]'::JSONB)
+        FROM (
+          SELECT DISTINCT ON (t->>'id') t AS elem
+          FROM (
+            SELECT jsonb_array_elements(COALESCE(completed_tasks, '[]'::JSONB)) AS t
+            UNION ALL
+            SELECT jsonb_array_elements(v_session_completed_tasks) AS t
+          ) combined
+          WHERE t->>'id' IS NOT NULL
+        ) deduplicated
+      )
+      WHERE user_id = v_user_id
+        AND (id = v_session_id OR (v_sibling_id IS NOT NULL AND id = v_sibling_id));
     END IF;
   END IF;
 

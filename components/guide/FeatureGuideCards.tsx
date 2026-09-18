@@ -26,10 +26,10 @@ export function FeatureGuideCards() {
     {
       stepNumber: "01",
       icon: Target,
-      title: "Set Your 24-Hour Goals",
+      title: "Set Your 20-Hour Goals",
       subtitle: "Add tasks to lock in your daily focus",
       description:
-        "Navigate to the Goals tab and create your 24-hour goal window. Add 1 to 10 actionable tasks. Once created, your window runs for exactly 24 hours. You can append more goals anytime, but goals cannot be deleted to enforce real discipline.",
+        "Navigate to the Goals tab and create your 20-hour goal window. Add 1 to 10 actionable tasks. Once created, your window runs for exactly 20 hours. You can append more goals anytime, but goals cannot be deleted to enforce real discipline.",
       badge: "Step 1",
       accent: "violet",
       badgeColor: "bg-violet-500/10 text-violet-300 border-violet-500/30",
@@ -65,7 +65,7 @@ export function FeatureGuideCards() {
       title: "Stop & Check Off Completed Goals",
       subtitle: "The Atomic Stop Hook records your wins",
       description:
-        "When finished, tap 'Stop'. A checklist modal will ask which 24-hour goals you accomplished during this session. Check them off, and your session duration, completed tasks, and score points will be permanently saved to your History and Leaderboard.",
+        "When finished, tap 'Stop'. A checklist modal will ask which 20-hour goals you accomplished during this session. Check them off, and your session duration, completed tasks, and score points will be permanently saved to your History and Leaderboard.",
       badge: "Step 4",
       accent: "violet",
       badgeColor: "bg-violet-500/10 text-violet-300 border-violet-500/30",
@@ -86,10 +86,10 @@ export function FeatureGuideCards() {
     },
     {
       icon: Target,
-      title: "Rolling 24-Hour Goal Windows",
-      subtitle: "Personal 24h accountability cycles",
+      title: "Rolling 20-Hour Goal Windows",
+      subtitle: "Personal 20h accountability cycles",
       description:
-        "Goal windows run for exactly 24 hours from creation rather than resetting at midnight. You can append new goals at any time, but tasks cannot be deleted—uncompleted goals count towards your weekly completion rate.",
+        "Goal windows run for exactly 20 hours from creation rather than resetting at midnight. You can append new goals at any time, but tasks cannot be deleted—uncompleted goals count towards your weekly completion rate.",
       accent: "border-fuchsia-500/25 bg-zinc-900/80 text-fuchsia-300",
       pill: "High Accountability",
       pillBg: "bg-fuchsia-500/10 text-fuchsia-300 border-fuchsia-500/30",
@@ -306,7 +306,7 @@ export function FeatureGuideCards() {
             <div className="space-y-1.5 pt-1">
               <div className="flex justify-between items-center text-[10px] font-mono font-bold">
                 <span className="text-violet-400">50% Study Hours</span>
-                <span className="text-fuchsia-400">30% 24h Goals</span>
+                <span className="text-fuchsia-400">30% 20h Goals</span>
                 <span className="text-amber-400">20% Streak</span>
               </div>
               <div className="w-full h-3 bg-zinc-950 rounded-full border border-zinc-800 flex overflow-hidden p-0.5 gap-1">
@@ -357,7 +357,7 @@ export function FeatureGuideCards() {
             </div>
           </div>
 
-          {/* Component 2: 30% 24h Goal Completion Rate */}
+          {/* Component 2: 30% 20h Goal Completion Rate */}
           <div className="p-4 sm:p-5 rounded-2xl bg-zinc-900/80 border border-fuchsia-500/30 space-y-3 shadow-md backdrop-blur-md">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center space-x-2.5 min-w-0">
@@ -366,7 +366,7 @@ export function FeatureGuideCards() {
                 </div>
                 <div className="min-w-0">
                   <h3 className="text-xs sm:text-sm font-extrabold text-zinc-100">
-                    24-Hour Goal Completion
+                    20-Hour Goal Completion
                   </h3>
                   <p className="text-[10px] sm:text-[11px] text-zinc-400">
                     Max 30.0 points • Task execution rate
@@ -380,7 +380,7 @@ export function FeatureGuideCards() {
             </div>
 
             <p className="text-xs text-zinc-300/90 leading-relaxed">
-              Percentage of tasks completed across all 24-hour goal windows created during the week.
+              Percentage of tasks completed across all 20-hour goal windows created during the week.
             </p>
 
             {/* Formula Block */}
