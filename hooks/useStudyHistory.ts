@@ -8,6 +8,7 @@ import { getServerNow } from "@/lib/time/clockSync";
 import {
   with10sTimeout,
   getOfflineCompletedSessions,
+  removeOfflineCompletedSession,
   getCachedSessions,
   saveCachedSessions,
 } from "@/lib/offline/sessionQueue";
@@ -33,6 +34,95 @@ export interface LapsedGoalWindow {
   lapsedTasks: GoalTask[];
   totalTasksCount: number;
   completedTasksCount: number;
+}
+
+/**
+ * Deduplicates study sessions and filters out zero-minute ghost entries.
+ * - Drops 0-minute sessions with 0 break and no completed tasks.
+ * - Consolidates duplicate records created by network retries or stop button spam
+ *   (sessions starting within 60 seconds for the same user).
+ * - Prefers canonical server UUIDs over offline IDs.
+ * - Preserves the maximum duration and merges any completed tasks without duplicates.
+ */
+export function deduplicateStudySessions(sessions: StudySession[]): StudySession[] {
+  if (!Array.isArray(sessions) || sessions.length === 0) return [];
+
+  // 1. Filter out 0-minute ghost sessions with no tasks and no break
+  const nonGhosts = sessions.filter((s) => {
+    const dur = s.duration_minutes ?? 0;
+    const brk = s.break_minutes ?? 0;
+    const hasTasks = Array.isArray(s.completed_tasks) && s.completed_tasks.length > 0;
+    return dur > 0 || brk > 0 || hasTasks;
+  });
+
+  // 2. Sort by start_time descending
+  const sorted = [...nonGhosts].sort((a, b) => {
+    const tA = new Date(a.start_time).getTime();
+    const tB = new Date(b.start_time).getTime();
+    return tB - tA;
+  });
+
+  const deduped: StudySession[] = [];
+
+  for (const session of sorted) {
+    const sessionStartMs = new Date(session.start_time).getTime();
+    if (isNaN(sessionStartMs)) continue;
+
+    // Find any existing duplicate within 60 seconds for the same user
+    const existingIndex = deduped.findIndex((existing) => {
+      if (existing.id === session.id) return true;
+      if (existing.user_id && session.user_id && existing.user_id !== session.user_id) {
+        return false;
+      }
+      const existingStartMs = new Date(existing.start_time).getTime();
+      return Math.abs(existingStartMs - sessionStartMs) <= 60000;
+    });
+
+    if (existingIndex === -1) {
+      deduped.push({ ...session });
+    } else {
+      const existing = deduped[existingIndex];
+      const isExistingOffline = typeof existing.id === "string" && existing.id.startsWith("offline_");
+      const isSessionOffline = typeof session.id === "string" && session.id.startsWith("offline_");
+
+      // Prefer server UUID over temporary offline ID
+      if (isExistingOffline && !isSessionOffline) {
+        existing.id = session.id;
+      }
+
+      // Keep maximum duration
+      existing.duration_minutes = Math.max(
+        existing.duration_minutes ?? 0,
+        session.duration_minutes ?? 0
+      );
+
+      // Keep maximum break minutes
+      existing.break_minutes = Math.max(
+        existing.break_minutes ?? 0,
+        session.break_minutes ?? 0
+      );
+
+      // Keep later end time
+      const existingEndMs = new Date(existing.end_time).getTime();
+      const sessionEndMs = new Date(session.end_time).getTime();
+      if (!isNaN(sessionEndMs) && (isNaN(existingEndMs) || sessionEndMs > existingEndMs)) {
+        existing.end_time = session.end_time;
+      }
+
+      // Merge completed tasks without duplicates
+      const seenTaskIds = new Set((existing.completed_tasks || []).map((t) => t.id));
+      const mergedTasks = [...(existing.completed_tasks || [])];
+      for (const t of session.completed_tasks || []) {
+        if (t && t.id && !seenTaskIds.has(t.id)) {
+          seenTaskIds.add(t.id);
+          mergedTasks.push(t);
+        }
+      }
+      existing.completed_tasks = mergedTasks;
+    }
+  }
+
+  return deduped;
 }
 
 // Module-level SWR memory cache to make History tab switching instantaneous (0ms)
@@ -144,10 +234,34 @@ export function useStudyHistory(userId?: string) {
         console.warn("Could not fetch remote study history (using local/offline data):", networkErr);
       }
 
-      // Merge offline-completed sessions
-      const existingIds = new Set(fetchedCurrent.map((s) => s.id));
-      const uncommittedOffline = offlineCompleted.filter((s) => !existingIds.has(s.id));
-      const combinedCurrent = [...uncommittedOffline, ...fetchedCurrent];
+      // Self-heal offline sessions: if already recorded on server, remove from localStorage
+      const uncommittedOffline: StudySession[] = [];
+      for (const off of offlineCompleted) {
+        const offStartMs = new Date(off.start_time).getTime();
+        const matchingServerSession = fetchedCurrent.find((srv) => {
+          if (srv.id === off.id) return true;
+          const srvStartMs = new Date(srv.start_time).getTime();
+          return !isNaN(srvStartMs) && !isNaN(offStartMs) && Math.abs(srvStartMs - offStartMs) <= 120000;
+        });
+
+        if (matchingServerSession) {
+          // It was already committed to the server! Clean up local offline copy
+          removeOfflineCompletedSession(off.id);
+        } else {
+          // Filter out stale (> 24h) or 0-minute ghost entries
+          const isStale = isNaN(offStartMs) || (serverNow.getTime() - offStartMs > 24 * 3600 * 1000);
+          const isGhost = (off.duration_minutes ?? 0) === 0 && (off.break_minutes ?? 0) === 0 && (!off.completed_tasks || off.completed_tasks.length === 0);
+          if (isStale || isGhost) {
+            removeOfflineCompletedSession(off.id);
+          } else {
+            uncommittedOffline.push(off);
+          }
+        }
+      }
+
+      // Merge and apply canonical deduplication (merges duplicate clicks, removes ghosts)
+      const rawCombined = [...uncommittedOffline, ...fetchedCurrent];
+      const combinedCurrent = deduplicateStudySessions(rawCombined);
 
       setCurrentWeekSessions(combinedCurrent);
       cachedHistoryUserId = userId;
@@ -224,7 +338,7 @@ export function useStudyHistory(userId?: string) {
     if (userId && cachedCurrentWeekSessions.length === 0) {
       const disk = getCachedSessions<StudySession[]>();
       if (disk && Array.isArray(disk) && disk.length > 0) {
-        setCurrentWeekSessions(disk);
+        setCurrentWeekSessions(deduplicateStudySessions(disk));
       }
     }
 
@@ -267,7 +381,7 @@ export function useStudyHistory(userId?: string) {
       if (pastErr) {
         const { data: rpcData, error: rpcErr } = await (supabase as unknown as RpcCaller).rpc("rpc_get_study_history");
         if (rpcErr) throw pastErr;
-        const allSessions = (rpcData || []) as StudySession[];
+        const allSessions = deduplicateStudySessions((rpcData || []) as StudySession[]);
         const currentMs = new Date(currentWeekStartIso).getTime();
         const past = allSessions.filter((s) => new Date(s.start_time).getTime() < currentMs);
         setPastSessions(past);
@@ -279,7 +393,7 @@ export function useStudyHistory(userId?: string) {
         return true;
       }
 
-      const loadedPast = (data || []) as StudySession[];
+      const loadedPast = deduplicateStudySessions((data || []) as StudySession[]);
       setPastSessions(loadedPast);
       setIsPastLoaded(true);
       setPastSummary({

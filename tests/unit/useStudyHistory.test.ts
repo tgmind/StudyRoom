@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor, act } from "@testing-library/react";
-import { useStudyHistory } from "@/hooks/useStudyHistory";
+import { useStudyHistory, deduplicateStudySessions } from "@/hooks/useStudyHistory";
 import { StudySession } from "@/lib/supabase/types";
 
 const mockFrom = vi.fn();
@@ -270,5 +270,115 @@ describe("useStudyHistory Hook", () => {
     expect(allLapsedWindows[0].lapsedTasks).toHaveLength(1);
     expect(allLapsedWindows[0].lapsedTasks[0].id).toBe("t1");
     expect(allLapsedWindows[0].completedTasksCount).toBe(1);
+  });
+
+  describe("deduplicateStudySessions Resilience", () => {
+    it("consolidates duplicate session attempts starting at the same time into a single max-duration session", () => {
+      const startTime = "2026-09-18T11:39:00.000Z";
+      const buggedSessions: StudySession[] = [
+        {
+          id: "offline_1740001",
+          user_id: "user-123",
+          start_time: startTime,
+          end_time: "2026-09-18T11:45:00.000Z",
+          duration_minutes: 6,
+          break_minutes: 0,
+          completed_tasks: [{ id: "t1", task: "Task 1" }],
+        },
+        {
+          id: "offline_1740002",
+          user_id: "user-123",
+          start_time: startTime,
+          end_time: "2026-09-18T11:42:00.000Z",
+          duration_minutes: 3,
+          break_minutes: 0,
+          completed_tasks: [{ id: "t2", task: "Task 2" }],
+        },
+        {
+          id: "offline_1740003",
+          user_id: "user-123",
+          start_time: startTime,
+          end_time: "2026-09-18T11:40:00.000Z",
+          duration_minutes: 1,
+          break_minutes: 0,
+          completed_tasks: [],
+        },
+        {
+          id: "offline_1740004",
+          user_id: "user-123",
+          start_time: startTime,
+          end_time: "2026-09-18T11:39:00.000Z",
+          duration_minutes: 0,
+          break_minutes: 0,
+          completed_tasks: [],
+        },
+      ];
+
+      const deduped = deduplicateStudySessions(buggedSessions);
+      expect(deduped).toHaveLength(1);
+      expect(deduped[0].duration_minutes).toBe(6);
+      expect(deduped[0].completed_tasks).toHaveLength(2);
+      expect(deduped[0].completed_tasks?.map((t) => t.id)).toEqual(["t1", "t2"]);
+    });
+
+    it("prefers canonical server UUID over temporary offline ID", () => {
+      const startTime = "2026-09-18T11:39:00.000Z";
+      const sessions: StudySession[] = [
+        {
+          id: "offline_1740001",
+          user_id: "user-123",
+          start_time: startTime,
+          end_time: "2026-09-18T11:45:00.000Z",
+          duration_minutes: 6,
+        },
+        {
+          id: "4892c906-8d59-4d64-a3f2-1d5b32f41851",
+          user_id: "user-123",
+          start_time: startTime,
+          end_time: "2026-09-18T11:45:00.000Z",
+          duration_minutes: 6,
+        },
+      ];
+
+      const deduped = deduplicateStudySessions(sessions);
+      expect(deduped).toHaveLength(1);
+      expect(deduped[0].id).toBe("4892c906-8d59-4d64-a3f2-1d5b32f41851");
+    });
+
+    it("drops 0-minute ghost sessions with no tasks and 0 break, but preserves sessions with tasks or breaks", () => {
+      const sessions: StudySession[] = [
+        {
+          id: "ghost-1",
+          user_id: "user-123",
+          start_time: "2026-09-18T10:00:00.000Z",
+          end_time: "2026-09-18T10:00:00.000Z",
+          duration_minutes: 0,
+          break_minutes: 0,
+          completed_tasks: [],
+        },
+        {
+          id: "valid-task-0m",
+          user_id: "user-123",
+          start_time: "2026-09-18T11:00:00.000Z",
+          end_time: "2026-09-18T11:00:30.000Z",
+          duration_minutes: 0,
+          break_minutes: 0,
+          completed_tasks: [{ id: "t1", task: "Quick Goal Check" }],
+        },
+        {
+          id: "valid-break-0m",
+          user_id: "user-123",
+          start_time: "2026-09-18T12:00:00.000Z",
+          end_time: "2026-09-18T12:05:00.000Z",
+          duration_minutes: 0,
+          break_minutes: 5,
+          completed_tasks: [],
+        },
+      ];
+
+      const deduped = deduplicateStudySessions(sessions);
+      expect(deduped).toHaveLength(2);
+      expect(deduped.map((s) => s.id)).toEqual(["valid-break-0m", "valid-task-0m"]);
+    });
   });
 });

@@ -118,7 +118,57 @@ export function getOfflineCompletedSessions(): CompletedOfflineSessionRecord[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.OFFLINE_COMPLETED_SESSIONS);
     if (!raw) return [];
-    return JSON.parse(raw) as CompletedOfflineSessionRecord[];
+    const list = JSON.parse(raw) as CompletedOfflineSessionRecord[];
+    if (!Array.isArray(list)) return [];
+
+    // 1. Filter out 0-minute ghost records (0 min, 0 break, 0 tasks) or corrupt timestamps
+    const valid = list.filter((s) => {
+      if (!s || !s.start_time) return false;
+      const startMs = new Date(s.start_time).getTime();
+      if (isNaN(startMs)) return false;
+      const hasTasks = Array.isArray(s.completed_tasks) && s.completed_tasks.length > 0;
+      const hasBreak = (s.break_minutes ?? 0) > 0;
+      const isZero = (s.duration_minutes ?? 0) === 0;
+      if (isZero && !hasTasks && !hasBreak) return false;
+      return true;
+    });
+
+    // 2. Deduplicate overlapping sessions (start_time within 60s for the same user)
+    const deduped: CompletedOfflineSessionRecord[] = [];
+    for (const item of valid) {
+      const itemStartMs = new Date(item.start_time).getTime();
+      const existing = deduped.find(
+        (x) =>
+          x.user_id === item.user_id &&
+          Math.abs(new Date(x.start_time).getTime() - itemStartMs) <= 60000
+      );
+      if (!existing) {
+        deduped.push({ ...item });
+      } else {
+        // Keep the one with larger duration
+        if ((item.duration_minutes ?? 0) > (existing.duration_minutes ?? 0)) {
+          existing.duration_minutes = item.duration_minutes;
+          existing.end_time = item.end_time;
+          existing.id = item.id;
+        }
+        // Keep larger break minutes
+        existing.break_minutes = Math.max(existing.break_minutes ?? 0, item.break_minutes ?? 0);
+        // Merge completed tasks
+        const existingTaskIds = new Set((existing.completed_tasks || []).map((t) => t.id));
+        for (const t of item.completed_tasks || []) {
+          if (t && t.id && !existingTaskIds.has(t.id)) {
+            existing.completed_tasks = [...(existing.completed_tasks || []), t];
+            existingTaskIds.add(t.id);
+          }
+        }
+      }
+    }
+
+    if (deduped.length !== list.length) {
+      localStorage.setItem(STORAGE_KEYS.OFFLINE_COMPLETED_SESSIONS, JSON.stringify(deduped));
+    }
+
+    return deduped;
   } catch {
     return [];
   }
@@ -126,6 +176,14 @@ export function getOfflineCompletedSessions(): CompletedOfflineSessionRecord[] {
 
 export function saveOfflineCompletedSession(session: CompletedOfflineSessionRecord): void {
   if (typeof window === "undefined") return;
+  // Ignore 0-minute ghost sessions with no tasks and no break
+  if (
+    (session.duration_minutes ?? 0) === 0 &&
+    (session.break_minutes ?? 0) === 0 &&
+    (!session.completed_tasks || session.completed_tasks.length === 0)
+  ) {
+    return;
+  }
   try {
     const list = getOfflineCompletedSessions();
     // Prepend new session
@@ -140,7 +198,10 @@ export function saveOfflineCompletedSession(session: CompletedOfflineSessionReco
 export function removeOfflineCompletedSession(id: string): void {
   if (typeof window === "undefined") return;
   try {
-    const list = getOfflineCompletedSessions();
+    const raw = localStorage.getItem(STORAGE_KEYS.OFFLINE_COMPLETED_SESSIONS);
+    if (!raw) return;
+    const list = JSON.parse(raw) as CompletedOfflineSessionRecord[];
+    if (!Array.isArray(list)) return;
     const remaining = list.filter((s) => s.id !== id);
     localStorage.setItem(STORAGE_KEYS.OFFLINE_COMPLETED_SESSIONS, JSON.stringify(remaining));
   } catch {}
@@ -561,11 +622,24 @@ export async function flushSessionActionQueue(
             const msg = (rpcErr.message || "").toLowerCase();
             // If session already finished or user is offline, treat as complete
             if (msg.includes("no active session") || msg.includes("not currently on break")) {
+              const sessionPayload = item.payload?.session as CompletedOfflineSessionRecord | undefined;
+              if (sessionPayload?.id) {
+                removeOfflineCompletedSession(sessionPayload.id);
+                removeOfflineCompletedSession(sessionPayload.id + "_1");
+                removeOfflineCompletedSession(sessionPayload.id + "_2");
+              }
               removeSessionAction(item.id);
               flushedCount++;
               continue;
             }
             throw rpcErr;
+          }
+
+          const sessionPayload = item.payload?.session as CompletedOfflineSessionRecord | undefined;
+          if (sessionPayload?.id) {
+            removeOfflineCompletedSession(sessionPayload.id);
+            removeOfflineCompletedSession(sessionPayload.id + "_1");
+            removeOfflineCompletedSession(sessionPayload.id + "_2");
           }
 
           removeSessionAction(item.id);
