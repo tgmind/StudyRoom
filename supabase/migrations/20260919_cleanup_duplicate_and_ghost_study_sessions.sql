@@ -32,6 +32,7 @@
 DO $$
 DECLARE
   v_ghost_count INTEGER := 0;
+  rec RECORD;
 BEGIN
   RAISE NOTICE '=== study_sessions ghost purge starting ===';
 
