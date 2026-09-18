@@ -229,4 +229,83 @@ describe("useLiveRoom Hook", () => {
     expect(member.total_sessions_count).toBe(1);
     expect(member.weekly_sessions_count).toBe(1);
   });
+
+  it("enriches members with leaderboard scores and ranks concurrently from rpc_get_leaderboard", async () => {
+    const mockUsers = [
+      {
+        id: "user-alpha",
+        display_name: "Alpha",
+        current_status: "studying",
+        session_start_time: new Date().toISOString(),
+      },
+      {
+        id: "user-beta",
+        display_name: "Beta",
+        current_status: "studying",
+        session_start_time: new Date().toISOString(),
+      },
+    ];
+
+    const mockLeaderboard = [
+      { user_id: "user-beta", score: 95.5 },
+      { user_id: "user-alpha", score: 82.0 },
+    ];
+
+    mockFrom.mockImplementation((table: string) => {
+      if (table === "users") {
+        return {
+          select: vi.fn().mockReturnValue({
+            neq: vi.fn().mockResolvedValue({ data: mockUsers, error: null }),
+            then: (onfulfilled: (res: { data: unknown; error: null }) => unknown) =>
+              Promise.resolve({ data: mockUsers, error: null }).then(onfulfilled),
+          }),
+        };
+      }
+      if (table === "study_sessions") {
+        return {
+          select: vi.fn().mockReturnValue({
+            gte: vi.fn().mockReturnThis(),
+            then: (onfulfilled: (res: { data: unknown; error: null }) => unknown) =>
+              Promise.resolve({ data: [], error: null }).then(onfulfilled),
+          }),
+        };
+      }
+      return {
+        select: vi.fn().mockReturnValue({
+          gte: vi.fn().mockReturnThis(),
+          order: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockResolvedValue({ data: [], error: null }),
+        }),
+      };
+    });
+
+    mockRpc.mockImplementation((fn: string) => {
+      if (fn === "rpc_get_leaderboard") {
+        return {
+          then(onfulfilled?: (val: unknown) => unknown, onrejected?: (err: unknown) => unknown) {
+            return Promise.resolve({ data: mockLeaderboard, error: null }).then(onfulfilled, onrejected);
+          },
+        };
+      }
+      return {
+        then(onfulfilled?: (val: unknown) => unknown, onrejected?: (err: unknown) => unknown) {
+          return Promise.resolve({ data: null, error: null }).then(onfulfilled, onrejected);
+        },
+      };
+    });
+
+    const { result } = renderHook(() => useLiveRoom());
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    const alpha = result.current.members.find((m) => m.id === "user-alpha");
+    const beta = result.current.members.find((m) => m.id === "user-beta");
+
+    expect(alpha?.leaderboard_score).toBe(82.0);
+    expect(alpha?.leaderboard_rank).toBe(2);
+    expect(beta?.leaderboard_score).toBe(95.5);
+    expect(beta?.leaderboard_rank).toBe(1);
+  });
 });

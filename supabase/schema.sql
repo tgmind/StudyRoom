@@ -586,6 +586,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 DROP FUNCTION IF EXISTS public.rpc_finish_session() CASCADE;
 DROP FUNCTION IF EXISTS public.rpc_finish_session(TEXT[]) CASCADE;
 DROP FUNCTION IF EXISTS public.rpc_finish_session(TEXT[], TEXT) CASCADE;
+DROP FUNCTION IF EXISTS public.rpc_finish_session(TEXT, TEXT[]) CASCADE;
 
 CREATE OR REPLACE FUNCTION public.rpc_finish_session(
   p_completed_task_ids TEXT[] DEFAULT ARRAY[]::TEXT[],
@@ -1261,14 +1262,14 @@ BEGIN
       (COALESCE(cs.study_mins, 0) + COALESCE(ls.live_mins, 0))::INTEGER AS study_mins
     FROM public.users u
     LEFT JOIN (
-      SELECT user_id, SUM(study_mins)::INTEGER AS study_mins
-      FROM completed_study
-      GROUP BY user_id
+      SELECT cs.user_id, SUM(cs.study_mins)::INTEGER AS study_mins
+      FROM completed_study cs
+      GROUP BY cs.user_id
     ) cs ON u.id = cs.user_id
     LEFT JOIN live_study ls ON u.id = ls.user_id
   ),
   completed_tasks_per_user AS (
-    SELECT user_id, COUNT(DISTINCT task_id)::INTEGER AS completed_tasks_count
+    SELECT combined_tasks.user_id, COUNT(DISTINCT combined_tasks.task_id)::INTEGER AS completed_tasks_count
     FROM (
       -- Tasks marked completed in daily_goals created in this week (BUG-05)
       SELECT g.user_id, t->>'id' AS task_id
@@ -1287,7 +1288,7 @@ BEGIN
         AND (s.split_part IS NULL OR s.split_part != 2 OR s.start_time > v_week_start)
         AND t->>'id' IS NOT NULL
     ) combined_tasks
-    GROUP BY user_id
+    GROUP BY combined_tasks.user_id
   ),
   total_tasks_per_user AS (
     SELECT g.user_id, COALESCE(SUM(jsonb_array_length(g.tasks)), 0)::INTEGER AS total_tasks_count
@@ -1397,10 +1398,10 @@ DECLARE
 BEGIN
   v_prev_week_start := (DATE_TRUNC('week', (NOW() - INTERVAL '7 days') AT TIME ZONE v_tz) AT TIME ZONE v_tz);
 
-  SELECT user_id INTO v_winner_id
-  FROM public.rpc_get_leaderboard(v_prev_week_start, v_tz)
-  WHERE total_study_minutes > 0
-  ORDER BY score DESC, total_study_minutes DESC
+  SELECT lb.user_id INTO v_winner_id
+  FROM public.rpc_get_leaderboard(v_prev_week_start, v_tz) lb
+  WHERE lb.total_study_minutes > 0
+  ORDER BY lb.score DESC, lb.total_study_minutes DESC
   LIMIT 1;
 
   -- Allow update of protected badge column inside security definer function
@@ -1968,7 +1969,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 DROP FUNCTION IF EXISTS public.rpc_complete_session_goals(UUID, TEXT[]) CASCADE;
 
 CREATE OR REPLACE FUNCTION public.rpc_complete_session_goals(
-  p_session_id UUID,
+  p_session_id UUID DEFAULT NULL,
   p_completed_task_ids TEXT[] DEFAULT ARRAY[]::TEXT[]
 )
 RETURNS JSONB AS $$

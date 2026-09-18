@@ -4,9 +4,13 @@ import {
   detectLiveRivalries,
   formatRivalryGap,
   getLiveMemberWeeklySeconds,
+  generateStableRivalryId,
+  isMondayWarmupActive,
+  evaluateRivalryResolution,
   MAX_RIVALRY_GAP_SECONDS,
   MIN_RIVALRY_WEEKLY_SECONDS,
 } from "@/lib/time/rivalry";
+import { RIVALRY_CONFIG } from "@/lib/time/rivalryConfig";
 import { UserProfile } from "@/lib/supabase/types";
 
 describe("Live Study Rivalry Detection Engine", () => {
@@ -54,11 +58,11 @@ describe("Live Study Rivalry Detection Engine", () => {
     expect(formatRivalryGap(600)).toBe("10m 0s");
   });
 
-  it("disqualifies members with less than 3 hours total weekly study time", () => {
+  it("disqualifies members with less than 60 minutes total weekly study time", () => {
     const fixedNow = new Date("2026-09-03T10:00:00.000Z");
-    // Alice = 2h 30m (9000s), Bob = 2h 25m (8700s). Gap = 5m <= 10m, but both < 3h (10800s)!
-    const memberA = createMockMember("u1", "Alice", "studying", 9000);
-    const memberB = createMockMember("u2", "Bob", "studying", 8700);
+    // Alice = 45m (2700s), Bob = 40m (2400s). Gap = 5m <= 10m, but both < 60m (3600s)!
+    const memberA = createMockMember("u1", "Alice", "studying", 2700);
+    const memberB = createMockMember("u2", "Bob", "studying", 2400);
 
     const rivalry = detectLiveRivalry([memberA, memberB], fixedNow);
     expect(rivalry).toBeNull();
@@ -266,11 +270,10 @@ describe("Live Study Rivalry Detection Engine", () => {
       expect(rivalries[1].primaryGapSeconds).toBe(240);
     });
 
-    it("enforces mutual exclusivity so members are not duplicated in multiple rivalries", () => {
+    it("enforces mutual exclusivity and non-greedy matchmaking so 4 close members form 2 pairs instead of leaving 1 starved", () => {
       const fixedNow = new Date("2026-09-03T10:00:00.000Z");
       // All 4 members are close: Alice (20h), Bob (19h 58m), Charlie (19h 55m), David (19h 52m)
-      // Trio rule: Alice, Bob, Charlie form Trio (span 5m <= 10m)
-      // David is left over; cannot steal members from the existing rivalry
+      // Non-greedy rule: Alice & Bob form Pair, Charlie & David form Pair. All 4 engaged!
       const memberA = createMockMember("u1", "Alice", "studying", 72000);
       const memberB = createMockMember("u2", "Bob", "studying", 71880);
       const memberC = createMockMember("u3", "Charlie", "studying", 71700);
@@ -278,13 +281,15 @@ describe("Live Study Rivalry Detection Engine", () => {
 
       const rivalries = detectLiveRivalries([memberA, memberB, memberC, memberD], fixedNow);
 
-      expect(rivalries).toHaveLength(1);
-      expect(rivalries[0].isTrio).toBe(true);
-      expect(rivalries[0].rivalMembers.map((m) => m.id)).toEqual(["u1", "u2", "u3"]);
+      expect(rivalries).toHaveLength(2);
+      expect(rivalries[0].isTrio).toBe(false);
+      expect(rivalries[0].rivalMembers.map((m) => m.id)).toEqual(["u1", "u2"]);
+      expect(rivalries[1].isTrio).toBe(false);
+      expect(rivalries[1].rivalMembers.map((m) => m.id)).toEqual(["u3", "u4"]);
 
-      // Member D is NOT in any rivalry
-      const allRivalIds = new Set(rivalries.flatMap((r) => r.rivalMembers.map((m) => m.id)));
-      expect(allRivalIds.has("u4")).toBe(false);
+      // Each member is assigned to exactly one rivalry (no overlap)
+      const allRivalIds = rivalries.flatMap((r) => r.rivalMembers.map((m) => m.id));
+      expect(new Set(allRivalIds).size).toBe(4);
     });
 
     it("handles 1 trio rivalry and 1 pair rivalry simultaneously", () => {
@@ -323,6 +328,201 @@ describe("Live Study Rivalry Detection Engine", () => {
       // Only Group 2 qualifies
       expect(rivalries).toHaveLength(1);
       expect(rivalries[0].rivalMembers.map((m) => m.id)).toEqual(["u3", "u4"]);
+    });
+  });
+
+  describe("Rivalry 2.0 — Stable Rivalry Identity", () => {
+    it("generates an invariant rivalry ID regardless of who leads or overtakes", () => {
+      const id1 = generateStableRivalryId(["user-alice", "user-bob"]);
+      const id2 = generateStableRivalryId(["user-bob", "user-alice"]);
+
+      expect(id1).toBe(id2);
+      expect(id1).toBe("rivalry-pair-user-alice-user-bob");
+    });
+
+    it("generates an invariant trio rivalry ID sorted by user ID", () => {
+      const id1 = generateStableRivalryId(["user-c", "user-a", "user-b"]);
+      const id2 = generateStableRivalryId(["user-b", "user-c", "user-a"]);
+
+      expect(id1).toBe(id2);
+      expect(id1).toBe("rivalry-trio-user-a-user-b-user-c");
+    });
+
+    it("maintains stable rivalry ID when challenger overtakes the leader", () => {
+      const fixedNow = new Date("2026-09-03T10:00:00.000Z");
+      // Tick 1: Alice (u1) leads Bob (u2)
+      const memberA1 = createMockMember("u1", "Alice", "studying", 72000);
+      const memberB1 = createMockMember("u2", "Bob", "studying", 71800);
+
+      const rivalries1 = detectLiveRivalries([memberA1, memberB1], fixedNow);
+      expect(rivalries1).toHaveLength(1);
+      const initialId = rivalries1[0].id;
+      expect(rivalries1[0].rivalMembers[0].id).toBe("u1"); // Alice leads
+
+      // Tick 2: Bob overtakes Alice!
+      const memberA2 = createMockMember("u1", "Alice", "studying", 72000);
+      const memberB2 = createMockMember("u2", "Bob", "studying", 72300); // Bob ahead by 300s!
+
+      const rivalries2 = detectLiveRivalries([memberA2, memberB2], fixedNow, undefined, undefined, rivalries1);
+      expect(rivalries2).toHaveLength(1);
+      expect(rivalries2[0].id).toBe(initialId); // React key is INVARIANT!
+      expect(rivalries2[0].rivalMembers[0].id).toBe("u2"); // Bob now leads
+    });
+  });
+
+  describe("Rivalry 2.0 — Monday Warm-up Protection", () => {
+    it("activates warm-up protection during first 60 minutes of Monday (Asia/Kolkata)", () => {
+      // Monday at 00:30 IST (Sunday 19:00 UTC)
+      const mondayWarmupTime = new Date("2026-09-06T19:00:00.000Z"); // 00:30 AM Monday IST
+      expect(isMondayWarmupActive(mondayWarmupTime)).toBe(true);
+
+      const memberA = createMockMember("u1", "Alice", "studying", 7200);
+      const memberB = createMockMember("u2", "Bob", "studying", 7100);
+
+      const rivalries = detectLiveRivalries([memberA, memberB], mondayWarmupTime);
+      expect(rivalries).toEqual([]); // Suppresses rivalries during warm-up!
+    });
+
+    it("allows rivalries after warm-up period concludes (after 01:00 Monday IST)", () => {
+      // Monday at 01:15 IST (Sunday 19:45 UTC)
+      const mondayPostWarmupTime = new Date("2026-09-06T19:45:00.000Z");
+      expect(isMondayWarmupActive(mondayPostWarmupTime)).toBe(false);
+
+      const memberA = createMockMember("u1", "Alice", "studying", 7200);
+      const memberB = createMockMember("u2", "Bob", "studying", 7100);
+
+      const rivalries = detectLiveRivalries([memberA, memberB], mondayPostWarmupTime);
+      expect(rivalries).toHaveLength(1);
+    });
+  });
+
+  describe("Rivalry 2.0 — Hysteresis & Anti-Flicker", () => {
+    it("does not start a new rivalry if gap exceeds 10m (e.g. 12m)", () => {
+      const fixedNow = new Date("2026-09-03T10:00:00.000Z");
+      const memberA = createMockMember("u1", "Alice", "studying", 36000);
+      const memberB = createMockMember("u2", "Bob", "studying", 36000 - 720); // 12m gap (720s > 600s)
+
+      const rivalries = detectLiveRivalries([memberA, memberB], fixedNow);
+      expect(rivalries).toEqual([]);
+    });
+
+    it("continues an existing active rivalry when gap expands up to 15m (900s)", () => {
+      const fixedNow = new Date("2026-09-03T10:00:00.000Z");
+      const memberA = createMockMember("u1", "Alice", "studying", 36000);
+      const memberB = createMockMember("u2", "Bob", "studying", 36000 - 720); // 12m gap (720s)
+
+      // Previous tick had this rivalry active
+      const stableId = generateStableRivalryId(["u1", "u2"]);
+      const previousRivalries = [
+        {
+          id: stableId,
+          rivalMembers: [memberA, memberB],
+          primaryGapSeconds: 500,
+          formattedGap: "8m 20s",
+          isTrio: false,
+          leaderWeeklySeconds: 36000,
+          participantIds: ["u1", "u2"],
+        },
+      ];
+
+      const rivalries = detectLiveRivalries([memberA, memberB], fixedNow, undefined, undefined, previousRivalries);
+      expect(rivalries).toHaveLength(1);
+      expect(rivalries[0].id).toBe(stableId);
+      expect(rivalries[0].primaryGapSeconds).toBe(720);
+    });
+  });
+
+  describe("Rivalry 2.0 — Authoritative Rivalry Resolution Evaluator", () => {
+    it("resolves as WON when leader pulls ahead by >= 15 minutes (900s) and both remain active", () => {
+      const fixedNow = new Date("2026-09-03T10:00:00.000Z");
+      const winner = createMockMember("u1", "Alice", "studying", 37000);
+      const loser = createMockMember("u2", "Bob", "studying", 36000); // 1000s gap >= 900s
+
+      const stableId = generateStableRivalryId(["u1", "u2"]);
+      const prevRivalry = {
+        id: stableId,
+        rivalMembers: [winner, loser],
+        primaryGapSeconds: 500,
+        formattedGap: "8m 20s",
+        isTrio: false,
+        leaderWeeklySeconds: 37000,
+        participantIds: ["u1", "u2"],
+      };
+
+      const resolution = evaluateRivalryResolution(prevRivalry, [winner, loser], fixedNow);
+      expect(resolution).not.toBeNull();
+      expect(resolution?.resolutionType).toBe("WON");
+      expect(resolution?.winner?.id).toBe("u1");
+      expect(resolution?.loser?.id).toBe("u2");
+      expect(resolution?.standings).toHaveLength(2);
+      expect(resolution?.standings[0].userId).toBe("u1");
+      expect(resolution?.standings[0].rank).toBe(1);
+    });
+
+    it("resolves as SESSION_STOPPED (not WON) when a participant goes offline", () => {
+      const fixedNow = new Date("2026-09-03T10:00:00.000Z");
+      const activeMember = createMockMember("u1", "Alice", "studying", 37000);
+      const offlineMember = createMockMember("u2", "Bob", "offline", 36000); // Bob went offline!
+
+      const stableId = generateStableRivalryId(["u1", "u2"]);
+      const prevRivalry = {
+        id: stableId,
+        rivalMembers: [activeMember, offlineMember],
+        primaryGapSeconds: 500,
+        formattedGap: "8m 20s",
+        isTrio: false,
+        leaderWeeklySeconds: 37000,
+        participantIds: ["u1", "u2"],
+      };
+
+      const resolution = evaluateRivalryResolution(prevRivalry, [activeMember, offlineMember], fixedNow);
+      expect(resolution).not.toBeNull();
+      expect(resolution?.resolutionType).toBe("SESSION_STOPPED");
+      expect(resolution?.winner).toBeUndefined(); // NO false victory declared!
+    });
+
+    it("resolves as WEEK_ROLLOVER during Monday warm-up protection", () => {
+      const mondayWarmupTime = new Date("2026-09-06T19:00:00.000Z"); // 00:30 AM Monday IST
+      const memberA = createMockMember("u1", "Alice", "studying", 37000);
+      const memberB = createMockMember("u2", "Bob", "studying", 36000);
+
+      const stableId = generateStableRivalryId(["u1", "u2"]);
+      const prevRivalry = {
+        id: stableId,
+        rivalMembers: [memberA, memberB],
+        primaryGapSeconds: 500,
+        formattedGap: "8m 20s",
+        isTrio: false,
+        leaderWeeklySeconds: 37000,
+        participantIds: ["u1", "u2"],
+      };
+
+      const resolution = evaluateRivalryResolution(prevRivalry, [memberA, memberB], mondayWarmupTime);
+      expect(resolution).not.toBeNull();
+      expect(resolution?.resolutionType).toBe("WEEK_ROLLOVER");
+      expect(resolution?.winner).toBeUndefined();
+    });
+
+    it("resolves as NO_CONTEST when dissolved without reaching the 15-minute decisive gap", () => {
+      const fixedNow = new Date("2026-09-03T10:00:00.000Z");
+      const memberA = createMockMember("u1", "Alice", "studying", 36500);
+      const memberB = createMockMember("u2", "Bob", "studying", 36000); // 500s gap (< 900s)
+
+      const stableId = generateStableRivalryId(["u1", "u2"]);
+      const prevRivalry = {
+        id: stableId,
+        rivalMembers: [memberA, memberB],
+        primaryGapSeconds: 400,
+        formattedGap: "6m 40s",
+        isTrio: false,
+        leaderWeeklySeconds: 36500,
+        participantIds: ["u1", "u2"],
+      };
+
+      const resolution = evaluateRivalryResolution(prevRivalry, [memberA, memberB], fixedNow);
+      expect(resolution).not.toBeNull();
+      expect(resolution?.resolutionType).toBe("NO_CONTEST");
+      expect(resolution?.winner).toBeUndefined();
     });
   });
 });

@@ -22,6 +22,8 @@ export interface UserProfile {
   pending_goal_reason?: "manual_stop" | "session_limit" | "break_expired" | string | null;
   weekly_study_seconds?: number;
   last_offline_at?: string | null;
+  leaderboard_score?: number;
+  leaderboard_rank?: number;
 }
 
 export interface GoalTask {
@@ -143,20 +145,41 @@ export interface Database {
       rivalry_events: {
         Row: {
           id: string;
+          resolution_id?: string | null;
+          rivalry_id?: string | null;
+          winner_id?: string | null;
           winner_name: string;
           loser_name: string;
+          participant_ids?: string[] | null;
+          final_standings?: Json | null;
+          resolution_type?: string | null;
+          occurred_at?: string | null;
           created_at: string;
         };
         Insert: {
           id: string;
+          resolution_id?: string | null;
+          rivalry_id?: string | null;
+          winner_id?: string | null;
           winner_name: string;
           loser_name: string;
+          participant_ids?: string[] | null;
+          final_standings?: Json | null;
+          resolution_type?: string | null;
+          occurred_at?: string | null;
           created_at?: string;
         };
         Update: Partial<{
           id: string;
+          resolution_id: string | null;
+          rivalry_id: string | null;
+          winner_id: string | null;
           winner_name: string;
           loser_name: string;
+          participant_ids: string[] | null;
+          final_standings: Json | null;
+          resolution_type: string | null;
+          occurred_at: string | null;
           created_at: string;
         }>;
         Relationships: [];

@@ -24,6 +24,7 @@ export default function RoomPage() {
     isRealtimeConnected,
     expectedPeakHours,
     activeWinEvent,
+    activeWinEvents,
     broadcastRivalryWin,
     dismissWinEvent,
     refreshMembers,
@@ -188,6 +189,7 @@ export default function RoomPage() {
             currentUserElapsedSeconds={elapsedStudySeconds}
             isLoading={roomLoading}
             winEvent={activeWinEvent}
+            winEvents={activeWinEvents}
             onRivalryWin={broadcastRivalryWin}
             onDismissWinEvent={dismissWinEvent}
           />
@@ -210,20 +212,26 @@ export default function RoomPage() {
           await Promise.allSettled([refreshGoals(), refreshProfile(), refreshMembers()]);
         }}
         onConfirmSaveGoals={async (completedTaskIds) => {
-          if (pendingGoalSessionId) {
-            await completeSessionGoals(pendingGoalSessionId, completedTaskIds);
-          } else if (completedTaskIds.length > 0) {
-            await completeGoalTasks(completedTaskIds);
+          try {
+            if (pendingGoalSessionId) {
+              await completeSessionGoals(pendingGoalSessionId, completedTaskIds);
+            } else if (completedTaskIds.length > 0) {
+              await completeGoalTasks(completedTaskIds);
+            }
+          } catch (err) {
+            console.error("Save goals error in room page:", err);
+          } finally {
+            await closeGoalUpdateModal();
+            if (isBreakExpiredNoticeOpen) await closeBreakExpiredNotice();
+            if (isSessionLimitNoticeOpen) closeSessionLimitNotice();
+            if (user) {
+              broadcastStatusChange({
+                id: user.id,
+                pending_goal_session_id: null,
+              });
+            }
+            await Promise.allSettled([refreshGoals(), refreshProfile(), refreshMembers()]);
           }
-          if (isBreakExpiredNoticeOpen) await closeBreakExpiredNotice();
-          if (isSessionLimitNoticeOpen) closeSessionLimitNotice();
-          if (user) {
-            broadcastStatusChange({
-              id: user.id,
-              pending_goal_session_id: null,
-            });
-          }
-          await Promise.allSettled([refreshGoals(), refreshProfile(), refreshMembers()]);
         }}
         activeGoal={activeGoal}
         savedStudySeconds={

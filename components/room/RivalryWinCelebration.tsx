@@ -1,259 +1,330 @@
 "use client";
 
-import React, { useState, useEffect, useRef, memo } from "react";
+import React, { useState, useEffect, useRef, memo, useMemo } from "react";
 import { RivalryWinEvent } from "@/lib/time/rivalry";
-import { Trophy, X, Sparkles, Swords, Crown, Flame } from "lucide-react";
+import { RIVALRY_CONFIG } from "@/lib/time/rivalryConfig";
+import { Trophy, X, Swords, Crown, Flame } from "lucide-react";
 import { triggerHapticFeedback } from "@/lib/utils/haptics";
 
 interface RivalryWinCelebrationProps {
-  winEvent?: RivalryWinEvent | null;
-  onDismiss?: () => void;
+  winEvents?: RivalryWinEvent[] | null;
+  winEvent?: RivalryWinEvent | null; // Backward-compatible single event
+  onDismiss?: (eventId: string) => void;
 }
 
-const PERSISTENCE_DURATION_MS = 15 * 60 * 1000; // 15 minutes
-const POPUP_AUTO_MINIMIZE_MS = 4500; // 4.5 seconds before hooking to compact form
+const PERSISTENCE_DURATION_MS = RIVALRY_CONFIG.EVENT_TTL_MS; // 15 minutes (900,000ms)
+const LIVE_POPUP_MAX_AGE_MS = RIVALRY_CONFIG.LIVE_POPUP_DURATION_MS; // 10 seconds (10,000ms)
 
-// Ambient celebratory confetti particles for gold-standard celebratory immersion
-const CONFETTI_PARTICLES = [
-  { id: 1, color: "bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)]", style: { top: "15%", left: "18%", animationDelay: "0ms" } },
-  { id: 2, color: "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)]", style: { top: "22%", left: "82%", animationDelay: "150ms" } },
-  { id: 3, color: "bg-yellow-300 shadow-[0_0_8px_rgba(253,224,71,0.8)]", style: { top: "68%", left: "14%", animationDelay: "300ms" } },
-  { id: 4, color: "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]", style: { top: "72%", left: "86%", animationDelay: "450ms" } },
-  { id: 5, color: "bg-fuchsia-400 shadow-[0_0_8px_rgba(232,121,249,0.8)]", style: { top: "12%", left: "50%", animationDelay: "100ms" } },
-  { id: 6, color: "bg-amber-300 shadow-[0_0_8px_rgba(252,211,77,0.8)]", style: { top: "82%", left: "48%", animationDelay: "250ms" } },
-  { id: 7, color: "bg-orange-400 shadow-[0_0_8px_rgba(251,146,60,0.8)]", style: { top: "35%", left: "10%", animationDelay: "400ms" } },
-  { id: 8, color: "bg-rose-400 shadow-[0_0_8px_rgba(251,113,133,0.8)]", style: { top: "38%", left: "90%", animationDelay: "200ms" } },
-  { id: 9, color: "bg-yellow-400 shadow-[0_0_8px_rgba(250,204,21,0.8)]", style: { top: "54%", left: "22%", animationDelay: "350ms" } },
-  { id: 10, color: "bg-violet-400 shadow-[0_0_8px_rgba(167,139,250,0.8)]", style: { top: "52%", left: "78%", animationDelay: "50ms" } },
-];
+function checkIsEventDismissed(evt: RivalryWinEvent): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const eventKey = evt.resolutionId || evt.id;
+    if (localStorage.getItem(`studyroom_win_dismissed_${eventKey}`)) return true;
+    if (evt.id && localStorage.getItem(`studyroom_win_dismissed_${evt.id}`)) return true;
+    if (evt.winnerName && evt.loserName) {
+      const pairVal = localStorage.getItem(`studyroom_win_dismissed_pair_${evt.winnerName}_${evt.loserName}`);
+      if (pairVal) {
+        const dismissedAt = parseInt(pairVal, 10);
+        if (Date.now() - dismissedAt < PERSISTENCE_DURATION_MS) {
+          return true;
+        }
+      }
+    }
+  } catch {}
+  return false;
+}
 
 export const RivalryWinCelebration = memo(function RivalryWinCelebration({
+  winEvents,
   winEvent,
   onDismiss,
 }: RivalryWinCelebrationProps) {
-  const [isPopupVisible, setIsPopupVisible] = useState(false);
-  const [isDismissed, setIsDismissed] = useState(false);
-  const [remainingMinutes, setRemainingMinutes] = useState(15);
-  const [progressPercent, setProgressPercent] = useState(100);
+  // Set of locally dismissed event IDs (resolutionIds)
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(() => {
+    const set = new Set<string>();
+    if (typeof window !== "undefined") {
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith("studyroom_win_dismissed_")) {
+            const id = key.replace("studyroom_win_dismissed_", "");
+            set.add(id);
+          }
+        }
+      } catch {}
+    }
+    return set;
+  });
 
-  // Track event IDs and winner-loser pairs that have already displayed full-screen modal
-  const celebratedIdsRef = useRef<Set<string>>(new Set());
-
-  useEffect(() => {
-    if (!winEvent) return;
-
+  // Normalize events list: combine winEvents array or single winEvent
+  const allEvents = useMemo(() => {
+    const list: RivalryWinEvent[] = [];
+    if (Array.isArray(winEvents)) {
+      list.push(...winEvents);
+    }
+    if (winEvent && !list.some((e) => (e.resolutionId || e.id) === (winEvent.resolutionId || winEvent.id))) {
+      list.push(winEvent);
+    }
+    // Filter by strict 15-minute TTL from occurrence timestamp and dismissal
     const now = Date.now();
-    const elapsed = now - winEvent.timestamp;
+    return list
+      .filter((e) => e && e.timestamp && now - e.timestamp < PERSISTENCE_DURATION_MS)
+      .filter((e) => {
+        const eventKey = e.resolutionId || e.id;
+        if (dismissedIds.has(eventKey) || (e.id && dismissedIds.has(e.id))) return false;
+        return !checkIsEventDismissed(e);
+      })
+      .sort((a, b) => b.timestamp - a.timestamp); // Newest first
+  }, [winEvents, winEvent, dismissedIds]);
 
-    // If older than 15 minutes, do not display
-    if (elapsed >= PERSISTENCE_DURATION_MS) {
+  // Active event currently displayed in the 10-second live centered popup (null if no live popup)
+  const [activePopupEvent, setActivePopupEvent] = useState<RivalryWinEvent | null>(null);
+
+  // Track event IDs that have already shown the live popup in this session
+  const shownPopupIdsRef = useRef<Set<string>>(new Set());
+
+  // Check for newly arriving fresh events to show live 10-second centered celebration
+  useEffect(() => {
+    if (allEvents.length === 0) {
+      setActivePopupEvent(null);
       return;
     }
 
-    // Check if dismissed in localStorage (both ID and pair key)
-    try {
-      const dismissedKey = `studyroom_win_dismissed_${winEvent.id}`;
-      const pairDismissedKey = `studyroom_win_dismissed_pair_${winEvent.winnerName}_${winEvent.loserName}`;
-      if (localStorage.getItem(dismissedKey)) {
-        setIsDismissed(true);
-        return;
+    const now = Date.now();
+
+    // Look for the newest event that is genuinely fresh (< 10s old) and hasn't been celebrated yet
+    for (const evt of allEvents) {
+      const eventKey = evt.resolutionId || evt.id;
+      const elapsed = now - evt.timestamp;
+
+      // Online Live Celebration Rule: Only show centered popup if event is fresh (< 10s)
+      // Users returning offline after 10s will NOT see the live popup!
+      if (elapsed < LIVE_POPUP_MAX_AGE_MS && !dismissedIds.has(eventKey)) {
+        let sessionCelebrated = false;
+        try {
+          sessionCelebrated = Boolean(sessionStorage.getItem(`studyroom_win_celebrated_${eventKey}`));
+        } catch {}
+
+        if (!shownPopupIdsRef.current.has(eventKey) && !sessionCelebrated) {
+          shownPopupIdsRef.current.add(eventKey);
+          try {
+            sessionStorage.setItem(`studyroom_win_celebrated_${eventKey}`, "true");
+          } catch {}
+
+          setActivePopupEvent(evt);
+          triggerHapticFeedback([30, 40, 50]);
+
+          const timer = setTimeout(() => {
+            setActivePopupEvent((current) => {
+              if (current && (current.resolutionId || current.id) === eventKey) {
+                return null;
+              }
+              return current;
+            });
+          }, LIVE_POPUP_MAX_AGE_MS);
+
+          return () => clearTimeout(timer);
+        }
       }
-      const pairVal = localStorage.getItem(pairDismissedKey);
-      if (pairVal && now - parseInt(pairVal, 10) < PERSISTENCE_DURATION_MS) {
-        setIsDismissed(true);
-        return;
-      }
-    } catch {}
-
-    // Check if full celebration modal has already run for this event or pair
-    const pairKey = `${winEvent.winnerName}_${winEvent.loserName}`;
-    let sessionCelebrated = false;
-    try {
-      sessionCelebrated = Boolean(sessionStorage.getItem(`studyroom_win_celebrated_${winEvent.id}`));
-    } catch {}
-
-    const alreadyCelebrated =
-      celebratedIdsRef.current.has(winEvent.id) ||
-      celebratedIdsRef.current.has(pairKey) ||
-      sessionCelebrated;
-
-    // If event is fresh (< 10s old) and hasn't been celebrated yet, show celebration modal once with haptics
-    if (!alreadyCelebrated && elapsed < 10000) {
-      celebratedIdsRef.current.add(winEvent.id);
-      celebratedIdsRef.current.add(pairKey);
-      try {
-        sessionStorage.setItem(`studyroom_win_celebrated_${winEvent.id}`, "true");
-      } catch {}
-
-      setIsPopupVisible(true);
-      triggerHapticFeedback([30, 40, 50]);
-      const timer = setTimeout(() => {
-        setIsPopupVisible(false);
-      }, POPUP_AUTO_MINIMIZE_MS);
-      return () => clearTimeout(timer);
-    } else {
-      // Keep popup closed, compact banner will display
-      setIsPopupVisible(false);
     }
-  }, [winEvent]);
+  }, [allEvents, dismissedIds]);
 
-  // Keep remaining persistence timer and bottom progress bar updated
+  // Master 2-second tick to keep TTL countdown timers and auto-expiration accurate
+  const [, setTick] = useState(0);
   useEffect(() => {
-    if (!winEvent) return;
-
-    const updateRemaining = () => {
-      const remainingMs = PERSISTENCE_DURATION_MS - (Date.now() - winEvent.timestamp);
-      if (remainingMs <= 0) {
-        setIsDismissed(true);
-      } else {
-        setRemainingMinutes(Math.max(1, Math.ceil(remainingMs / 60000)));
-        setProgressPercent(Math.max(0, Math.min(100, (remainingMs / PERSISTENCE_DURATION_MS) * 100)));
-      }
-    };
-
-    updateRemaining();
-    const interval = setInterval(updateRemaining, 2000);
+    if (allEvents.length === 0) return;
+    const interval = setInterval(() => setTick((t) => t + 1), 2000);
     return () => clearInterval(interval);
-  }, [winEvent]);
+  }, [allEvents.length]);
 
-  if (!winEvent || isDismissed) {
-    return null;
-  }
+  // Filter unexpired and undismissed events for compact banner display
+  const activeBannerEvents = useMemo(() => {
+    const now = Date.now();
+    return allEvents.filter((e) => {
+      const eventKey = e.resolutionId || e.id;
+      const isDismissed = dismissedIds.has(eventKey);
+      const isStillValid = now - e.timestamp < PERSISTENCE_DURATION_MS;
+      return !isDismissed && isStillValid;
+    });
+  }, [allEvents, dismissedIds]);
 
-  const isStillValid = Date.now() - winEvent.timestamp < PERSISTENCE_DURATION_MS;
-  if (!isStillValid) {
-    return null;
-  }
+  const handleDismissEvent = (eventToDismiss: RivalryWinEvent) => {
+    const eventKey = eventToDismiss.resolutionId || eventToDismiss.id;
+    setDismissedIds((prev) => {
+      const next = new Set(prev);
+      next.add(eventKey);
+      if (eventToDismiss.id) next.add(eventToDismiss.id);
+      return next;
+    });
 
-  const handleDismiss = () => {
-    setIsDismissed(true);
-    setIsPopupVisible(false);
+    if (activePopupEvent && (activePopupEvent.resolutionId || activePopupEvent.id) === eventKey) {
+      setActivePopupEvent(null);
+    }
+
     triggerHapticFeedback(15);
+
     try {
-      localStorage.setItem(`studyroom_win_dismissed_${winEvent.id}`, "true");
-      const pairDismissedKey = `studyroom_win_dismissed_pair_${winEvent.winnerName}_${winEvent.loserName}`;
-      localStorage.setItem(pairDismissedKey, Date.now().toString());
+      localStorage.setItem(`studyroom_win_dismissed_${eventKey}`, "true");
+      if (eventToDismiss.id) {
+        localStorage.setItem(`studyroom_win_dismissed_${eventToDismiss.id}`, "true");
+      }
+      if (eventToDismiss.winnerName && eventToDismiss.loserName) {
+        const pairKey = `studyroom_win_dismissed_pair_${eventToDismiss.winnerName}_${eventToDismiss.loserName}`;
+        localStorage.setItem(pairKey, Date.now().toString());
+      }
+      // Clean up legacy keys
       localStorage.removeItem("studyroom_active_rivalry_win");
     } catch {}
-    if (onDismiss) onDismiss();
+
+    if (onDismiss) {
+      onDismiss(eventKey);
+    }
+  };
+
+  const handleDismissPopup = () => {
+    if (activePopupEvent) {
+      handleDismissEvent(activePopupEvent);
+    }
+  };
+
+  // Helper to format opponents string gracefully for trios vs pairs
+  const formatOpponents = (evt: RivalryWinEvent) => {
+    if (evt.finalStandings && evt.finalStandings.length >= 3) {
+      const runnersUp = evt.finalStandings
+        .filter((s) => s.userId !== evt.winnerId && s.name !== evt.winnerName)
+        .map((s) => s.name);
+      if (runnersUp.length >= 2) {
+        return `${runnersUp[0]} & ${runnersUp[1]}`;
+      }
+    }
+    return evt.loserName;
   };
 
   return (
     <>
-      {/* 1. Full-Screen Overlapping Celebration Pop-up */}
-      {isPopupVisible && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-xl animate-in fade-in duration-300 pointer-events-auto">
-          <div className="relative w-full max-w-sm sm:max-w-md max-h-[92vh] overflow-y-auto p-5 sm:p-7 rounded-2xl sm:rounded-3xl bg-gradient-to-b from-[#2b1606] via-[#1a0e07] to-[#0d0604] border-2 border-amber-500/70 shadow-[0_0_70px_rgba(245,158,11,0.45),_0_0_30px_rgba(225,29,72,0.25)] text-center space-y-3.5 sm:space-y-4 overflow-x-hidden animate-in zoom-in-95 duration-400">
-            {/* Ambient gold-rose radial light beacon */}
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(245,158,11,0.3)_0%,_rgba(225,29,72,0.12)_50%,_transparent_75%)] pointer-events-none animate-pulse" />
-            <div className="absolute top-0 left-1/4 right-1/4 h-[2px] bg-gradient-to-r from-transparent via-amber-400 to-transparent shadow-[0_0_20px_rgba(251,191,36,1)] pointer-events-none" />
+      {/* 1. Centered Live Popup Overlay (Online Users Only, 10s auto-minimize)
+          IMPORTANT: NOT fullscreen! Global live StudyRoom remains visible behind it */}
+      {activePopupEvent && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Rivalry Winner Announcement"
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/40 backdrop-blur-[2px] animate-in fade-in duration-200 pointer-events-auto select-none"
+        >
+          <div className="relative w-full max-w-sm sm:max-w-md p-5 sm:p-6 rounded-2xl sm:rounded-3xl bg-gradient-to-b from-[#221008] via-[#150a06] to-[#0a0504] border-2 border-amber-500/70 shadow-[0_12px_45px_rgba(0,0,0,0.85),_0_0_30px_rgba(245,158,11,0.25)] text-center space-y-3.5 animate-in zoom-in-95 duration-250">
+            {/* Subtle top amber highlight beam */}
+            <div className="absolute top-0 left-1/4 right-1/4 h-[2px] bg-gradient-to-r from-transparent via-amber-400 to-transparent shadow-[0_0_15px_rgba(251,191,36,0.9)] pointer-events-none" />
 
-            {/* Confetti & Sparkles Scatter Particles */}
-            {CONFETTI_PARTICLES.map((p) => (
-              <div
-                key={p.id}
-                style={p.style}
-                className={`absolute w-2 h-2 rounded-full ${p.color} animate-ping pointer-events-none opacity-85`}
-              />
-            ))}
-
-            {/* Floating Close Button */}
+            {/* Accessible Floating Close Button */}
             <button
-              onClick={handleDismiss}
-              className="absolute top-3.5 right-3.5 p-1.5 rounded-full bg-zinc-900/80 border border-zinc-700/70 text-zinc-400 hover:text-white hover:border-amber-500/50 transition-all hover:scale-110 active:scale-95 z-20 touch-manipulation"
-              title="Close celebration"
-              aria-label="Close celebration"
+              onClick={handleDismissPopup}
+              className="absolute top-3 right-3 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl bg-zinc-900/80 border border-zinc-700/80 text-zinc-400 hover:text-white hover:border-amber-500/50 transition-all active:scale-95 z-20 touch-manipulation focus:outline-none focus:ring-2 focus:ring-amber-500"
+              title="Dismiss celebration"
+              aria-label="Dismiss celebration"
             >
               <X className="w-4 h-4" />
             </button>
 
-            {/* Trophy & Crown Icon Badge */}
-            <div className="relative mx-auto w-16 h-16 sm:w-20 sm:h-20 rounded-2xl sm:rounded-3xl bg-gradient-to-tr from-amber-500 via-yellow-400 to-amber-300 flex items-center justify-center text-zinc-950 shadow-[0_0_35px_rgba(245,158,11,0.7),_0_0_15px_rgba(251,191,36,0.9)] animate-bounce">
-              <Trophy className="w-8 h-8 sm:w-10 sm:h-10 fill-current drop-shadow-md" />
-              <Crown className="w-4 h-4 sm:w-5 sm:h-5 text-amber-950 fill-amber-950 absolute -top-1.5 sm:-top-2 left-1/2 -translate-x-1/2 animate-pulse" />
-              <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-white absolute -top-1 -right-1 sm:-top-1.5 sm:-right-1.5 animate-spin" style={{ animationDuration: "6s" }} />
+            {/* Trophy Crest Badge */}
+            <div className="relative mx-auto w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-tr from-amber-500 via-yellow-400 to-amber-300 flex items-center justify-center text-zinc-950 shadow-[0_0_25px_rgba(245,158,11,0.6)] animate-bounce">
+              <Trophy className="w-7 h-7 sm:w-8 sm:h-8 fill-current drop-shadow-sm" />
+              <Crown className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-950 fill-amber-950 absolute -top-1 left-1/2 -translate-x-1/2" />
             </div>
 
             {/* Headline */}
             <div className="space-y-1 relative z-10">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 border border-amber-500/50 text-amber-300 text-[10px] font-black uppercase tracking-widest shadow-sm">
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] font-black uppercase tracking-widest">
                 <Swords className="w-3 h-3 text-amber-400" />
                 <span>Rivalry Victorious</span>
               </div>
-              <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-yellow-100 to-amber-300 tracking-tight">
+              <h2 className="text-lg sm:text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-yellow-100 to-amber-300 tracking-tight">
                 Victory Claimed!
               </h2>
             </div>
 
-            {/* Victory Announcement Card */}
-            <div className="relative z-10 p-3.5 sm:p-4 rounded-xl sm:rounded-2xl bg-zinc-950/80 border border-amber-500/40 shadow-inner space-y-1">
-              <p className="text-xs sm:text-sm md:text-base font-extrabold text-zinc-100 leading-snug break-words">
-                <span className="text-amber-400 underline decoration-amber-500/60 decoration-2 font-black">
-                  {winEvent.winnerName}
+            {/* Victory Announcement Box */}
+            <div className="relative z-10 p-3 sm:p-3.5 rounded-xl bg-zinc-950/80 border border-amber-500/40 shadow-inner space-y-1">
+              <p className="text-xs sm:text-sm font-extrabold text-zinc-100 leading-snug break-words">
+                <span className="text-amber-300 underline decoration-amber-500/60 decoration-2 font-black">
+                  {activePopupEvent.winnerName}
                 </span>{" "}
-                won the Rivalry against{" "}
-                <span className="text-rose-300 font-bold">{winEvent.loserName}</span> 🎉
+                defeated{" "}
+                <span className="text-rose-300 font-bold">{formatOpponents(activePopupEvent)}</span> 🎉
               </p>
-              <div className="flex items-center justify-center gap-1.5 text-[10px] sm:text-[11px] text-amber-300/90 font-semibold pt-0.5 sm:pt-1 flex-wrap">
-                <Flame className="w-3.5 h-3.5 text-amber-400 fill-amber-400 shrink-0" />
-                <span className="break-words">Extended weekly study lead in Live Study!</span>
+              <div className="flex items-center justify-center gap-1.5 text-[10px] text-amber-300/90 font-semibold pt-0.5 flex-wrap">
+                <Flame className="w-3 h-3 text-amber-400 fill-amber-400 shrink-0" />
+                <span>Extended weekly study lead in Live Study!</span>
               </div>
             </div>
 
-            <p className="relative z-10 text-[10px] sm:text-[11px] text-zinc-400 font-medium">
-              This result stays pinned above Studying for 15 minutes.
+            <p className="text-[10px] text-zinc-400 font-medium">
+              Auto-minimizing in 10s • Stays pinned above Studying for 15m
             </p>
           </div>
         </div>
       )}
 
-      {/* 2. Persistent Compact Banner Hooked Above 'Studying' Section */}
-      <div className="relative w-full mb-3 rounded-xl bg-gradient-to-r from-[#221006]/95 via-[#181119]/95 to-[#21090f]/95 border border-amber-500/40 shadow-[0_4px_25px_rgba(245,158,11,0.14),_0_0_12px_rgba(225,29,72,0.10)] backdrop-blur-xl flex items-center justify-between gap-2 p-2 sm:p-3 overflow-hidden transition-all duration-300 select-none animate-in fade-in slide-in-from-top-2">
-        {/* Subtle Ambient Radial Highlight */}
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_left,_rgba(245,158,11,0.15),_transparent_60%)] pointer-events-none" />
+      {/* 2. Persistent Compact Banners Hooked Above 'Studying' Section
+          Multiple wins display newest to oldest. 15-minute TTL enforced strictly. */}
+      {activeBannerEvents.length > 0 && (
+        <div className="space-y-2 mb-3">
+          {activeBannerEvents.map((evt) => {
+            const eventKey = evt.resolutionId || evt.id;
+            const remainingMs = Math.max(0, PERSISTENCE_DURATION_MS - (Date.now() - evt.timestamp));
+            const remainingMinutes = Math.max(1, Math.ceil(remainingMs / 60000));
+            const progressPercent = Math.max(0, Math.min(100, (remainingMs / PERSISTENCE_DURATION_MS) * 100));
 
-        <div className="relative z-10 flex items-center gap-2 sm:gap-2.5 min-w-0 flex-1">
-          {/* Glowing Left Indicator Bar */}
-          <div className="w-1 self-stretch rounded-full bg-gradient-to-b from-amber-400 via-yellow-300 to-rose-500 shrink-0 shadow-[0_0_8px_rgba(245,158,11,0.8)]" />
+            return (
+              <div
+                key={`banner-${eventKey}`}
+                className="relative w-full rounded-xl bg-gradient-to-r from-[#200f06]/95 via-[#160d13]/95 to-[#1c080e]/95 border border-amber-500/40 shadow-[0_4px_20px_rgba(245,158,11,0.12)] backdrop-blur-md flex items-center justify-between gap-2 p-2 sm:p-2.5 overflow-hidden transition-all duration-300 select-none animate-in fade-in slide-in-from-top-1"
+              >
+                <div className="relative z-10 flex items-center gap-2 min-w-0 flex-1">
+                  {/* Indicator Bar */}
+                  <div className="w-1 self-stretch rounded-full bg-gradient-to-b from-amber-400 via-yellow-300 to-rose-500 shrink-0 shadow-[0_0_6px_rgba(245,158,11,0.7)]" />
 
-          {/* Trophy Icon */}
-          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-gradient-to-tr from-amber-500 to-yellow-400 flex items-center justify-center text-zinc-950 shadow-[0_0_12px_rgba(245,158,11,0.5)] shrink-0">
-            <Trophy className="w-3.5 h-3.5 sm:w-4.5 sm:h-4.5 fill-current" />
-          </div>
+                  {/* Trophy Icon */}
+                  <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-amber-500 to-yellow-400 flex items-center justify-center text-zinc-950 shadow-[0_0_10px_rgba(245,158,11,0.4)] shrink-0">
+                    <Trophy className="w-3.5 h-3.5 fill-current" />
+                  </div>
 
-          <div className="flex flex-col min-w-0 flex-1">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-[8px] sm:text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-gradient-to-r from-amber-500/20 to-yellow-500/20 text-amber-300 border border-amber-500/35 shrink-0">
-                Rivalry Victor
-              </span>
-              <span className="text-[9px] text-zinc-400 font-mono font-medium shrink-0">
-                • {remainingMinutes}m left
-              </span>
-            </div>
-            <p className="text-xs sm:text-sm font-extrabold text-zinc-100 leading-tight mt-0.5 break-words">
-              <span className="text-amber-300 font-black">{winEvent.winnerName}</span>{" "}
-              won against{" "}
-              <span className="text-rose-300 font-bold">{winEvent.loserName}</span> 🎉
-            </p>
-          </div>
+                  <div className="flex flex-col min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[8px] sm:text-[8.5px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/35 shrink-0">
+                        Rivalry Victor
+                      </span>
+                      <span className="text-[8.5px] text-zinc-400 font-mono font-medium shrink-0">
+                        • {remainingMinutes}m left
+                      </span>
+                    </div>
+                    <p className="text-xs sm:text-[13px] font-extrabold text-zinc-100 leading-tight mt-0.5 break-words">
+                      <span className="text-amber-300 font-black">{evt.winnerName}</span>{" "}
+                      won against{" "}
+                      <span className="text-rose-300 font-bold">{formatOpponents(evt)}</span> 🎉
+                    </p>
+                  </div>
+                </div>
+
+                {/* Dismiss Button [X] */}
+                <button
+                  onClick={() => handleDismissEvent(evt)}
+                  className="relative z-10 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800/80 border border-transparent hover:border-amber-500/30 transition-all active:scale-95 shrink-0 touch-manipulation focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  title="Dismiss result notice"
+                  aria-label="Dismiss result notice"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+
+                {/* 15-Minute Countdown Bottom Progress Line */}
+                <div
+                  className="absolute bottom-0 left-0 h-[1.5px] bg-gradient-to-r from-amber-400 via-rose-500 to-amber-300 transition-all duration-1000 shadow-[0_0_4px_rgba(245,158,11,0.8)]"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+            );
+          })}
         </div>
-
-        {/* Dismiss Button (x) */}
-        <button
-          onClick={handleDismiss}
-          className="relative z-10 p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800/80 border border-transparent hover:border-amber-500/30 transition-all hover:scale-105 active:scale-95 shrink-0 touch-manipulation"
-          title="Dismiss result notice"
-          aria-label="Dismiss result notice"
-        >
-          <X className="w-3.5 h-3.5" />
-        </button>
-
-        {/* Dynamic 15-Minute Countdown Bottom Progress Line */}
-        <div
-          className="absolute bottom-0 left-0 h-[1.5px] bg-gradient-to-r from-amber-400 via-rose-500 to-amber-300 transition-all duration-1000 shadow-[0_0_6px_rgba(245,158,11,0.9)]"
-          style={{ width: `${progressPercent}%` }}
-        />
-      </div>
+      )}
     </>
   );
 });

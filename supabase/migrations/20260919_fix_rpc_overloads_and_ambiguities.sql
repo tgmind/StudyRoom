@@ -1,33 +1,23 @@
 -- ==============================================================================
--- Migration: Fix Sunday–Monday Transition, Session Splitting & Goal Attribution
--- Reference: BUG_FIX_PENDING.md (BUG-01 through BUG-07) & 20hour goals_update.md
+-- HOTFIX MIGRATION: Fix RPC Overloads, Parameter Ordering & Column Ambiguities
 -- Description:
---   1. Adds split_part and sibling_session_id columns to public.study_sessions.
---   2. Updates rpc_finish_session to link split session halves and attribute completed tasks.
---   3. Updates rpc_complete_session_goals and rpc_record_break_expiry_goals with
---      transaction advisory locks and idempotent sibling task attachment.
---   4. Updates rpc_get_leaderboard:
---      - Method B lower bounded by v_week_start (BUG-02).
---      - Completed study includes unclosed blocks for past-week evaluations (BUG-03).
---      - Single-week goal attribution without cross-week double-counting (BUG-05).
---      - Unified task deduplication and safe total task calculation (BUG-07).
---   5. Documents pg_cron schedule at 04:00 AM IST Monday (22:30 UTC Sunday) (BUG-03).
+--   1. Drops conflicting overloaded rpc_finish_session functions that caused
+--      PGRST203 ('Could not choose the best candidate function').
+--   2. Restores canonical rpc_finish_session(p_completed_task_ids, p_reason).
+--   3. Makes p_session_id DEFAULT NULL in rpc_complete_session_goals so goal updates
+--      never fail on non-UUID or null session references.
+--   4. Qualifies user_id references in rpc_get_leaderboard and rpc_calculate_weekly_achiever
+--      to eliminate PostgreSQL error 42702 ('column reference user_id is ambiguous').
+--   5. Safely unblocks stuck active study session for user Subodh.
 -- ==============================================================================
 
--- 1. ADDITIVE SCHEMA CHANGES (Non-Destructive)
-ALTER TABLE public.study_sessions
-  ADD COLUMN IF NOT EXISTS split_part INTEGER DEFAULT NULL,
-  ADD COLUMN IF NOT EXISTS sibling_session_id UUID REFERENCES public.study_sessions(id) ON DELETE SET NULL;
-
-CREATE INDEX IF NOT EXISTS idx_study_sessions_sibling_id ON public.study_sessions(sibling_session_id);
-CREATE INDEX IF NOT EXISTS idx_study_sessions_split_part ON public.study_sessions(split_part);
-
--- 2. UPDATE rpc_finish_session
+-- 1. DROP ALL OVERLOADED VARIANTS OF rpc_finish_session
 DROP FUNCTION IF EXISTS public.rpc_finish_session() CASCADE;
 DROP FUNCTION IF EXISTS public.rpc_finish_session(TEXT[]) CASCADE;
 DROP FUNCTION IF EXISTS public.rpc_finish_session(TEXT[], TEXT) CASCADE;
 DROP FUNCTION IF EXISTS public.rpc_finish_session(TEXT, TEXT[]) CASCADE;
 
+-- 2. RE-CREATE CANONICAL rpc_finish_session
 CREATE OR REPLACE FUNCTION public.rpc_finish_session(
   p_completed_task_ids TEXT[] DEFAULT ARRAY[]::TEXT[],
   p_reason TEXT DEFAULT 'manual_stop'
@@ -312,7 +302,9 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- 3. UPDATE rpc_complete_session_goals
+-- 3. RE-CREATE rpc_complete_session_goals WITH NULLABLE p_session_id
+DROP FUNCTION IF EXISTS public.rpc_complete_session_goals(UUID, TEXT[]) CASCADE;
+
 CREATE OR REPLACE FUNCTION public.rpc_complete_session_goals(
   p_session_id UUID DEFAULT NULL,
   p_completed_task_ids TEXT[] DEFAULT ARRAY[]::TEXT[]
@@ -423,105 +415,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- 4. UPDATE rpc_record_break_expiry_goals
-CREATE OR REPLACE FUNCTION public.rpc_record_break_expiry_goals(p_completed_task_ids TEXT[] DEFAULT ARRAY[]::TEXT[])
-RETURNS JSONB AS $$
-DECLARE
-  v_user_id UUID := auth.uid();
-  v_session_id UUID;
-  v_sibling_id UUID;
-  v_active_goal_id UUID;
-  v_tasks JSONB;
-  v_updated_tasks JSONB;
-  v_elem JSONB;
-  v_task_id TEXT;
-  v_is_completed BOOLEAN;
-  v_task_text TEXT;
-  v_session_completed_tasks JSONB := '[]'::JSONB;
-  v_now TIMESTAMPTZ := NOW();
-BEGIN
-  IF v_user_id IS NULL THEN
-    RAISE EXCEPTION 'Not authenticated';
-  END IF;
-
-  -- Strictly serialize concurrent requests for the same user via transaction advisory lock
-  PERFORM pg_advisory_xact_lock(hashtext(v_user_id::text));
-
-  IF p_completed_task_ids IS NOT NULL AND array_length(p_completed_task_ids, 1) > 0 THEN
-    SELECT id, tasks INTO v_active_goal_id, v_tasks
-    FROM public.daily_goals
-    WHERE user_id = v_user_id
-      AND (
-        expires_at > v_now
-        OR expires_at >= (v_now - INTERVAL '20 hours')
-      )
-    ORDER BY created_at DESC
-    LIMIT 1
-    FOR UPDATE;
-
-    IF v_active_goal_id IS NOT NULL AND v_tasks IS NOT NULL THEN
-      v_updated_tasks := '[]'::JSONB;
-      FOR v_elem IN SELECT * FROM jsonb_array_elements(v_tasks)
-      LOOP
-        v_task_id := v_elem->>'id';
-        v_is_completed := COALESCE((v_elem->>'completed')::BOOLEAN, false);
-        v_task_text := v_elem->>'task';
-
-        IF v_task_id = ANY(p_completed_task_ids) THEN
-          v_is_completed := true;
-          v_session_completed_tasks := v_session_completed_tasks || jsonb_build_object(
-            'id', v_task_id,
-            'task', v_task_text
-          );
-        END IF;
-
-        v_updated_tasks := v_updated_tasks || jsonb_build_object(
-          'id', v_task_id,
-          'task', v_task_text,
-          'completed', v_is_completed
-        );
-      END LOOP;
-
-      UPDATE public.daily_goals
-      SET tasks = v_updated_tasks
-      WHERE id = v_active_goal_id;
-    END IF;
-
-    -- Attach completed tasks to the latest study session and its split sibling if applicable (BUG-06)
-    SELECT id, sibling_session_id INTO v_session_id, v_sibling_id
-    FROM public.study_sessions
-    WHERE user_id = v_user_id
-    ORDER BY end_time DESC
-    LIMIT 1;
-
-    IF v_session_id IS NOT NULL AND jsonb_array_length(v_session_completed_tasks) > 0 THEN
-      UPDATE public.study_sessions
-      SET completed_tasks = (
-        SELECT COALESCE(jsonb_agg(elem), '[]'::JSONB)
-        FROM (
-          SELECT DISTINCT ON (t->>'id') t AS elem
-          FROM (
-            SELECT jsonb_array_elements(COALESCE(completed_tasks, '[]'::JSONB)) AS t
-            UNION ALL
-            SELECT jsonb_array_elements(v_session_completed_tasks) AS t
-          ) combined
-          WHERE t->>'id' IS NOT NULL
-        ) deduplicated
-      )
-      WHERE user_id = v_user_id
-        AND (id = v_session_id OR (v_sibling_id IS NOT NULL AND id = v_sibling_id));
-    END IF;
-  END IF;
-
-  UPDATE public.users
-  SET last_break_expired_study_seconds = NULL
-  WHERE id = v_user_id;
-
-  RETURN jsonb_build_object('success', true, 'server_now', v_now);
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
--- 5. UPDATE rpc_get_leaderboard
+-- 4. RE-CREATE rpc_get_leaderboard WITH QUALIFIED user_id REFERENCES
 DROP FUNCTION IF EXISTS public.rpc_get_leaderboard(TIMESTAMPTZ, TEXT) CASCADE;
 DROP FUNCTION IF EXISTS public.rpc_get_leaderboard(TIMESTAMPTZ) CASCADE;
 DROP FUNCTION IF EXISTS public.rpc_get_leaderboard() CASCADE;
@@ -551,14 +445,12 @@ DECLARE
   v_target_completed_tasks INTEGER := 3;
 BEGIN
   IF p_week_start IS NULL THEN
-    -- Default to current week's Monday 00:00:00 in specified timezone
     v_week_start := (DATE_TRUNC('week', NOW() AT TIME ZONE v_tz) AT TIME ZONE v_tz);
   ELSE
     v_week_start := (DATE_TRUNC('week', p_week_start AT TIME ZONE v_tz) AT TIME ZONE v_tz);
   END IF;
   v_week_end := v_week_start + INTERVAL '7 days';
 
-  -- Create temporary table of aggregate weekly statistics per user
   DROP TABLE IF EXISTS temp_user_stats;
   CREATE TEMP TABLE temp_user_stats ON COMMIT DROP AS
   WITH completed_study AS (
@@ -567,7 +459,6 @@ BEGIN
     WHERE s.start_time >= v_week_start AND s.start_time < v_week_end
     GROUP BY s.user_id
     UNION ALL
-    -- Account for unclosed blocks from past-week evaluations (BUG-03)
     SELECT b.user_id, COALESCE(SUM(EXTRACT(EPOCH FROM (LEAST(COALESCE(b.end_time, NOW()), v_week_end) - b.start_time))), 0)::INTEGER / 60 AS study_mins
     FROM public.session_blocks b
     WHERE b.session_id IS NULL
@@ -578,16 +469,14 @@ BEGIN
     GROUP BY b.user_id
   ),
   live_study AS (
-    -- Compute in-progress active study minutes for users currently studying or on valid break
     SELECT
       u.id AS user_id,
       FLOOR(
         GREATEST(
           0,
           LEAST(
-            180 * 60, -- Max session limit: 3 hours (10800 seconds)
+            180 * 60,
             COALESCE(
-              -- Method A: Exact sum of active study blocks within current week
               (
                 SELECT SUM(
                   EXTRACT(EPOCH FROM (
@@ -602,7 +491,6 @@ BEGIN
                   AND b.start_time < v_week_end
                   AND COALESCE(b.end_time, NOW()) > v_week_start
               ),
-              -- Method B: Fallback to user status fields bounded strictly by v_week_start (BUG-02)
               CASE 
                 WHEN NOW() >= v_week_start AND NOW() < v_week_end THEN
                   LEAST(
@@ -657,7 +545,6 @@ BEGIN
   completed_tasks_per_user AS (
     SELECT combined_tasks.user_id, COUNT(DISTINCT combined_tasks.task_id)::INTEGER AS completed_tasks_count
     FROM (
-      -- Tasks marked completed in daily_goals created in this week (BUG-05)
       SELECT g.user_id, t->>'id' AS task_id
       FROM public.daily_goals g,
            jsonb_array_elements(COALESCE(g.tasks, '[]'::JSONB)) t
@@ -665,8 +552,6 @@ BEGIN
         AND (t->>'completed')::boolean = true
         AND t->>'id' IS NOT NULL
       UNION
-      -- Tasks recorded in study_sessions belonging to this week (BUG-07)
-      -- Excludes Part 2 of a Sunday->Monday midnight split to prevent cross-week double attribution
       SELECT s.user_id, t->>'id' AS task_id
       FROM public.study_sessions s,
            jsonb_array_elements(COALESCE(s.completed_tasks, '[]'::JSONB)) t
@@ -723,7 +608,6 @@ BEGIN
     HAVING SUM(d.day_mins) >= 30
   ),
   user_streaks AS (
-    -- Days with >= 30 mins active study in local calendar days within current week
     SELECT qd.user_id, COUNT(DISTINCT qd.study_day)::INTEGER AS streak
     FROM qualifying_days qd
     GROUP BY qd.user_id
@@ -774,7 +658,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- 6. UPDATE rpc_calculate_weekly_achiever
+-- 5. RE-CREATE rpc_calculate_weekly_achiever WITH QUALIFIED lb.user_id
 CREATE OR REPLACE FUNCTION public.rpc_calculate_weekly_achiever(p_timezone TEXT DEFAULT 'Asia/Kolkata')
 RETURNS UUID AS $$
 DECLARE
@@ -790,13 +674,10 @@ BEGIN
   ORDER BY lb.score DESC, lb.total_study_minutes DESC
   LIMIT 1;
 
-  -- Allow update of protected badge column inside security definer function
   PERFORM set_config('studyroom.internal_badge_update', 'true', true);
 
-  -- Clear previous achiever badges
   UPDATE public.users SET has_achiever_badge = FALSE WHERE has_achiever_badge = TRUE;
 
-  -- Set new achiever badge
   IF v_winner_id IS NOT NULL THEN
     UPDATE public.users SET has_achiever_badge = TRUE WHERE id = v_winner_id;
   END IF;
@@ -804,3 +685,22 @@ BEGIN
   RETURN v_winner_id;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 6. SAFELY CLEAN UP ANY CURRENTLY STUCK SESSIONS FOR USER SUBODH
+UPDATE public.session_blocks
+SET end_time = NOW()
+WHERE user_id = 'ee438ced-3c88-4708-864e-3eb12404b1c2' AND end_time IS NULL;
+
+UPDATE public.users
+SET current_status = 'offline',
+    current_focus = NULL,
+    session_start_time = NULL,
+    last_resumed_at = NULL,
+    break_started_at = NULL,
+    active_study_seconds_snapshot = 0,
+    last_break_expired_study_seconds = NULL,
+    pending_goal_session_id = NULL,
+    pending_goal_seconds = NULL,
+    pending_goal_reason = NULL,
+    last_offline_at = NOW()
+WHERE id = 'ee438ced-3c88-4708-864e-3eb12404b1c2';

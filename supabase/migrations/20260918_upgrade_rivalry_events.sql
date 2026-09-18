@@ -1,0 +1,90 @@
+-- Migration: 20260918_upgrade_rivalry_events.sql
+-- Upgrades public.rivalry_events for Rivalry Arena 2.0 with authoritative resolution fields,
+-- participant arrays, structured final standings, and performance indexes.
+
+DO $$
+BEGIN
+  -- Add resolution_id if missing
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'rivalry_events' AND column_name = 'resolution_id'
+  ) THEN
+    ALTER TABLE public.rivalry_events ADD COLUMN resolution_id TEXT;
+  END IF;
+
+  -- Add rivalry_id if missing
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'rivalry_events' AND column_name = 'rivalry_id'
+  ) THEN
+    ALTER TABLE public.rivalry_events ADD COLUMN rivalry_id TEXT;
+  END IF;
+
+  -- Add winner_id if missing
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'rivalry_events' AND column_name = 'winner_id'
+  ) THEN
+    ALTER TABLE public.rivalry_events ADD COLUMN winner_id UUID;
+  END IF;
+
+  -- Add participant_ids if missing
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'rivalry_events' AND column_name = 'participant_ids'
+  ) THEN
+    ALTER TABLE public.rivalry_events ADD COLUMN participant_ids UUID[];
+  END IF;
+
+  -- Add final_standings JSONB if missing
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'rivalry_events' AND column_name = 'final_standings'
+  ) THEN
+    ALTER TABLE public.rivalry_events ADD COLUMN final_standings JSONB DEFAULT '[]'::JSONB;
+  END IF;
+
+  -- Add resolution_type if missing
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'rivalry_events' AND column_name = 'resolution_type'
+  ) THEN
+    ALTER TABLE public.rivalry_events ADD COLUMN resolution_type TEXT DEFAULT 'WON';
+  END IF;
+
+  -- Add occurred_at if missing
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'rivalry_events' AND column_name = 'occurred_at'
+  ) THEN
+    ALTER TABLE public.rivalry_events ADD COLUMN occurred_at TIMESTAMPTZ DEFAULT NOW();
+  END IF;
+END $$;
+
+-- Populate resolution_id for legacy rows where resolution_id is null
+UPDATE public.rivalry_events
+SET resolution_id = id
+WHERE resolution_id IS NULL;
+
+-- Populate occurred_at for legacy rows where occurred_at is null
+UPDATE public.rivalry_events
+SET occurred_at = created_at
+WHERE occurred_at IS NULL;
+
+-- Performance indexes for fast 15-minute TTL queries
+CREATE INDEX IF NOT EXISTS idx_rivalry_events_occurred_at ON public.rivalry_events(occurred_at DESC);
+CREATE INDEX IF NOT EXISTS idx_rivalry_events_created_at ON public.rivalry_events(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_rivalry_events_resolution_id ON public.rivalry_events(resolution_id);
+
+-- Ensure Realtime publication includes rivalry_events
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime' AND tablename = 'rivalry_events' AND schemaname = 'public'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.rivalry_events;
+  END IF;
+EXCEPTION
+  WHEN OTHERS THEN NULL;
+END $$;

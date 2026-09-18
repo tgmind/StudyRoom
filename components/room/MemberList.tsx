@@ -12,7 +12,12 @@ import React, {
 import { UserProfile } from "@/lib/supabase/types";
 import { MemberCard } from "@/components/room/MemberCard";
 import { RivalryArena } from "./RivalryArena";
-import { detectLiveRivalries, RivalryState, RivalryWinEvent } from "@/lib/time/rivalry";
+import {
+  detectLiveRivalries,
+  evaluateRivalryResolution,
+  RivalryState,
+  RivalryWinEvent,
+} from "@/lib/time/rivalry";
 import { RivalryWinCelebration } from "./RivalryWinCelebration";
 import { Users, WifiOff, Flame, Coffee } from "lucide-react";
 import {
@@ -30,9 +35,10 @@ interface MemberListProps {
   currentUserId?: string;
   currentUserElapsedSeconds?: number;
   isLoading?: boolean;
+  winEvents?: RivalryWinEvent[] | null;
   winEvent?: RivalryWinEvent | null;
   onRivalryWin?: (event: RivalryWinEvent) => void;
-  onDismissWinEvent?: () => void;
+  onDismissWinEvent?: (eventId?: string) => void;
 }
 
 export const MemberList = memo(function MemberList({
@@ -40,6 +46,7 @@ export const MemberList = memo(function MemberList({
   currentUserId,
   currentUserElapsedSeconds,
   isLoading = false,
+  winEvents,
   winEvent,
   onRivalryWin,
   onDismissWinEvent,
@@ -190,7 +197,8 @@ export const MemberList = memo(function MemberList({
       activeMembers,
       currentTimestamp,
       currentUserId,
-      currentUserElapsedSeconds
+      currentUserElapsedSeconds,
+      prevStableRivalriesRef.current
     );
 
     const prev = prevStableRivalriesRef.current;
@@ -237,15 +245,26 @@ export const MemberList = memo(function MemberList({
       for (const prev of prevRivalries) {
         const stillActive = rivalries.some((r) => r.id === prev.id);
         if (!stillActive && prev.rivalMembers.length >= 2) {
-          const winner = prev.rivalMembers[0];
-          const loser = prev.rivalMembers[1];
+          const winnerCandidate = prev.rivalMembers[0];
+          const loserCandidate = prev.rivalMembers[1];
           // If they are still rivals in another group (e.g. trio to pair), don't declare victory yet
           const stillRivalsTogether = rivalries.some(
             (r) =>
-              r.rivalMembers.some((m) => m.id === winner.id) &&
-              r.rivalMembers.some((m) => m.id === loser.id)
+              r.rivalMembers.some((m) => m.id === winnerCandidate.id) &&
+              r.rivalMembers.some((m) => m.id === loserCandidate.id)
           );
           if (stillRivalsTogether) continue;
+
+          // Rigorously evaluate the resolution state
+          const resolution = evaluateRivalryResolution(prev, members, currentTimestamp);
+          if (!resolution || resolution.resolutionType !== "WON" || !resolution.winner || !resolution.loser) {
+            // Non-won resolution (e.g. SESSION_STOPPED, MEMBER_LEFT, NO_CONTEST, WEEK_ROLLOVER, EXPIRED)
+            // Strict rule: NEVER declare a win or fire celebrations!
+            continue;
+          }
+
+          const winner = resolution.winner;
+          const loser = resolution.loser;
 
           if (winner?.display_name && loser?.display_name) {
             const pairKey = `${winner.id}_${loser.id}`;
@@ -281,9 +300,16 @@ export const MemberList = memo(function MemberList({
             const timeBucket = Math.floor(nowMs / (15 * 60 * 1000));
             const winEvent: RivalryWinEvent = {
               id: `win-${winner.id}-${loser.id}-${timeBucket}`,
+              resolutionId: resolution.resolutionId,
+              rivalryId: prev.id,
+              winnerId: winner.id,
               winnerName: winner.display_name,
+              loserId: loser.id,
               loserName: loser.display_name,
               timestamp: nowMs,
+              occurredAt: new Date(nowMs).toISOString(),
+              resolutionType: "WON",
+              standings: resolution.standings,
             };
             if (onRivalryWin) {
               onRivalryWin(winEvent);
@@ -293,7 +319,7 @@ export const MemberList = memo(function MemberList({
       }
     }
     prevRivalriesRef.current = rivalries;
-  }, [rivalries, onRivalryWin, currentUserId, activeMembers, sortedActiveMembers]);
+  }, [rivalries, onRivalryWin, currentUserId, activeMembers, sortedActiveMembers, members, currentTimestamp]);
 
   // Refs for tracking DOM card elements and their bounding rectangles across re-orders
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -416,7 +442,11 @@ export const MemberList = memo(function MemberList({
       )}
 
       {/* Rivalry Winner Celebration (Overlapping popup & 15m persistent compact banner) */}
-      <RivalryWinCelebration winEvent={winEvent} onDismiss={onDismissWinEvent} />
+      <RivalryWinCelebration
+        winEvents={winEvents}
+        winEvent={winEvent}
+        onDismiss={onDismissWinEvent}
+      />
 
       {/* 2. Active Studying & On Break Members Section */}
       {(nonRivalActiveMembers.length > 0 || rivalries.length === 0) && (

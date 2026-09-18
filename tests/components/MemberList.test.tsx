@@ -253,5 +253,61 @@ describe("MemberList Component & Live Global View", () => {
     // Because rival-2 (winner) is active in the room, rival-1's client does NOT broadcast (avoids storm)
     expect(handleRivalryWin).not.toHaveBeenCalled();
   });
+
+  it("does NOT call onRivalryWin when rivalry dissolves because a participant stops studying or goes offline", () => {
+    const handleRivalryWin = vi.fn();
+
+    const rival1: UserProfile = {
+      id: "rival-1",
+      display_name: "Rival One",
+      avatar_url: null,
+      current_status: "studying",
+      session_start_time: new Date(Date.now() - 10 * 1000).toISOString(),
+      weekly_study_seconds: 20000,
+      current_focus: null,
+      has_achiever_badge: false,
+      created_at: new Date().toISOString(),
+    };
+
+    const rival2: UserProfile = {
+      id: "rival-2",
+      display_name: "Rival Two",
+      avatar_url: null,
+      current_status: "studying",
+      session_start_time: new Date(Date.now() - 10 * 1000).toISOString(),
+      weekly_study_seconds: 20100, // 100s gap
+      current_focus: null,
+      has_achiever_badge: false,
+      created_at: new Date().toISOString(),
+    };
+
+    // 1. Initial render with active rivalry
+    const { rerender } = render(
+      <MemberList
+        members={[rival1, rival2]}
+        currentUserId="rival-2"
+        onRivalryWin={handleRivalryWin}
+      />
+    );
+    expect(handleRivalryWin).not.toHaveBeenCalled();
+
+    // 2. Rival 1 stops studying / goes offline (NOT a victory by study lead!)
+    const rival1Offline: UserProfile = {
+      ...rival1,
+      current_status: "offline",
+      last_offline_at: new Date().toISOString(),
+    };
+
+    rerender(
+      <MemberList
+        members={[rival1Offline, rival2]}
+        currentUserId="rival-2"
+        onRivalryWin={handleRivalryWin}
+      />
+    );
+
+    // CRITICAL: Must NOT declare victory just because the opponent logged out or stopped studying!
+    expect(handleRivalryWin).not.toHaveBeenCalled();
+  });
 });
 

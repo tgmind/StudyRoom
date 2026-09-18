@@ -1245,6 +1245,9 @@ export function useActiveSession(
     return { success: true };
   };
 
+  const isValidUuid = (id?: string | null): boolean =>
+    Boolean(id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id));
+
   const completeSessionGoals = useCallback(
     async (sessionId: string, completedTaskIds: string[]) => {
       isLocallyAwaitingGoalUpdateRef.current = false;
@@ -1252,10 +1255,12 @@ export function useActiveSession(
       setIsGoalUpdateModalOpen(false);
       setPendingGoalSessionId(null);
 
+      const targetUuid = isValidUuid(sessionId) ? sessionId : null;
+
       try {
         const { error: rpcErr } = await with10sTimeout(
           (supabase as unknown as RpcCaller).rpc("rpc_complete_session_goals", {
-            p_session_id: sessionId,
+            p_session_id: targetUuid,
             p_completed_task_ids: completedTaskIds,
           }),
           "Complete session goals RPC"
@@ -1264,14 +1269,14 @@ export function useActiveSession(
         if (rpcErr) {
           enqueueSessionAction("complete_session_goals", {
             completedTaskIds,
-            payload: { sessionId },
+            payload: { sessionId: targetUuid || sessionId },
           });
         }
       } catch (err) {
         console.warn("Complete session goals timed out or offline; safely queued:", err);
         enqueueSessionAction("complete_session_goals", {
           completedTaskIds,
-          payload: { sessionId },
+          payload: { sessionId: targetUuid || sessionId },
         });
       }
     },
@@ -1287,14 +1292,13 @@ export function useActiveSession(
     }
     const sid = pendingGoalSessionId;
     setPendingGoalSessionId(null);
-    if (sid) {
-      try {
-        await (supabase as unknown as RpcCaller).rpc("rpc_complete_session_goals", {
-          p_session_id: sid,
-          p_completed_task_ids: [],
-        });
-      } catch {}
-    }
+    const targetUuid = isValidUuid(sid) ? sid : null;
+    try {
+      await (supabase as unknown as RpcCaller).rpc("rpc_complete_session_goals", {
+        p_session_id: targetUuid,
+        p_completed_task_ids: [],
+      });
+    } catch {}
   }, [supabase, pendingGoalSessionId]);
 
   const dismissTenMinuteWarning = useCallback(() => {

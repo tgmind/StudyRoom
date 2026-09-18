@@ -95,6 +95,7 @@ export function useLiveRoom(currentUserId?: string) {
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expectedPeakHours, setExpectedPeakHours] = useState<string>("6 PM – 9 PM");
+  const [activeWinEvents, setActiveWinEvents] = useState<RivalryWinEvent[]>([]);
   const [activeWinEvent, setActiveWinEvent] = useState<RivalryWinEvent | null>(null);
 
   const supabase = createClient();
@@ -108,13 +109,15 @@ export function useLiveRoom(currentUserId?: string) {
       setActiveWinEvent(null);
       return;
     }
-    if (isWinEventDismissed(newEvent.id, newEvent.winnerName, newEvent.loserName)) {
+    const resId = newEvent.resolutionId || newEvent.id;
+    if (isWinEventDismissed(resId, newEvent.winnerName, newEvent.loserName)) {
       return;
     }
     setActiveWinEvent((prev) => {
       if (
         prev &&
-        (prev.id === newEvent.id ||
+        ((prev.resolutionId && prev.resolutionId === resId) ||
+          prev.id === newEvent.id ||
           (prev.winnerName === newEvent.winnerName &&
             prev.loserName === newEvent.loserName &&
             Math.abs(prev.timestamp - newEvent.timestamp) < 15 * 60 * 1000))
@@ -173,13 +176,48 @@ export function useLiveRoom(currentUserId?: string) {
         Math.min(cutoffTime, weekStartTime, serverNow.getTime() - 4 * 86400000)
       ).toISOString();
 
-      const { data: sessionData } = await supabase
-        .from("study_sessions")
-        .select("user_id, duration_minutes, end_time, start_time")
-        .gte("start_time", oldestRequiredTime);
+      // Fetch study sessions and leaderboard concurrently (graceful fallback if RPC fails)
+      let rpcPromise: PromiseLike<{ data: unknown; error: { message: string } | null }> | null = null;
+      try {
+        const res = (supabase as unknown as RpcCaller).rpc("rpc_get_leaderboard", {});
+        if (res && typeof res.then === "function") {
+          rpcPromise = res;
+        }
+      } catch {
+        // Graceful fallback
+      }
+
+      const [sessionDataResult, leaderboardResult] = await Promise.allSettled([
+        supabase
+          .from("study_sessions")
+          .select("user_id, duration_minutes, end_time, start_time")
+          .gte("start_time", oldestRequiredTime),
+        rpcPromise ? Promise.resolve(rpcPromise) : Promise.resolve({ data: null, error: null }),
+      ]);
 
       type SessionRow = { user_id: string; duration_minutes: number; end_time: string; start_time?: string };
-      const rawSessions = sessionData as unknown as SessionRow[] | null;
+      const rawSessions =
+        sessionDataResult.status === "fulfilled"
+          ? (sessionDataResult.value.data as unknown as SessionRow[] | null)
+          : null;
+
+      const leaderboardMap = new Map<string, { score: number; rank: number }>();
+      if (
+        leaderboardResult.status === "fulfilled" &&
+        leaderboardResult.value &&
+        !leaderboardResult.value.error &&
+        Array.isArray(leaderboardResult.value.data)
+      ) {
+        leaderboardResult.value.data.forEach((entry: { user_id?: string; score?: number }, idx: number) => {
+          if (entry && entry.user_id) {
+            leaderboardMap.set(entry.user_id, {
+              score: typeof entry.score === "number" ? entry.score : 0,
+              rank: idx + 1,
+            });
+          }
+        });
+      }
+
       const statsMap = new Map<string, { past24hSeconds: number; weeklySeconds: number; weeklySessions: number; totalSessions: number; latestSessionEndMs: number }>();
       if (rawSessions) {
         for (const s of rawSessions) {
@@ -260,6 +298,8 @@ export function useLiveRoom(currentUserId?: string) {
             ? new Date(u.created_at).getTime()
             : 0;
 
+          const lb = leaderboardMap.get(u.id);
+
           return {
             ...u,
             last_offline_at: resolvedOfflineMs > 0 ? new Date(resolvedOfflineMs).toISOString() : u.created_at,
@@ -267,6 +307,8 @@ export function useLiveRoom(currentUserId?: string) {
             weekly_study_seconds: stat.weeklySeconds,
             total_sessions_count: stat.weeklySessions,
             weekly_sessions_count: stat.weeklySessions,
+            leaderboard_score: lb ? lb.score : u.leaderboard_score,
+            leaderboard_rank: lb ? lb.rank : u.leaderboard_rank,
           };
         });
         setMembers(sortMembers(filterAdmin(enriched), currentUserIdRef.current));
@@ -276,23 +318,45 @@ export function useLiveRoom(currentUserId?: string) {
       try {
         const fifteenMinsAgoIso = new Date(serverNow.getTime() - 15 * 60 * 1000).toISOString();
         const { data: winData, error: winErr } = await (supabase.from("rivalry_events") as any)
-          .select("id, winner_name, loser_name, created_at")
+          .select("id, resolution_id, rivalry_id, winner_id, winner_name, loser_id, loser_name, resolution_type, final_standings, occurred_at, created_at")
           .gte("created_at", fifteenMinsAgoIso)
           .order("created_at", { ascending: false })
-          .limit(1);
+          .limit(10);
 
-        if (!winErr && winData && winData.length > 0) {
-          const latest = winData[0] as { id: string; winner_name: string; loser_name: string; created_at: string };
-          if (!isWinEventDismissed(latest.id, latest.winner_name, latest.loser_name)) {
-            const winEvent: RivalryWinEvent = {
-              id: latest.id,
-              winnerName: latest.winner_name,
-              loserName: latest.loser_name,
-              timestamp: new Date(latest.created_at).getTime(),
-            };
-            updateActiveWinEvent(winEvent);
+        if (!winErr && winData && Array.isArray(winData) && winData.length > 0) {
+          const validWinEvents: RivalryWinEvent[] = [];
+          for (const row of winData) {
+            if (row.resolution_type && row.resolution_type !== "WON") {
+              continue;
+            }
+            const resId = row.resolution_id || row.id;
+            if (isWinEventDismissed(resId, row.winner_name, row.loser_name)) {
+              continue;
+            }
+            const eventTimestamp = row.occurred_at
+              ? new Date(row.occurred_at).getTime()
+              : (row.created_at ? new Date(row.created_at).getTime() : Date.now());
+
+            validWinEvents.push({
+              id: row.id,
+              resolutionId: resId,
+              rivalryId: row.rivalry_id,
+              winnerId: row.winner_id,
+              winnerName: row.winner_name,
+              loserId: row.loser_id,
+              loserName: row.loser_name,
+              timestamp: eventTimestamp,
+              occurredAt: row.occurred_at || row.created_at,
+              resolutionType: "WON",
+              standings: row.final_standings,
+            });
+          }
+
+          if (validWinEvents.length > 0) {
+            setActiveWinEvents(validWinEvents);
+            updateActiveWinEvent(validWinEvents[0]);
             try {
-              localStorage.setItem("studyroom_active_rivalry_win", JSON.stringify(winEvent));
+              localStorage.setItem("studyroom_active_rivalry_win", JSON.stringify(validWinEvents[0]));
             } catch {}
           }
         }
@@ -436,13 +500,21 @@ export function useLiveRoom(currentUserId?: string) {
         (msg) => {
           if (msg.payload && (msg.payload as RivalryWinEvent).id) {
             const win = msg.payload as RivalryWinEvent;
-            if (isWinEventDismissed(win.id, win.winnerName, win.loserName)) {
+            if (win.resolutionType && win.resolutionType !== "WON") {
+              return;
+            }
+            const resId = win.resolutionId || win.id;
+            if (isWinEventDismissed(resId, win.winnerName, win.loserName)) {
               return;
             }
             try {
               localStorage.setItem("studyroom_active_rivalry_win", JSON.stringify(win));
             } catch {}
             updateActiveWinEvent(win);
+            setActiveWinEvents((prev) => {
+              const filtered = prev.filter((e) => (e.resolutionId || e.id) !== resId);
+              return [win, ...filtered].slice(0, 10);
+            });
           }
         }
       )
@@ -457,21 +529,50 @@ export function useLiveRoom(currentUserId?: string) {
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "rivalry_events" },
         (payload) => {
-          const row = payload.new as { id?: string; winner_name?: string; loser_name?: string; created_at?: string };
+          const row = payload.new as {
+            id?: string;
+            resolution_id?: string;
+            rivalry_id?: string;
+            winner_id?: string;
+            winner_name?: string;
+            loser_id?: string;
+            loser_name?: string;
+            resolution_type?: string;
+            final_standings?: any;
+            occurred_at?: string;
+            created_at?: string;
+          };
           if (row && row.id && row.winner_name && row.loser_name) {
-            if (isWinEventDismissed(row.id, row.winner_name, row.loser_name)) {
+            if (row.resolution_type && row.resolution_type !== "WON") {
+              return;
+            }
+            const resId = row.resolution_id || row.id;
+            if (isWinEventDismissed(resId, row.winner_name, row.loser_name)) {
               return;
             }
             const win: RivalryWinEvent = {
               id: row.id,
+              resolutionId: resId,
+              rivalryId: row.rivalry_id,
+              winnerId: row.winner_id,
               winnerName: row.winner_name,
+              loserId: row.loser_id,
               loserName: row.loser_name,
-              timestamp: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
+              timestamp: row.occurred_at
+                ? new Date(row.occurred_at).getTime()
+                : (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
+              occurredAt: row.occurred_at || row.created_at,
+              resolutionType: "WON",
+              standings: row.final_standings,
             };
             try {
               localStorage.setItem("studyroom_active_rivalry_win", JSON.stringify(win));
             } catch {}
             updateActiveWinEvent(win);
+            setActiveWinEvents((prev) => {
+              const filtered = prev.filter((e) => (e.resolutionId || e.id) !== resId);
+              return [win, ...filtered].slice(0, 10);
+            });
           }
         }
       )
@@ -524,7 +625,18 @@ export function useLiveRoom(currentUserId?: string) {
 
   // Broadcast and persist rivalry win announcement to all connected peers and devices
   const broadcastRivalryWin = useCallback(async (winEvent: RivalryWinEvent) => {
+    // Strict safeguard: NEVER broadcast or persist non-won resolutions
+    if (winEvent.resolutionType && winEvent.resolutionType !== "WON") {
+      return;
+    }
+
     updateActiveWinEvent(winEvent);
+    setActiveWinEvents((prev) => {
+      const resId = winEvent.resolutionId || winEvent.id;
+      const filtered = prev.filter((e) => (e.resolutionId || e.id) !== resId);
+      return [winEvent, ...filtered].slice(0, 10);
+    });
+
     try {
       localStorage.setItem("studyroom_active_rivalry_win", JSON.stringify(winEvent));
     } catch {}
@@ -544,10 +656,22 @@ export function useLiveRoom(currentUserId?: string) {
 
     // 2. Persist to public.rivalry_events for global multi-device sync (e.g. tablet, late connections)
     try {
+      const participantIds = winEvent.standings && winEvent.standings.length > 0
+        ? winEvent.standings.map((s) => s.userId)
+        : [winEvent.winnerId, winEvent.loserId].filter(Boolean);
+
       await (supabase.from("rivalry_events") as any).insert({
         id: winEvent.id,
+        resolution_id: winEvent.resolutionId || winEvent.id,
+        rivalry_id: winEvent.rivalryId,
+        winner_id: winEvent.winnerId,
         winner_name: winEvent.winnerName,
+        loser_id: winEvent.loserId,
         loser_name: winEvent.loserName,
+        participant_ids: participantIds,
+        final_standings: winEvent.standings || [],
+        resolution_type: "WON",
+        occurred_at: winEvent.occurredAt || new Date(winEvent.timestamp).toISOString(),
         created_at: new Date(winEvent.timestamp).toISOString(),
       });
     } catch (dbErr) {
@@ -555,16 +679,32 @@ export function useLiveRoom(currentUserId?: string) {
     }
   }, [supabase, updateActiveWinEvent]);
 
-  const dismissWinEvent = useCallback(() => {
+  const dismissWinEvent = useCallback((eventId?: string) => {
+    if (eventId) {
+      try {
+        localStorage.setItem(`studyroom_win_dismissed_${eventId}`, "true");
+      } catch {}
+      setActiveWinEvents((prev) => prev.filter((e) => (e.resolutionId || e.id) !== eventId));
+      setActiveWinEvent((prev) => {
+        if (prev && (prev.resolutionId === eventId || prev.id === eventId)) {
+          return null;
+        }
+        return prev;
+      });
+      return;
+    }
+
     if (activeWinEvent) {
       try {
-        localStorage.setItem(`studyroom_win_dismissed_${activeWinEvent.id}`, "true");
+        const id = activeWinEvent.resolutionId || activeWinEvent.id;
+        localStorage.setItem(`studyroom_win_dismissed_${id}`, "true");
         const pairKey = `studyroom_win_dismissed_pair_${activeWinEvent.winnerName}_${activeWinEvent.loserName}`;
         localStorage.setItem(pairKey, Date.now().toString());
         localStorage.removeItem("studyroom_active_rivalry_win");
       } catch {}
     }
     setActiveWinEvent(null);
+    setActiveWinEvents([]);
   }, [activeWinEvent]);
 
   return {
@@ -574,6 +714,7 @@ export function useLiveRoom(currentUserId?: string) {
     error,
     expectedPeakHours,
     activeWinEvent,
+    activeWinEvents,
     broadcastRivalryWin,
     dismissWinEvent,
     refreshMembers: fetchMembers,
