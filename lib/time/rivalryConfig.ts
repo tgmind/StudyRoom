@@ -15,33 +15,55 @@ export const RIVALRY_CONFIG = {
 
   /**
    * Minimum weekly active study time in minutes required for rivalry eligibility.
-   * Reduced from 180m (3h) to 60m (1h) so meaningful rivalries can activate earlier.
+   * Both STUDY_TIME and RANK_CLASH require members to have completed >= 60m of weekly study.
    */
   MIN_RIVALRY_WEEKLY_STUDY_MINUTES: 60,
   MIN_RIVALRY_WEEKLY_SECONDS: 60 * 60, // 3,600 seconds
 
   /**
-   * Proximity Thresholds (in seconds):
+   * Study-Time Duel Configuration:
    * - START_GAP_SECONDS: Max study-time gap to START a rivalry (10 minutes = 600s).
    * - CONTINUE_GAP_SECONDS: Max study-time gap to CONTINUE a rivalry (15 minutes = 900s).
    *   Provides a 5-minute hysteresis buffer to prevent boundary flickering.
    * - RESOLUTION_GAP_SECONDS: Decisive lead gap (15 minutes = 900s) indicating a legitimate win.
-   * - TRIO_SPAN_SECONDS: Max span across all 3 participants in a trio (15 minutes = 900s).
+   * - TRIO_SPAN_SECONDS: Max span across all 3 participants in a trio (10 minutes = 600s).
+   * - TRIO_CONTINUE_SPAN_SECONDS: Trio continue hysteresis threshold (15 minutes = 900s).
    */
+  STUDY_TIME: {
+    START_GAP_SECONDS: 10 * 60, // 600s
+    CONTINUE_GAP_SECONDS: 15 * 60, // 900s
+    RESOLUTION_GAP_SECONDS: 15 * 60, // 900s
+    TRIO_SPAN_SECONDS: 10 * 60, // 600s
+    TRIO_CONTINUE_SPAN_SECONDS: 15 * 60, // 900s
+  },
+
+  /**
+   * Rank Clash (Leaderboard Duel) Configuration:
+   * Competitors on adjacent or close leaderboard ranks with close composite scores.
+   * - Adjacent ranks (distance = 1): score gap <= 10.0 pts.
+   * - Rank distance <= 2: score gap <= 8.0 pts.
+   * - Rank distance <= 3: score gap <= 6.0 pts.
+   * - CONTINUE_BUFFER_POINTS: Hysteresis buffer (+3.0 pts) allowed for active duels to prevent flickering.
+   * - RESOLUTION_SCORE_GAP: Decisive score lead (>= 15.0 pts) indicating a legitimate win.
+   */
+  RANK_CLASH: {
+    ADJACENT_RANKS_MAX_GAP: 10,
+    DISTANCE_2_MAX_GAP: 8,
+    DISTANCE_3_MAX_GAP: 6,
+    CONTINUE_BUFFER_POINTS: 3.0,
+    RESOLUTION_SCORE_GAP: 15.0,
+  },
+
+  // Backward-compatibility shortcuts
   START_GAP_SECONDS: 10 * 60, // 600s
   CONTINUE_GAP_SECONDS: 15 * 60, // 900s
   RESOLUTION_GAP_SECONDS: 15 * 60, // 900s
-  TRIO_SPAN_SECONDS: 10 * 60, // 600s (start threshold)
-  TRIO_CONTINUE_SPAN_SECONDS: 15 * 60, // 900s (continue hysteresis threshold)
-
-  /**
-   * Competitive Proximity Score Thresholds (0 to 100 Leaderboard Score scale):
-   * Used as an auxiliary signal alongside active study duration for intelligent matchmaking.
-   */
+  TRIO_SPAN_SECONDS: 10 * 60, // 600s
+  TRIO_CONTINUE_SPAN_SECONDS: 15 * 60, // 900s
   SCORE_PROXIMITY: {
-    ADJACENT_RANKS_MAX_GAP: 10, // Rank distance = 1: score gap <= 10
-    DISTANCE_2_MAX_GAP: 8,      // Rank distance <= 2: score gap <= 8
-    DISTANCE_3_MAX_GAP: 6,      // Rank distance <= 3: score gap <= 6
+    ADJACENT_RANKS_MAX_GAP: 10,
+    DISTANCE_2_MAX_GAP: 8,
+    DISTANCE_3_MAX_GAP: 6,
   },
 
   /**

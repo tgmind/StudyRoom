@@ -3,15 +3,20 @@
 import React, { memo } from "react";
 import { Zap } from "lucide-react";
 
+import { RivalryMode } from "@/lib/time/rivalry";
+
 interface RivalryBadgeProps {
   formattedGap: string;
   isTrio?: boolean;
+  mode?: RivalryMode;
 }
 
 export const RivalryBadge = memo(function RivalryBadge({
   formattedGap,
   isTrio = false,
+  mode = "STUDY_TIME",
 }: RivalryBadgeProps) {
+  const gapLabel = mode === "RANK_CLASH" ? "gap" : isTrio ? "span" : "diff";
   return (
     <div
       className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none flex flex-col items-center justify-center select-none"
@@ -41,7 +46,7 @@ export const RivalryBadge = memo(function RivalryBadge({
       <div className="mt-1.5 flex items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-950/95 border border-amber-400/40 shadow-[0_4px_12px_rgba(0,0,0,0.7)] backdrop-blur-md">
         <Zap className="w-2.5 h-2.5 text-amber-400 shrink-0 fill-amber-400" />
         <span className="text-[9px] sm:text-[10px] font-extrabold text-amber-200 tracking-tight font-mono whitespace-nowrap">
-          {formattedGap} {isTrio ? "span" : "diff"}
+          {formattedGap} {gapLabel}
         </span>
       </div>
     </div>

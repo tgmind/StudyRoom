@@ -20,7 +20,9 @@ describe("Live Study Rivalry Detection Engine", () => {
     status: "studying" | "break" | "offline",
     weeklySeconds: number,
     snapshotSeconds = 0,
-    lastResumedAt: string | null = null
+    lastResumedAt: string | null = null,
+    leaderboardRank?: number,
+    leaderboardScore?: number
   ): UserProfile => ({
     id,
     display_name: displayName,
@@ -34,6 +36,8 @@ describe("Live Study Rivalry Detection Engine", () => {
     has_achiever_badge: false,
     created_at: "2026-09-01T00:00:00Z",
     weekly_study_seconds: weeklySeconds,
+    leaderboard_rank: leaderboardRank,
+    leaderboard_score: leaderboardScore,
   });
 
   it("calculates live weekly study seconds correctly", () => {
@@ -581,6 +585,247 @@ describe("Live Study Rivalry Detection Engine", () => {
       expect(resolution?.standings[1].rank).toBe(2);
       expect(resolution?.standings[2].userId).toBe("u3");
       expect(resolution?.standings[2].rank).toBe(3);
+    });
+  });
+
+  describe("Rivalry 2.0 Option B — Dual-Mode Rivalry Engine (STUDY_TIME + RANK_CLASH)", () => {
+    it("matches Subodh (#5, 43.1 pts, 7h 27m) and Aditya (#6, 42.3 pts, 16h 46m) under RANK_CLASH", () => {
+      const fixedNow = new Date("2026-09-03T10:00:00.000Z");
+      // Subodh: Rank #5, 43.1 pts, 7h 27m (26,820s)
+      const subodh = createMockMember(
+        "user-subodh",
+        "Subodh",
+        "studying",
+        26820,
+        0,
+        null,
+        5,
+        43.1
+      );
+      // Aditya: Rank #6, 42.3 pts, 16h 46m (60,360s)
+      const aditya = createMockMember(
+        "user-aditya",
+        "Aditya",
+        "studying",
+        60360,
+        0,
+        null,
+        6,
+        42.3
+      );
+
+      const rivalries = detectLiveRivalries([subodh, aditya], fixedNow);
+
+      expect(rivalries).toHaveLength(1);
+      const r = rivalries[0];
+      expect(r.mode).toBe("RANK_CLASH");
+      expect(r.isTrio).toBe(false);
+      // Subodh is the Leader because his leaderboard score (43.1) is higher than Aditya's (42.3)
+      expect(r.rivalMembers[0].id).toBe("user-subodh");
+      expect(r.rivalMembers[1].id).toBe("user-aditya");
+      expect(r.leaderScore).toBe(43.1);
+      expect(r.scoreGap).toBeCloseTo(0.8, 1);
+      expect(r.formattedGap).toBe("0.8 pts");
+      // The 9h 19m (33,540s) study time gap does NOT disqualify or prevent the match!
+      expect(Math.abs((subodh.weekly_study_seconds ?? 0) - (aditya.weekly_study_seconds ?? 0))).toBe(33540);
+      // Stable invariant ID based on participant IDs
+      expect(r.id).toBe(generateStableRivalryId(["user-aditya", "user-subodh"]));
+    });
+
+    it("evaluates leaderboard proximity thresholds by rank distance correctly", () => {
+      const fixedNow = new Date("2026-09-03T10:00:00.000Z");
+
+      // Distance 1 (Adjacent ranks): Max score gap 10.0 pts
+      const mRank1 = createMockMember("u1", "A", "studying", 10000, 0, null, 1, 50.0);
+      const mRank2Pass = createMockMember("u2", "B", "studying", 25000, 0, null, 2, 40.0); // gap = 10.0 pts -> match
+      const mRank2Fail = createMockMember("u2f", "Bf", "studying", 25000, 0, null, 2, 39.9); // gap = 10.1 pts -> fail
+
+      const rPass1 = detectLiveRivalries([mRank1, mRank2Pass], fixedNow);
+      expect(rPass1).toHaveLength(1);
+      expect(rPass1[0].mode).toBe("RANK_CLASH");
+
+      const rFail1 = detectLiveRivalries([mRank1, mRank2Fail], fixedNow);
+      expect(rFail1).toHaveLength(0);
+
+      // Distance 2: Max score gap 8.0 pts
+      const mDist2Pass = createMockMember("u3", "C", "studying", 30000, 0, null, 3, 42.0); // gap = 8.0 pts -> match
+      const mDist2Fail = createMockMember("u3f", "Cf", "studying", 30000, 0, null, 3, 41.9); // gap = 8.1 pts -> fail
+
+      const rPass2 = detectLiveRivalries([mRank1, mDist2Pass], fixedNow);
+      expect(rPass2).toHaveLength(1);
+      expect(rPass2[0].mode).toBe("RANK_CLASH");
+
+      const rFail2 = detectLiveRivalries([mRank1, mDist2Fail], fixedNow);
+      expect(rFail2).toHaveLength(0);
+
+      // Distance 3: Max score gap 6.0 pts
+      const mDist3Pass = createMockMember("u4", "D", "studying", 35000, 0, null, 4, 44.0); // gap = 6.0 pts -> match
+      const mDist3Fail = createMockMember("u4f", "Df", "studying", 35000, 0, null, 4, 43.9); // gap = 6.1 pts -> fail
+
+      const rPass3 = detectLiveRivalries([mRank1, mDist3Pass], fixedNow);
+      expect(rPass3).toHaveLength(1);
+      expect(rPass3[0].mode).toBe("RANK_CLASH");
+
+      const rFail3 = detectLiveRivalries([mRank1, mDist3Fail], fixedNow);
+      expect(rFail3).toHaveLength(0);
+
+      // Distance 4: Rejects regardless of how small score gap is
+      const mDist4 = createMockMember("u5", "E", "studying", 40000, 0, null, 5, 49.5); // gap = 0.5 pts, but dist = 4
+      const rFail4 = detectLiveRivalries([mRank1, mDist4], fixedNow);
+      expect(rFail4).toHaveLength(0);
+    });
+
+    it("supports hysteresis continuation buffer (+3.0 pts) for active RANK_CLASH rivalries", () => {
+      const fixedNow = new Date("2026-09-03T10:00:00.000Z");
+      // Adjacent ranks: initial start max gap is 10.0 pts. Continue max gap is 13.0 pts.
+      const leader = createMockMember("u1", "A", "studying", 15000, 0, null, 1, 52.0);
+      const ch12 = createMockMember("u2", "B", "studying", 45000, 0, null, 2, 40.0); // gap = 12.0 pts
+
+      // Without previous active rivalry: 12.0 pts > 10.0 pts -> no match
+      const freshRivalry = detectLiveRivalries([leader, ch12], fixedNow);
+      expect(freshRivalry).toHaveLength(0);
+
+      // With previous active RANK_CLASH rivalry: continues within 13.0 pts buffer
+      const stableId = generateStableRivalryId(["u1", "u2"]);
+      const previousRivalries = [
+        {
+          id: stableId,
+          rivalMembers: [leader, ch12],
+          mode: "RANK_CLASH" as const,
+          scoreGap: 9.0,
+          formattedGap: "9.0 pts",
+          isTrio: false,
+          leaderWeeklySeconds: 15000,
+          participantIds: ["u1", "u2"],
+        },
+      ];
+
+      const continuedRivalry = detectLiveRivalries([leader, ch12], fixedNow, undefined, undefined, previousRivalries);
+      expect(continuedRivalry).toHaveLength(1);
+      expect(continuedRivalry[0].id).toBe(stableId);
+      expect(continuedRivalry[0].mode).toBe("RANK_CLASH");
+      expect(continuedRivalry[0].formattedGap).toBe("12.0 pts");
+
+      // Beyond continue buffer (> 13.0 pts): dissolves
+      const ch14 = createMockMember("u2", "B", "studying", 45000, 0, null, 2, 38.0); // gap = 14.0 pts > 13.0 pts
+      const dissolvedRivalry = detectLiveRivalries([leader, ch14], fixedNow, undefined, undefined, previousRivalries);
+      expect(dissolvedRivalry).toHaveLength(0);
+    });
+
+    it("maintains stable rivalry identity and shifts leader upon overtake without false WON resolution", () => {
+      const fixedNow = new Date("2026-09-03T10:00:00.000Z");
+
+      // Tick 1: Subodh (43.1) leads Aditya (42.3)
+      const subodh1 = createMockMember("u-subodh", "Subodh", "studying", 26820, 0, null, 5, 43.1);
+      const aditya1 = createMockMember("u-aditya", "Aditya", "studying", 60360, 0, null, 6, 42.3);
+
+      const r1 = detectLiveRivalries([subodh1, aditya1], fixedNow);
+      expect(r1).toHaveLength(1);
+      const initialId = r1[0].id;
+      expect(r1[0].rivalMembers[0].id).toBe("u-subodh"); // Subodh leads
+
+      // Tick 2: Aditya studies, earns points, score becomes 44.5! Subodh stays at 43.1.
+      const subodh2 = createMockMember("u-subodh", "Subodh", "studying", 26820, 0, null, 6, 43.1);
+      const aditya2 = createMockMember("u-aditya", "Aditya", "studying", 62000, 0, null, 5, 44.5);
+
+      const r2 = detectLiveRivalries([subodh2, aditya2], fixedNow, undefined, undefined, r1);
+      expect(r2).toHaveLength(1);
+      // Key invariant: ID does not change
+      expect(r2[0].id).toBe(initialId);
+      // Aditya is now the leader
+      expect(r2[0].rivalMembers[0].id).toBe("u-aditya");
+      expect(r2[0].rivalMembers[1].id).toBe("u-subodh");
+      expect(r2[0].leaderScore).toBe(44.5);
+      expect(r2[0].formattedGap).toBe("1.4 pts");
+
+      // Verify that this lead change did NOT resolve the rivalry (it's still active!)
+      expect(r2[0].id).toBe(r1[0].id);
+    });
+
+    it("resolves as WON in RANK_CLASH when leader pulls ahead by >= 15.0 pts while both active", () => {
+      const fixedNow = new Date("2026-09-03T10:00:00.000Z");
+      const winner = createMockMember("u-subodh", "Subodh", "studying", 30000, 0, null, 4, 60.0);
+      const loser = createMockMember("u-aditya", "Aditya", "studying", 60000, 0, null, 7, 44.0); // gap = 16.0 pts >= 15.0
+
+      const stableId = generateStableRivalryId(["u-subodh", "u-aditya"]);
+      const prevRivalry = {
+        id: stableId,
+        rivalMembers: [winner, loser],
+        mode: "RANK_CLASH" as const,
+        scoreGap: 9.0,
+        formattedGap: "9.0 pts",
+        isTrio: false,
+        leaderScore: 60.0,
+        leaderWeeklySeconds: 30000,
+        participantIds: ["u-aditya", "u-subodh"],
+      };
+
+      const resolution = evaluateRivalryResolution(prevRivalry, [winner, loser], fixedNow);
+      expect(resolution).not.toBeNull();
+      expect(resolution?.resolutionType).toBe("WON");
+      expect(resolution?.winner?.id).toBe("u-subodh");
+      expect(resolution?.loser?.id).toBe("u-aditya");
+      expect(resolution?.standings).toHaveLength(2);
+      expect(resolution?.standings[0].userId).toBe("u-subodh");
+      expect(resolution?.standings[0].score).toBe(60.0);
+      expect(resolution?.standings[1].userId).toBe("u-aditya");
+      expect(resolution?.standings[1].score).toBe(44.0);
+      expect(resolution?.resolutionId).toContain("-win-");
+    });
+
+    it("prevents false win in RANK_CLASH when rival goes offline or stops session", () => {
+      const fixedNow = new Date("2026-09-03T10:00:00.000Z");
+      const active = createMockMember("u-subodh", "Subodh", "studying", 30000, 0, null, 5, 43.1);
+      const offline = createMockMember("u-aditya", "Aditya", "offline", 60000, 0, null, 6, 42.3);
+
+      const stableId = generateStableRivalryId(["u-subodh", "u-aditya"]);
+      const prevRivalry = {
+        id: stableId,
+        rivalMembers: [active, offline],
+        mode: "RANK_CLASH" as const,
+        scoreGap: 0.8,
+        formattedGap: "0.8 pts",
+        isTrio: false,
+        leaderScore: 43.1,
+        leaderWeeklySeconds: 30000,
+        participantIds: ["u-aditya", "u-subodh"],
+      };
+
+      const resolution = evaluateRivalryResolution(prevRivalry, [active, offline], fixedNow);
+      expect(resolution).not.toBeNull();
+      expect(resolution?.resolutionType).toBe("SESSION_STOPPED");
+      expect(resolution?.winner).toBeUndefined(); // NEVER declare a false win on disconnect/stop
+    });
+
+    it("allows independent coexistence of STUDY_TIME and RANK_CLASH rivalries in the same room", () => {
+      const fixedNow = new Date("2026-09-03T10:00:00.000Z");
+
+      // Study-time pair: Close in duration (10h vs 9h 58m), no leaderboard data
+      const timeMember1 = createMockMember("u1", "Alice", "studying", 36000);
+      const timeMember2 = createMockMember("u2", "Bob", "studying", 35880);
+
+      // Rank-clash pair: Far in duration (18h vs 6h), but adjacent on leaderboard with 1.2 pts gap
+      const rankMember1 = createMockMember("u3", "Charlie", "studying", 64800, 0, null, 2, 75.0);
+      const rankMember2 = createMockMember("u4", "David", "studying", 21600, 0, null, 3, 73.8);
+
+      const rivalries = detectLiveRivalries(
+        [timeMember1, timeMember2, rankMember1, rankMember2],
+        fixedNow
+      );
+
+      expect(rivalries).toHaveLength(2);
+
+      const modes = rivalries.map((r) => r.mode);
+      expect(modes).toContain("STUDY_TIME");
+      expect(modes).toContain("RANK_CLASH");
+
+      const timeRivalry = rivalries.find((r) => r.mode === "STUDY_TIME")!;
+      expect(timeRivalry.rivalMembers.map((m) => m.id)).toEqual(["u1", "u2"]);
+      expect(timeRivalry.formattedGap).toBe("2m 0s");
+
+      const rankRivalry = rivalries.find((r) => r.mode === "RANK_CLASH")!;
+      expect(rankRivalry.rivalMembers.map((m) => m.id)).toEqual(["u3", "u4"]);
+      expect(rankRivalry.formattedGap).toBe("1.2 pts");
     });
   });
 });

@@ -318,7 +318,7 @@ export function useLiveRoom(currentUserId?: string) {
       try {
         const fifteenMinsAgoIso = new Date(serverNow.getTime() - 15 * 60 * 1000).toISOString();
         const { data: winData, error: winErr } = await (supabase.from("rivalry_events") as any)
-          .select("id, resolution_id, rivalry_id, winner_id, winner_name, loser_id, loser_name, resolution_type, final_standings, occurred_at, created_at")
+          .select("id, resolution_id, rivalry_id, winner_id, winner_name, loser_id, loser_name, resolution_type, final_standings, occurred_at, created_at, rivalry_mode")
           .gte("created_at", fifteenMinsAgoIso)
           .order("created_at", { ascending: false })
           .limit(10);
@@ -349,6 +349,7 @@ export function useLiveRoom(currentUserId?: string) {
               occurredAt: row.occurred_at || row.created_at,
               resolutionType: "WON",
               standings: row.final_standings,
+              mode: (row.rivalry_mode as any) || "STUDY_TIME",
             });
           }
 
@@ -541,6 +542,7 @@ export function useLiveRoom(currentUserId?: string) {
             final_standings?: any;
             occurred_at?: string;
             created_at?: string;
+            rivalry_mode?: string;
           };
           if (row && row.id && row.winner_name && row.loser_name) {
             if (row.resolution_type && row.resolution_type !== "WON") {
@@ -564,6 +566,7 @@ export function useLiveRoom(currentUserId?: string) {
               occurredAt: row.occurred_at || row.created_at,
               resolutionType: "WON",
               standings: row.final_standings,
+              mode: (row.rivalry_mode as any) || "STUDY_TIME",
             };
             try {
               localStorage.setItem("studyroom_active_rivalry_win", JSON.stringify(win));
@@ -672,6 +675,7 @@ export function useLiveRoom(currentUserId?: string) {
           participant_ids: participantIds,
           final_standings: winEvent.standings || [],
           resolution_type: "WON",
+          rivalry_mode: winEvent.mode || "STUDY_TIME",
           occurred_at: winEvent.occurredAt || new Date(winEvent.timestamp).toISOString(),
           created_at: new Date(winEvent.timestamp).toISOString(),
         },

@@ -207,8 +207,10 @@ export const MemberList = memo(function MemberList({
         const next = rawRivalries[idx];
         return (
           p.id === next.id &&
+          p.mode === next.mode &&
           p.isTrio === next.isTrio &&
           p.primaryGapSeconds === next.primaryGapSeconds &&
+          p.scoreGap === next.scoreGap &&
           p.formattedGap === next.formattedGap &&
           p.rivalMembers.length === next.rivalMembers.length &&
           p.rivalMembers.every((pm, mIdx) => pm.id === next.rivalMembers[mIdx].id)
@@ -305,6 +307,7 @@ export const MemberList = memo(function MemberList({
               id: `win-${winner.id}-${loser.id}-${timeBucket}`,
               resolutionId: resolution.resolutionId,
               rivalryId: prev.id,
+              mode: prev.mode,
               winnerId: winner.id,
               winnerName: winner.display_name,
               loserId: loser.id,

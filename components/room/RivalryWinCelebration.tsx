@@ -258,7 +258,7 @@ export const RivalryWinCelebration = memo(function RivalryWinCelebration({
             <div className="space-y-1 relative z-10">
               <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] font-black uppercase tracking-widest">
                 <Swords className="w-3 h-3 text-amber-400" />
-                <span>Rivalry Victorious</span>
+                <span>{activePopupEvent.mode === "RANK_CLASH" ? "Rank Clash Victorious" : "Rivalry Victorious"}</span>
               </div>
               <h2 className="text-lg sm:text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-yellow-100 to-amber-300 tracking-tight">
                 Victory Claimed!
@@ -276,7 +276,11 @@ export const RivalryWinCelebration = memo(function RivalryWinCelebration({
               </p>
               <div className="flex items-center justify-center gap-1.5 text-[10px] text-amber-300/90 font-semibold pt-0.5 flex-wrap">
                 <Flame className="w-3 h-3 text-amber-400 fill-amber-400 shrink-0" />
-                <span>Extended weekly study lead in Live Study!</span>
+                <span>
+                  {activePopupEvent.mode === "RANK_CLASH"
+                    ? "Extended leaderboard score lead in Live Study!"
+                    : "Extended weekly study lead in Live Study!"}
+                </span>
               </div>
             </div>
 
@@ -314,7 +318,7 @@ export const RivalryWinCelebration = memo(function RivalryWinCelebration({
                   <div className="flex flex-col min-w-0 flex-1">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="text-[8px] sm:text-[8.5px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/35 shrink-0">
-                        Rivalry Victor
+                        {evt.mode === "RANK_CLASH" ? "Rank Clash Victor" : "Rivalry Victor"}
                       </span>
                       <span className="text-[8.5px] text-zinc-400 font-mono font-medium shrink-0">
                         • {remainingMinutes}m left

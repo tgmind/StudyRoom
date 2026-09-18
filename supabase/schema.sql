@@ -2236,6 +2236,7 @@ CREATE TABLE IF NOT EXISTS public.rivalry_events (
   participant_ids UUID[],
   final_standings JSONB DEFAULT '[]'::JSONB,
   resolution_type TEXT DEFAULT 'WON',
+  rivalry_mode TEXT DEFAULT 'STUDY_TIME' CHECK (rivalry_mode IN ('STUDY_TIME', 'RANK_CLASH')),
   occurred_at TIMESTAMPTZ DEFAULT NOW(),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

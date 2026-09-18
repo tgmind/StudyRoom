@@ -147,6 +147,7 @@ export interface Database {
           id: string;
           resolution_id?: string | null;
           rivalry_id?: string | null;
+          rivalry_mode?: string | null;
           winner_id?: string | null;
           winner_name: string;
           loser_id?: string | null;
@@ -161,6 +162,7 @@ export interface Database {
           id: string;
           resolution_id?: string | null;
           rivalry_id?: string | null;
+          rivalry_mode?: string | null;
           winner_id?: string | null;
           winner_name: string;
           loser_id?: string | null;
@@ -175,6 +177,7 @@ export interface Database {
           id: string;
           resolution_id: string | null;
           rivalry_id: string | null;
+          rivalry_mode: string | null;
           winner_id: string | null;
           winner_name: string;
           loser_id: string | null;

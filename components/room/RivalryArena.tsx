@@ -22,7 +22,25 @@ export const RivalryArena = memo(function RivalryArena({
   currentUserElapsedSeconds,
   setCardRef,
 }: RivalryArenaProps) {
-  const { rivalMembers, formattedGap, isTrio } = rivalry;
+  const { rivalMembers, formattedGap, isTrio, mode = "STUDY_TIME" } = rivalry;
+
+  const arenaTitle = isTrio
+    ? "Tri-Clash Arena"
+    : mode === "RANK_CLASH"
+    ? "Rank Clash"
+    : "Rivalry Arena";
+
+  const arenaTag = isTrio
+    ? "3-Way"
+    : mode === "RANK_CLASH"
+    ? "Score Duel"
+    : "≤10m Clash";
+
+  const arenaSubtitle = isTrio
+    ? "3 Contenders"
+    : mode === "RANK_CLASH"
+    ? "Leaderboard Duel"
+    : "Weekly Duel";
 
   return (
     <section
@@ -41,17 +59,17 @@ export const RivalryArena = memo(function RivalryArena({
           </div>
           <div className="flex items-center gap-1">
             <h2 className="text-[11px] sm:text-xs font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-rose-300 via-amber-200 to-rose-400 uppercase">
-              {isTrio ? "Tri-Clash Arena" : "Rivalry Arena"}
+              {arenaTitle}
             </h2>
             <span className="text-[8px] sm:text-[9px] font-black uppercase px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40">
-              {isTrio ? "3-Way" : "≤10m Clash"}
+              {arenaTag}
             </span>
           </div>
         </div>
 
         <div className="flex items-center gap-1 text-[9px] sm:text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
           <Flame className="w-3 h-3 text-amber-400 fill-amber-400" />
-          <span className="text-zinc-300">{isTrio ? "3 Contenders" : "Weekly Duel"}</span>
+          <span className="text-zinc-300">{arenaSubtitle}</span>
         </div>
       </div>
 
@@ -76,6 +94,11 @@ export const RivalryArena = memo(function RivalryArena({
               ? { title: "CHALLENGER", border: "border-amber-500/40", bg: "bg-amber-950/60", text: "text-amber-300" }
               : { title: "CONTENDER", border: "border-violet-500/40", bg: "bg-violet-950/60", text: "text-violet-300" };
 
+          const metricDisplay =
+            mode === "RANK_CLASH"
+              ? `#${member.leaderboard_rank ?? "?"} • ${(member.leaderboard_score ?? 0).toFixed(1)} pts`
+              : formatWeeklyHours(weeklySeconds);
+
           return (
             <div
               key={`rival-${member.id}`}
@@ -92,7 +115,7 @@ export const RivalryArena = memo(function RivalryArena({
               >
                 <span className="whitespace-nowrap shrink-0">{roleLabel.title}</span>
                 <span className="font-mono text-zinc-200 font-bold ml-1 tabular-nums whitespace-nowrap">
-                  {formatWeeklyHours(weeklySeconds)}
+                  {metricDisplay}
                 </span>
               </div>
 
@@ -114,7 +137,7 @@ export const RivalryArena = memo(function RivalryArena({
 
         {/* For 2 Members: Single Centered Overlapping V/S Badge */}
         {!isTrio && (
-          <RivalryBadge formattedGap={formattedGap} isTrio={false} />
+          <RivalryBadge formattedGap={formattedGap} isTrio={false} mode={mode} />
         )}
 
         {/* For 3 Members: Responsive Positioning */}
@@ -122,12 +145,12 @@ export const RivalryArena = memo(function RivalryArena({
           <>
             {/* Mobile Trio Badge: Centered in Row 1 between Card 1 and Card 2 */}
             <div className="sm:hidden absolute left-1/2 top-[28%] -translate-x-1/2 -translate-y-1/2 pointer-events-none z-20">
-              <RivalryBadge formattedGap={formattedGap} isTrio={true} />
+              <RivalryBadge formattedGap={formattedGap} isTrio={true} mode={mode} />
             </div>
 
             {/* Desktop Trio Badge: Positioned between Card 1 and Card 2 */}
             <div className="hidden sm:block absolute left-[33.3%] top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-20">
-              <RivalryBadge formattedGap={formattedGap} isTrio={true} />
+              <RivalryBadge formattedGap={formattedGap} isTrio={true} mode={mode} />
             </div>
           </>
         )}
