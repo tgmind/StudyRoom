@@ -32,7 +32,7 @@ BEGIN
           ORDER BY 
             s.duration_minutes DESC,
             jsonb_array_length(COALESCE(s.completed_tasks, '[]'::jsonb)) DESC,
-            s.created_at DESC,
+            s.end_time DESC,
             s.id DESC
         ) AS rank,
         FIRST_VALUE(s.id) OVER (
@@ -40,7 +40,7 @@ BEGIN
           ORDER BY 
             s.duration_minutes DESC,
             jsonb_array_length(COALESCE(s.completed_tasks, '[]'::jsonb)) DESC,
-            s.created_at DESC,
+            s.end_time DESC,
             s.id DESC
         ) AS winner_id
       FROM public.study_sessions s
