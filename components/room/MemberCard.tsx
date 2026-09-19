@@ -11,6 +11,7 @@ import {
   formatSecondsToHuman,
   calculateMemberLiveBreakSeconds,
   calculateMemberOfflineHours,
+  isMemberTimerCalibrating,
 } from "@/lib/time/format";
 import { getServerNow } from "@/lib/time/clockSync";
 import { Crown, Star, Coffee, Clock, BookOpen } from "lucide-react";
@@ -69,6 +70,8 @@ export const MemberCard = memo(function MemberCard({
   const initials = member.display_name
     ? member.display_name.substring(0, 2).toUpperCase()
     : "??";
+
+  const isCalibrating = isStudying && (elapsedSeconds <= 0 || isMemberTimerCalibrating(member));
 
   return (
     <div
@@ -231,7 +234,7 @@ export const MemberCard = memo(function MemberCard({
           <>
             <div className={`font-mono ${compact ? "text-[11px] px-2.5 py-0.5" : "text-xs px-3 py-1"} font-black tracking-tight rounded-full border shadow-inner flex items-center space-x-1.5 bg-fuchsia-950/40 text-fuchsia-300 border-fuchsia-500/30 tabular-nums`}>
               <span className="w-1.5 h-1.5 rounded-full bg-fuchsia-400 shadow-[0_0_6px_rgba(217,70,239,0.8)]" />
-              <span>{formatDurationSeconds(elapsedSeconds)}</span>
+              <span>{isCalibrating ? "Syncing..." : formatDurationSeconds(elapsedSeconds)}</span>
             </div>
             <div className={`${compact ? "h-2.5 mt-0.2" : "h-3.5 mt-0.5"}`} aria-hidden="true" />
           </>

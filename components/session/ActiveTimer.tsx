@@ -7,16 +7,20 @@ import { calculateBreakStatus } from "@/lib/time/break";
 import { getServerNow } from "@/lib/time/clockSync";
 import { Coffee, AlertCircle, Clock } from "lucide-react";
 
+import { SessionSyncStatus } from "@/hooks/useActiveSession";
+
 interface ActiveTimerProps {
   elapsedSeconds: number;
   status: UserStatus;
   breakStartedAt?: string | null;
+  syncStatus?: SessionSyncStatus;
 }
 
 export function ActiveTimer({
   elapsedSeconds,
   status,
   breakStartedAt,
+  syncStatus,
 }: ActiveTimerProps) {
   const isStudying = status === "studying";
   const isBreak = status === "break";
@@ -68,24 +72,66 @@ export function ActiveTimer({
         }`}
       >
         {/* Status Label Header */}
-        <div className="text-[10px] font-extrabold uppercase tracking-wider mb-1">
-          {isStudying ? (
-            <span className="text-fuchsia-400 flex items-center space-x-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-fuchsia-400 animate-ping" />
-              <span>Active Live Study</span>
-            </span>
-          ) : isBreak ? (
-            <span className="text-amber-400/90 flex items-center space-x-1.5">
-              <span>Active Study (Paused)</span>
-            </span>
-          ) : (
-            <span className="text-zinc-500">Offline</span>
+        <div className="w-full flex items-center justify-between text-[10px] font-extrabold uppercase tracking-wider mb-1">
+          <div>
+            {isStudying ? (
+              <span className="text-fuchsia-400 flex items-center space-x-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-fuchsia-400 animate-ping" />
+                <span>Active Live Study</span>
+              </span>
+            ) : isBreak ? (
+              <span className="text-amber-400/90 flex items-center space-x-1.5">
+                <span>Active Study (Paused)</span>
+              </span>
+            ) : (
+              <span className="text-zinc-500">Offline</span>
+            )}
+          </div>
+
+          {/* Truthful Sync Status Badge */}
+          {syncStatus && (
+            <div className="flex items-center space-x-1 text-[9px] font-semibold tracking-normal select-none">
+              {syncStatus === "synced" && (
+                <span className="text-emerald-400 flex items-center space-x-1" title="Authoritative session synchronized with server">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  <span>Synced</span>
+                </span>
+              )}
+              {syncStatus === "syncing" && (
+                <span className="text-amber-400 flex items-center space-x-1" title="Mutation or reconciliation in flight">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+                  <span>Syncing...</span>
+                </span>
+              )}
+              {syncStatus === "reconnecting" && (
+                <span className="text-amber-400 flex items-center space-x-1" title="Restoring realtime stream">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                  <span>Reconnecting...</span>
+                </span>
+              )}
+              {syncStatus === "no_network" && (
+                <span className="text-zinc-400 flex items-center space-x-1" title="No network connection available">
+                  <span className="w-1.5 h-1.5 rounded-full bg-zinc-500" />
+                  <span>No network</span>
+                </span>
+              )}
+              {syncStatus === "error" && (
+                <span className="text-rose-400 flex items-center space-x-1" title="Requested session mutation failed">
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
+                  <span>Action failed / Error</span>
+                </span>
+              )}
+            </div>
           )}
         </div>
 
         {/* Big Authoritative Study Time */}
         <div className="font-mono text-5xl sm:text-6xl font-black tracking-tight text-zinc-100 filter drop-shadow-md select-none text-center tabular-nums">
-          {formatDurationSeconds(elapsedSeconds)}
+          {isStudying && elapsedSeconds <= 0 ? (
+            <span className="text-3xl sm:text-4xl text-zinc-400 font-bold tracking-normal animate-pulse">Syncing...</span>
+          ) : (
+            formatDurationSeconds(elapsedSeconds)
+          )}
         </div>
       </div>
 

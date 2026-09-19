@@ -47,15 +47,12 @@ public class SessionAlarmManager {
             return;
         }
 
-        // Calculate exact future timestamp
+        // Always cancel any prior scheduled alarm before arming a new deadline
+        cancelWarningAlarm(context);
+
+        // Calculate exact future timestamp based on authoritative remaining active study seconds
         long now = System.currentTimeMillis();
         long triggerAtMs = now + (remainingSeconds * 1000L);
-
-        // Deduplication: if alarm is already scheduled within 2 seconds of the same time, skip
-        long lastScheduled = prefs.getLong(KEY_TRIGGER_AT_MS, 0);
-        if (prefs.getBoolean(KEY_ALARM_SCHEDULED, false) && Math.abs(triggerAtMs - lastScheduled) < 2000L) {
-            return;
-        }
 
         AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
         if (alarmManager == null) return;

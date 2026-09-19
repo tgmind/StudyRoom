@@ -17,7 +17,7 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 
 export default function RoomPage() {
   const isOnline = useOnlineStatus();
-  const { user, profile, refreshProfile } = useAuth();
+  const { user, profile, refreshProfile, updateProfileOptimistic } = useAuth();
   const {
     members,
     loading: roomLoading,
@@ -47,6 +47,8 @@ export default function RoomPage() {
     elapsedStudySeconds,
     breakStartedAt,
     actionLoading,
+    mutationPending,
+    syncStatus,
     isBreakExpiredNoticeOpen,
     savedStudySecondsOnBreakExpiry,
     closeBreakExpiredNotice,
@@ -65,18 +67,23 @@ export default function RoomPage() {
     pauseSession,
     resumeSession,
     finishSession,
-  } = useActiveSession(effectiveProfile, (newStatus, details) => {
-    if (user && newStatus) {
-      broadcastStatusChange({
-        id: user.id,
-        current_status: newStatus,
-        session_start_time: newStatus === "offline" ? null : undefined,
-        break_started_at: newStatus === "break" ? getServerNow().toISOString() : null,
-        current_focus: newStatus === "offline" ? null : undefined,
-        ...details,
-      });
-    }
-  });
+  } = useActiveSession(
+    effectiveProfile,
+    (newStatus, details) => {
+      if (user && newStatus) {
+        broadcastStatusChange({
+          id: user.id,
+          current_status: newStatus,
+          session_start_time: newStatus === "offline" ? null : undefined,
+          break_started_at: newStatus === "break" ? getServerNow().toISOString() : null,
+          current_focus: newStatus === "offline" ? null : undefined,
+          ...details,
+        });
+      }
+    },
+    updateProfileOptimistic,
+    connectionState
+  );
 
   useEffect(() => {
     requestNotificationPermission();
@@ -132,6 +139,20 @@ export default function RoomPage() {
     await handleStartSession();
   };
 
+  // Reconcile members with current user's authoritative session state
+  const reconciledMembers = (members || []).map((m) => {
+    if (user && m.id === user.id) {
+      return {
+        ...m,
+        ...(effectiveProfile || {}),
+        current_status: status,
+        active_study_seconds_snapshot:
+          status === "studying" ? elapsedStudySeconds : m.active_study_seconds_snapshot,
+      };
+    }
+    return m;
+  });
+
   return (
     <div className="flex-1 flex flex-col min-h-screen pb-24 bg-[#090a0f] text-zinc-100">
       <TopHeader
@@ -172,6 +193,7 @@ export default function RoomPage() {
             focus={focus}
             elapsedSeconds={elapsedStudySeconds}
             breakStartedAt={breakStartedAt}
+            syncStatus={syncStatus}
             onStartSession={handleStartSession}
             onPauseSession={handlePauseSession}
             onResumeSession={handleResumeSession}
@@ -179,14 +201,14 @@ export default function RoomPage() {
             onCreateGoal={handleCreateGoal}
             activeGoal={activeGoal}
             countdown={countdown}
-            isLoading={actionLoading}
+            isLoading={actionLoading || mutationPending !== null}
           />
         </section>
 
         {/* Group Members List */}
         <section aria-label="Group Members">
           <MemberList
-            members={members}
+            members={reconciledMembers}
             currentUserId={user?.id}
             currentUserElapsedSeconds={elapsedStudySeconds}
             isLoading={roomLoading}

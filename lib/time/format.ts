@@ -99,15 +99,19 @@ export function calculateMemberElapsedStudySeconds(
       if (!isNaN(resumeMs)) {
         const addedSeconds = Math.max(0, Math.floor((now.getTime() - resumeMs) / 1000));
         rawSeconds = baseSeconds + addedSeconds;
+      } else {
+        rawSeconds = baseSeconds;
       }
     } else if (baseSeconds > 0) {
       // Accrued study duration before break is preserved
       rawSeconds = baseSeconds;
-    } else if (member.session_start_time && !member.break_started_at) {
-      // Clean initial start fallback (no breaks ever occurred)
+    } else if (member.session_start_time) {
+      // Clean initial start fallback (calculates elapsed study from session start)
       const startMs = new Date(member.session_start_time).getTime();
       if (!isNaN(startMs)) {
         rawSeconds = Math.max(0, Math.floor((now.getTime() - startMs) / 1000));
+      } else {
+        rawSeconds = baseSeconds;
       }
     } else {
       rawSeconds = baseSeconds;
@@ -115,6 +119,20 @@ export function calculateMemberElapsedStudySeconds(
   }
 
   return Math.min(MAX_SESSION_STUDY_SECONDS, Math.max(0, rawSeconds));
+}
+
+/**
+ * Returns true if a member is currently marked studying but lacks authoritative
+ * timestamps/snapshots to calculate elapsed study time. Prevents rendering false 00:00.
+ */
+export function isMemberTimerCalibrating(
+  member: Partial<UserProfile> | UserProfile
+): boolean {
+  if (member.current_status !== "studying") return false;
+  const hasResume = Boolean(member.last_resumed_at && !isNaN(new Date(member.last_resumed_at).getTime()));
+  const hasStart = Boolean(member.session_start_time && !isNaN(new Date(member.session_start_time).getTime()));
+  const hasBase = typeof member.active_study_seconds_snapshot === "number" && member.active_study_seconds_snapshot > 0;
+  return !hasResume && !hasStart && !hasBase;
 }
 
 /**

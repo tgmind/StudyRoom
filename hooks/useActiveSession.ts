@@ -6,6 +6,7 @@ import { UserProfile, SessionBlock, UserStatus } from "@/lib/supabase/types";
 import {
   calculateActiveStudySeconds,
   calculateMemberElapsedStudySeconds,
+  isMemberTimerCalibrating,
   MAX_SESSION_STUDY_SECONDS,
 } from "@/lib/time/format";
 import {
@@ -25,6 +26,7 @@ import {
   clearOfflineActiveSession,
   purgeStaleActiveSession,
   saveActiveStudyState,
+  getActiveStudyState,
   clearActiveStudyState,
   updateOfflineActiveSession,
   saveOfflineCompletedSession,
@@ -46,6 +48,9 @@ export interface TenMinuteWarningState {
   type: "session" | "break";
   remainingSeconds: number;
 }
+
+export type SessionSyncStatus = "synced" | "syncing" | "reconnecting" | "no_network" | "error";
+export type SessionMutationType = "start" | "pause" | "resume" | "stop" | null;
 
 export async function requestNotificationPermission(): Promise<NotificationPermission | null> {
   if (typeof window === "undefined" || !("Notification" in window)) {
@@ -70,12 +75,42 @@ type RpcCaller = {
 
 export function useActiveSession(
   profile: UserProfile | null,
-  onStatusChange?: (newStatus?: UserStatus, details?: Partial<UserProfile>) => void
+  onStatusChange?: (newStatus?: UserStatus, details?: Partial<UserProfile>) => void,
+  updateProfileOptimistic?: (partial: Partial<UserProfile>) => void,
+  connectionState?: "connected" | "reconnecting" | "offline"
 ) {
   const [blocks, setBlocks] = useState<SessionBlock[]>([]);
   const [elapsedStudySeconds, setElapsedStudySeconds] = useState(0);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Deterministic mutation state machine
+  const [mutationPending, setMutationPending] = useState<SessionMutationType>(null);
+  const mutationPendingRef = useRef<SessionMutationType>(null);
+  mutationPendingRef.current = mutationPending;
+
+  const [syncStatus, setSyncStatus] = useState<SessionSyncStatus>("synced");
+
+  const [isOnline, setIsOnline] = useState(() =>
+    typeof navigator !== "undefined" ? navigator.onLine : true
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
+  const updateProfileOptimisticRef = useRef(updateProfileOptimistic);
+  useEffect(() => {
+    updateProfileOptimisticRef.current = updateProfileOptimistic;
+  }, [updateProfileOptimistic]);
 
   // Optimistic & Offline status override
   const [localStatusOverride, setLocalStatusOverride] = useState<UserStatus | null>(null);
@@ -121,6 +156,35 @@ export function useActiveSession(
   const currentStatus: UserStatus = localStatusOverride ?? serverRawStatus;
   const effectiveStatus: UserStatus = localStatusOverride ?? serverEffectiveStatus;
 
+  // Calibration state check: studying user awaiting authoritative timing info
+  const isTimerCalibrating = Boolean(
+    effectiveStatus === "studying" &&
+    profile &&
+    isMemberTimerCalibrating(profile)
+  );
+
+  // Truthful Sync Status Semantics (Single Authoritative Source):
+  // 1. "syncing": mutation currently in flight OR timer calibration / reconciliation occurring
+  // 2. "no_network": device indicates no usable network connection (navigator.onLine === false)
+  // 3. "error": requested session mutation failed
+  // 4. "reconnecting": realtime / network connection is being restored
+  // 5. "synced": latest mutation acknowledged, authoritative state reconciled, valid timer, no mutation/reconciliation pending
+  useEffect(() => {
+    if (mutationPending !== null) {
+      setSyncStatus("syncing");
+    } else if (!isOnline || (typeof navigator !== "undefined" && !navigator.onLine)) {
+      setSyncStatus("no_network");
+    } else if (error) {
+      setSyncStatus("error");
+    } else if (connectionState === "reconnecting") {
+      setSyncStatus("reconnecting");
+    } else if (isTimerCalibrating) {
+      setSyncStatus("syncing");
+    } else {
+      setSyncStatus("synced");
+    }
+  }, [mutationPending, isOnline, error, connectionState, isTimerCalibrating]);
+
   // Screen Wake Lock: keep screen active during live study mode
   useScreenWakeLock(effectiveStatus === "studying");
 
@@ -155,30 +219,13 @@ export function useActiveSession(
   }, []);
 
   // Clear local override when server profile catches up to the intended state,
-  // or when an external device updates the profile and the local action has settled (>5s)
+  // without relying on any arbitrary timeouts.
   useEffect(() => {
     if (!localStatusOverride) return;
-    if (profile && profile.current_status === localStatusOverride) {
-      applyLocalStatusOverride(null);
-      return;
+    if (profile && profile.current_status === localStatusOverride && mutationPendingRef.current === null) {
+      setLocalStatusOverride(null);
     }
-    if (localOverrideSetTimestampRef.current > 0) {
-      const elapsedSinceAction = Date.now() - localOverrideSetTimestampRef.current;
-      if (elapsedSinceAction > 5000) {
-        applyLocalStatusOverride(null);
-      }
-    }
-  }, [profile, localStatusOverride, applyLocalStatusOverride]);
-
-  // Absolute safety timer: guarantee localStatusOverride never lingers beyond 6 seconds.
-  // 6 s = 5 s profile-catch window + 1 s buffer for slow networks / Supabase realtime lag.
-  useEffect(() => {
-    if (!localStatusOverride) return;
-    const timer = setTimeout(() => {
-      applyLocalStatusOverride(null);
-    }, 6000);
-    return () => clearTimeout(timer);
-  }, [localStatusOverride, applyLocalStatusOverride]);
+  }, [profile, localStatusOverride]);
 
   // Synchronize cross-device pending goal update popup when profile updates
   useEffect(() => {
@@ -439,12 +486,13 @@ export function useActiveSession(
               const studyStartMs = profileRef.current?.session_start_time
                 ? new Date(profileRef.current.session_start_time).getTime() - getServerTimeOffset()
                 : Date.now();
+              const existingStudy = getActiveStudyState();
               if (profileRef.current?.session_start_time) {
                 saveActiveStudyState({
                   userId: profileRef.current.id,
                   sessionStartTime: profileRef.current.session_start_time,
-                  lastResumedAt: profileRef.current.last_resumed_at || undefined,
-                  snapshotSeconds: profileRef.current.active_study_seconds_snapshot || 0,
+                  lastResumedAt: profileRef.current.last_resumed_at || existingStudy?.lastResumedAt || undefined,
+                  snapshotSeconds: profileRef.current.active_study_seconds_snapshot ?? existingStudy?.snapshotSeconds ?? 0,
                   focus: profileRef.current.current_focus || "",
                 });
               }
@@ -569,7 +617,7 @@ export function useActiveSession(
       reason: "manual_stop" | "session_limit" | "break_expired" = "manual_stop"
     ) => {
       const now = Date.now();
-      if (reason === "manual_stop" && now - lastUserClickTimestampRef.current < 250) return;
+      if (reason === "manual_stop" && (mutationPendingRef.current !== null || now - lastUserClickTimestampRef.current < 300)) return;
       if (reason === "manual_stop") {
         lastUserClickTimestampRef.current = now;
       }
@@ -578,6 +626,9 @@ export function useActiveSession(
       setError(null);
       setTenMinuteWarning(null);
       isLocallyAwaitingGoalUpdateRef.current = true;
+      setMutationPending("stop");
+      setSyncStatus("syncing");
+      setActionLoading(true);
 
       initialBreakStartIsoRef.current = null;
       const nowIso = getServerNow().toISOString();
@@ -727,6 +778,28 @@ export function useActiveSession(
         if (!rpcErr && data) {
           const res = data as { success: boolean; session_id?: string; server_now?: string; error?: string };
           const targetSessionId = res.session_id || baseOfflineId;
+          const confirmedDetails: Partial<UserProfile> = {
+            current_status: "offline",
+            session_start_time: null,
+            break_started_at: null,
+            last_resumed_at: null,
+            active_study_seconds_snapshot: 0,
+            last_offline_at: res.server_now || nowIso,
+            weekly_study_seconds: updatedWeekly,
+            total_sessions_count: currentTotalSessions,
+            weekly_sessions_count: currentWeeklySessions,
+          };
+          if (profileRef.current) {
+            Object.assign(profileRef.current, confirmedDetails);
+          }
+          updateProfileOptimisticRef.current?.(confirmedDetails);
+          setLocalStatusOverride(null);
+          setMutationPending(null);
+          setSyncStatus("synced");
+          setActionLoading(false);
+          if (onStatusChangeRef.current) {
+            onStatusChangeRef.current("offline", confirmedDetails);
+          }
           setPendingGoalSessionId(targetSessionId);
           setPendingGoalSeconds(durationMinutes * 60);
           setPendingGoalReason(reason);
@@ -745,6 +818,9 @@ export function useActiveSession(
             elapsedStudySeconds: totalActiveSeconds,
             payload: { session: offlineRecord, reason },
           });
+          setMutationPending(null);
+          setSyncStatus(typeof navigator !== "undefined" && !navigator.onLine ? "no_network" : "error");
+          setActionLoading(false);
           // Offline fallback goal modal trigger
           setPendingGoalSessionId(baseOfflineId);
           setPendingGoalSeconds(durationMinutes * 60);
@@ -760,6 +836,9 @@ export function useActiveSession(
             elapsedStudySeconds: totalActiveSeconds,
             payload: { session: offlineRecord, reason },
           });
+          setMutationPending(null);
+          setSyncStatus(typeof navigator !== "undefined" && !navigator.onLine ? "no_network" : "error");
+          setActionLoading(false);
           setPendingGoalSessionId(baseOfflineId);
           setPendingGoalSeconds(durationMinutes * 60);
           setPendingGoalReason(reason);
@@ -973,18 +1052,22 @@ export function useActiveSession(
   }, [currentStatus, localStatusOverride]);
 
   // -----------------------------------------------------------------------
+  // -----------------------------------------------------------------------
   // START SESSION
   // -----------------------------------------------------------------------
   const startSession = async () => {
     dismissedBreakExpiryRef.current = false;
     const now = Date.now();
-    if (now - lastUserClickTimestampRef.current < 250) return;
+    if (mutationPendingRef.current !== null || now - lastUserClickTimestampRef.current < 250) return;
     lastUserClickTimestampRef.current = now;
     isAutoTerminatingRef.current = false;
     isAutoTerminatingLimitRef.current = false;
 
     const currentSeq = ++actionSeqRef.current;
     setError(null);
+    setMutationPending("start");
+    setSyncStatus("syncing");
+    setActionLoading(true);
 
     const nowIso = getServerNow().toISOString();
     const newBlock: SessionBlock = {
@@ -1011,6 +1094,7 @@ export function useActiveSession(
     saveActiveStudyState({
       userId: newBlock.user_id,
       sessionStartTime: nowIso,
+      lastResumedAt: nowIso,
       snapshotSeconds: 0,
       focus: profileRef.current?.current_focus || "",
     });
@@ -1039,15 +1123,37 @@ export function useActiveSession(
       if (currentSeq !== actionSeqRef.current) return;
 
       if (!rpcErr && data) {
+        const res = data as { success: boolean; session_id?: string; server_now?: string; error?: string };
+        const confirmedDetails: Partial<UserProfile> = {
+          current_status: "studying",
+          session_start_time: res.server_now || nowIso,
+          break_started_at: null,
+          active_study_seconds_snapshot: 0,
+          last_resumed_at: res.server_now || nowIso,
+        };
+        if (profileRef.current) {
+          Object.assign(profileRef.current, confirmedDetails);
+        }
+        updateProfileOptimisticRef.current?.(confirmedDetails);
         removeActiveTransitionActions();
         await fetchSessionBlocks();
+        setLocalStatusOverride(null);
+        setMutationPending(null);
+        setSyncStatus("synced");
+        setActionLoading(false);
       } else if (rpcErr) {
         enqueueSessionAction("start_session", { userId: profileRef.current?.id });
+        setMutationPending(null);
+        setSyncStatus(typeof navigator !== "undefined" && !navigator.onLine ? "no_network" : "error");
+        setActionLoading(false);
       }
     } catch (err) {
       console.warn("Start session fast sync timed out or offline; safely queued:", err);
       if (currentSeq === actionSeqRef.current) {
         enqueueSessionAction("start_session", { userId: profileRef.current?.id });
+        setMutationPending(null);
+        setSyncStatus(typeof navigator !== "undefined" && !navigator.onLine ? "no_network" : "error");
+        setActionLoading(false);
       }
     }
   };
@@ -1057,12 +1163,15 @@ export function useActiveSession(
   // -----------------------------------------------------------------------
   const pauseSession = async () => {
     const now = Date.now();
-    if (now - lastUserClickTimestampRef.current < 250) return;
+    if (mutationPendingRef.current !== null || now - lastUserClickTimestampRef.current < 250) return;
     lastUserClickTimestampRef.current = now;
     isAutoTerminatingRef.current = false;
 
     const currentSeq = ++actionSeqRef.current;
     setError(null);
+    setMutationPending("pause");
+    setSyncStatus("syncing");
+    setActionLoading(true);
 
     const nowIso = getServerNow().toISOString();
     const currentStudySeconds = elapsedStudySecondsRef.current;
@@ -1144,15 +1253,36 @@ export function useActiveSession(
       if (currentSeq !== actionSeqRef.current) return;
 
       if (!rpcErr && data) {
+        const res = data as { success: boolean; server_now?: string; error?: string };
+        const confirmedDetails: Partial<UserProfile> = {
+          current_status: "break",
+          break_started_at: res.server_now || nowIso,
+          active_study_seconds_snapshot: currentStudySeconds,
+          last_resumed_at: null,
+        };
+        if (profileRef.current) {
+          Object.assign(profileRef.current, confirmedDetails);
+        }
+        updateProfileOptimisticRef.current?.(confirmedDetails);
         removeActiveTransitionActions();
         await fetchSessionBlocks();
+        setLocalStatusOverride(null);
+        setMutationPending(null);
+        setSyncStatus("synced");
+        setActionLoading(false);
       } else if (rpcErr) {
         enqueueSessionAction("pause_session", { userId: profileRef.current?.id, elapsedStudySeconds: currentStudySeconds });
+        setMutationPending(null);
+        setSyncStatus(typeof navigator !== "undefined" && !navigator.onLine ? "no_network" : "error");
+        setActionLoading(false);
       }
     } catch (err) {
       console.warn("Pause session fast sync timed out or offline; safely queued:", err);
       if (currentSeq === actionSeqRef.current) {
         enqueueSessionAction("pause_session", { userId: profileRef.current?.id, elapsedStudySeconds: currentStudySeconds });
+        setMutationPending(null);
+        setSyncStatus(typeof navigator !== "undefined" && !navigator.onLine ? "no_network" : "error");
+        setActionLoading(false);
       }
     }
   };
@@ -1162,13 +1292,16 @@ export function useActiveSession(
   // -----------------------------------------------------------------------
   const resumeSession = async (): Promise<{ success: boolean; expired?: boolean }> => {
     const now = Date.now();
-    if (now - lastUserClickTimestampRef.current < 250) return { success: false };
+    if (mutationPendingRef.current !== null || now - lastUserClickTimestampRef.current < 250) return { success: false };
     lastUserClickTimestampRef.current = now;
     isAutoTerminatingRef.current = false;
     isAutoTerminatingLimitRef.current = false;
 
     const currentSeq = ++actionSeqRef.current;
     setError(null);
+    setMutationPending("resume");
+    setSyncStatus("syncing");
+    setActionLoading(true);
 
     initialBreakStartIsoRef.current = null;
     const nowIso = getServerNow().toISOString();
@@ -1249,10 +1382,26 @@ export function useActiveSession(
           const accruedSeconds = profileRef.current?.active_study_seconds_snapshot ?? elapsedStudySeconds;
           setSavedStudySecondsOnBreakExpiry(accruedSeconds);
           setIsBreakExpiredNoticeOpen(true);
+          setMutationPending(null);
+          setActionLoading(false);
           await finishSession([], "break_expired");
           return { success: false, expired: true };
         }
+        const confirmedDetails: Partial<UserProfile> = {
+          current_status: "studying",
+          break_started_at: null,
+          last_resumed_at: res.server_now || nowIso,
+          active_study_seconds_snapshot: accruedSnapshot,
+        };
+        if (profileRef.current) {
+          Object.assign(profileRef.current, confirmedDetails);
+        }
+        updateProfileOptimisticRef.current?.(confirmedDetails);
         await fetchSessionBlocks();
+        setLocalStatusOverride(null);
+        setMutationPending(null);
+        setSyncStatus("synced");
+        setActionLoading(false);
       } else if (rpcErr) {
         const msg = (rpcErr.message || "").toLowerCase();
         const isActuallyExpired = Boolean(
@@ -1262,20 +1411,31 @@ export function useActiveSession(
           const accruedSeconds = profileRef.current?.active_study_seconds_snapshot ?? elapsedStudySeconds;
           setSavedStudySecondsOnBreakExpiry(accruedSeconds);
           setIsBreakExpiredNoticeOpen(true);
+          setMutationPending(null);
+          setActionLoading(false);
           return { success: false, expired: true };
         }
         if (msg.includes("not currently on break")) {
           // Break was not expired; session was already resumed or stopped from another device
           applyLocalStatusOverride(null);
           await fetchSessionBlocks();
+          setMutationPending(null);
+          setSyncStatus("synced");
+          setActionLoading(false);
           return { success: true };
         }
         enqueueSessionAction("resume_session", { userId: profileRef.current?.id });
+        setMutationPending(null);
+        setSyncStatus(typeof navigator !== "undefined" && !navigator.onLine ? "no_network" : "error");
+        setActionLoading(false);
       }
     } catch (err) {
       console.warn("Resume session fast sync timed out or offline; safely queued:", err);
       if (currentSeq === actionSeqRef.current) {
         enqueueSessionAction("resume_session", { userId: profileRef.current?.id });
+        setMutationPending(null);
+        setSyncStatus(typeof navigator !== "undefined" && !navigator.onLine ? "no_network" : "error");
+        setActionLoading(false);
       }
     }
 
@@ -1385,6 +1545,8 @@ export function useActiveSession(
     breakStartedAt,
     actionLoading,
     error,
+    mutationPending,
+    syncStatus,
     isBreakExpiredNoticeOpen,
     savedStudySecondsOnBreakExpiry,
     closeBreakExpiredNotice,

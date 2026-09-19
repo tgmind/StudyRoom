@@ -15,6 +15,7 @@ export interface AuthContextValue {
   loading: boolean;
   error: string | null;
   refreshProfile: () => Promise<void>;
+  updateProfileOptimistic: (partial: Partial<UserProfile>) => void;
   signOut: () => Promise<void>;
 }
 
@@ -204,6 +205,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [user?.id, fetchProfile]);
 
+  const updateProfileOptimistic = useCallback((partial: Partial<UserProfile>) => {
+    setProfile((prev) => {
+      if (!prev) return null;
+      const updated = { ...prev, ...partial };
+      saveCachedUserProfile(updated);
+      return updated;
+    });
+  }, []);
+
   const signOut = useCallback(async () => {
     try {
       setLoading(true);
@@ -237,9 +247,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       loading,
       error,
       refreshProfile,
+      updateProfileOptimistic,
       signOut,
     }),
-    [user, profile, loading, error, refreshProfile, signOut]
+    [user, profile, loading, error, refreshProfile, updateProfileOptimistic, signOut]
   );
 
   return <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>;

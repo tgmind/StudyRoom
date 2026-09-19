@@ -106,6 +106,22 @@ export function saveActiveStudyState(data: {
   } catch {}
 }
 
+export function getActiveStudyState(): {
+  userId?: string;
+  sessionStartTime?: string;
+  lastResumedAt?: string;
+  snapshotSeconds?: number;
+  focus?: string;
+} | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.ACTIVE_STUDY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function clearActiveStudyState(): void {
   if (typeof window === "undefined") return;
   try {

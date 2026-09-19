@@ -536,7 +536,6 @@ public class MainActivity extends AppCompatActivity {
                 "    }" +
                 "  };" +
                 "  checkAndNotify();" +
-                "  setInterval(checkAndNotify, 4000);" +
                 "})();";
 
         view.evaluateJavascript(jsHook, null);

@@ -9,11 +9,14 @@ import { GoalCountdownResult } from "@/lib/time/countdown";
 import { Play, Pause, Square, RotateCcw } from "lucide-react";
 import { requestNotificationPermission } from "@/hooks/useActiveSession";
 
+import { SessionSyncStatus } from "@/hooks/useActiveSession";
+
 interface SessionControllerProps {
   status: UserStatus;
   focus?: string | null;
   elapsedSeconds: number;
   breakStartedAt?: string | null;
+  syncStatus?: SessionSyncStatus;
   onStartSession: () => Promise<void>;
   onPauseSession: () => Promise<void>;
   onResumeSession: () => Promise<void>;
@@ -28,6 +31,7 @@ export const SessionController = memo(function SessionController({
   status,
   elapsedSeconds,
   breakStartedAt,
+  syncStatus,
   onStartSession,
   onPauseSession,
   onResumeSession,
@@ -118,7 +122,38 @@ export const SessionController = memo(function SessionController({
             elapsedSeconds={elapsedSeconds}
             status={status}
             breakStartedAt={breakStartedAt}
+            syncStatus={syncStatus}
           />
+        </div>
+      )}
+      {isIdle && syncStatus && syncStatus !== "synced" && (
+        <div className="flex items-center justify-end px-1 -mt-2 mb-1">
+          <div className="flex items-center space-x-1 text-[9px] font-semibold tracking-normal select-none">
+            {syncStatus === "syncing" && (
+              <span className="text-amber-400 flex items-center space-x-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+                <span>Syncing...</span>
+              </span>
+            )}
+            {syncStatus === "reconnecting" && (
+              <span className="text-amber-400 flex items-center space-x-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                <span>Reconnecting...</span>
+              </span>
+            )}
+            {syncStatus === "no_network" && (
+              <span className="text-zinc-400 flex items-center space-x-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-zinc-500" />
+                <span>No network</span>
+              </span>
+            )}
+            {syncStatus === "error" && (
+              <span className="text-rose-400 flex items-center space-x-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
+                <span>Action failed / Error</span>
+              </span>
+            )}
+          </div>
         </div>
       )}
 

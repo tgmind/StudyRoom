@@ -21,6 +21,20 @@ public class SessionWarningReceiver extends BroadcastReceiver {
     public void onReceive(Context context, Intent intent) {
         if (context == null) return;
 
+        android.content.SharedPreferences prefs = context.getSharedPreferences("studyroom_session_alarm_prefs", Context.MODE_PRIVATE);
+        boolean isScheduled = prefs.getBoolean("alarm_scheduled", false);
+        if (!isScheduled) {
+            // Alarm was cancelled (e.g. user paused, took a break, or stopped session). Discard stale alert.
+            return;
+        }
+
+        long triggerAtMs = prefs.getLong("trigger_at_ms", 0);
+        long now = System.currentTimeMillis();
+        // If alarm fired prematurely by more than 30 seconds due to a stale system intent, ignore
+        if (triggerAtMs > 0 && now < (triggerAtMs - 30000L)) {
+            return;
+        }
+
         ensureAlertNotificationChannel(context);
         SessionAlarmManager.markWarningDelivered(context, true);
 

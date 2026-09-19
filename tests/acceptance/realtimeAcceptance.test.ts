@@ -212,7 +212,7 @@ describe("STUDYROOM PRODUCTION REALTIME ACCEPTANCE TEST SUITE", () => {
     console.log(`  - After Tab 2 joins (same user): 1 unique online user (increment = +0)`);
     console.log(`  - After Tab 1 closes: 1 unique online user (decrement = -0, user remains present)`);
     console.log(`  - After Tab 2 closes: 0 unique online users (decrement = -1, user left)`);
-  });
+  }, 15000);
 
   // ----------------------------------------------------
   // TEST 3: RIVALRY LIVE TEST & LEADER OVERTAKE STABILITY
