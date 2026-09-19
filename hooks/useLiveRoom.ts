@@ -89,10 +89,27 @@ function isWinEventDismissed(id: string, winnerName?: string, loserName?: string
   return false;
 }
 
+export function getMemberMutationEpoch(p: Partial<UserProfile>): number {
+  const timestamps = [
+    p.last_resumed_at,
+    p.break_started_at,
+    p.session_start_time,
+    p.last_offline_at,
+    p.created_at,
+  ]
+    .filter(Boolean)
+    .map((t) => new Date(t!).getTime())
+    .filter((ms) => !isNaN(ms));
+
+  return timestamps.length > 0 ? Math.max(...timestamps) : 0;
+}
+
 export function useLiveRoom(currentUserId?: string) {
   const [members, setMembers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
+  const [connectionState, setConnectionState] = useState<"connected" | "reconnecting" | "offline">("connected");
+  const [presentUserIds, setPresentUserIds] = useState<Set<string>>(() => new Set());
   const [error, setError] = useState<string | null>(null);
   const [expectedPeakHours, setExpectedPeakHours] = useState<string>("6 PM – 9 PM");
   const [activeWinEvents, setActiveWinEvents] = useState<RivalryWinEvent[]>([]);
@@ -100,8 +117,16 @@ export function useLiveRoom(currentUserId?: string) {
 
   const supabase = createClient();
   const currentUserIdRef = useRef(currentUserId);
+  const membersRef = useRef<UserProfile[]>(members);
+  membersRef.current = members;
+  const presentUserIdsRef = useRef<Set<string>>(presentUserIds);
+  presentUserIdsRef.current = presentUserIds;
+  const memberEpochMapRef = useRef<Map<string, number>>(new Map());
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const recentlyStoppedBreakUserIdsRef = useRef<Map<string, number>>(new Map());
+  const fetchMembersRef = useRef<() => Promise<void>>(() => Promise.resolve());
+  const applyProfileUpdateRef = useRef<(updatedProfile: Partial<UserProfile> & { id: string }) => void>(() => {});
+  const updateActiveWinEventRef = useRef<(newEvent: RivalryWinEvent | null) => void>(() => {});
 
   // Deduplicate and stabilize activeWinEvent across broadcasts, postgres changes, polling, and local triggers
   const updateActiveWinEvent = useCallback((newEvent: RivalryWinEvent | null) => {
@@ -299,6 +324,37 @@ export function useLiveRoom(currentUserId?: string) {
             : 0;
 
           const lb = leaderboardMap.get(u.id);
+          const isPresent = presentUserIdsRef.current.has(u.id) || (currentUserIdRef.current === u.id);
+
+          const existing = membersRef.current.find((m) => m.id === u.id);
+          const lastEpoch = memberEpochMapRef.current.get(u.id) || 0;
+          const restEpoch = getMemberMutationEpoch(u);
+
+          // MONOTONIC VERSIONING / REST RACE PROTECTION:
+          // If local state has a newer realtime broadcast event than this REST response:
+          // Preserve the newer live status fields from existing local member!
+          if (existing && lastEpoch > restEpoch) {
+            return {
+              ...u,
+              current_status: existing.current_status,
+              session_start_time: existing.session_start_time,
+              last_resumed_at: existing.last_resumed_at,
+              break_started_at: existing.break_started_at,
+              active_study_seconds_snapshot: existing.active_study_seconds_snapshot,
+              last_offline_at: existing.last_offline_at ?? (resolvedOfflineMs > 0 ? new Date(resolvedOfflineMs).toISOString() : u.created_at),
+              past_24h_study_seconds: stat.past24hSeconds,
+              weekly_study_seconds: Math.max(stat.weeklySeconds, existing.weekly_study_seconds ?? 0),
+              total_sessions_count: stat.weeklySessions,
+              weekly_sessions_count: stat.weeklySessions,
+              leaderboard_score: lb ? lb.score : u.leaderboard_score,
+              leaderboard_rank: lb ? lb.rank : u.leaderboard_rank,
+              is_present: isPresent,
+            };
+          }
+
+          if (restEpoch > 0) {
+            memberEpochMapRef.current.set(u.id, Math.max(lastEpoch, restEpoch));
+          }
 
           return {
             ...u,
@@ -309,6 +365,7 @@ export function useLiveRoom(currentUserId?: string) {
             weekly_sessions_count: stat.weeklySessions,
             leaderboard_score: lb ? lb.score : u.leaderboard_score,
             leaderboard_rank: lb ? lb.rank : u.leaderboard_rank,
+            is_present: isPresent,
           };
         });
         setMembers(sortMembers(filterAdmin(enriched), currentUserIdRef.current));
@@ -384,6 +441,17 @@ export function useLiveRoom(currentUserId?: string) {
       return;
     }
 
+    // Monotonic Epoch Check: Reject stale / out-of-order realtime updates
+    const incomingEpoch = getMemberMutationEpoch(updatedProfile);
+    const currentKnownEpoch = memberEpochMapRef.current.get(updatedProfile.id) || 0;
+    if (incomingEpoch > 0 && incomingEpoch < currentKnownEpoch) {
+      // Stale out-of-order broadcast/change: ignore
+      return;
+    }
+    if (incomingEpoch > 0) {
+      memberEpochMapRef.current.set(updatedProfile.id, Math.max(currentKnownEpoch, incomingEpoch));
+    }
+
     const cleanUpdates = Object.fromEntries(
       Object.entries(updatedProfile).filter(([_, v]) => v !== undefined)
     ) as Partial<UserProfile> & { id: string };
@@ -399,9 +467,14 @@ export function useLiveRoom(currentUserId?: string) {
             const newOfflineAt = isTransitioningToOffline
               ? getServerNow().toISOString()
               : cleanUpdates.last_offline_at ?? m.last_offline_at;
+            const isPresent =
+              cleanUpdates.is_present !== undefined
+                ? cleanUpdates.is_present
+                : presentUserIdsRef.current.has(m.id) || m.id === currentUserIdRef.current;
             return {
               ...m,
               ...cleanUpdates,
+              is_present: isPresent,
               active_study_seconds_snapshot:
                 cleanUpdates.active_study_seconds_snapshot !== undefined
                   ? cleanUpdates.active_study_seconds_snapshot
@@ -417,26 +490,31 @@ export function useLiveRoom(currentUserId?: string) {
         });
       } else {
         // If it's a new member joining, fetch full list to ensure all columns present
-        fetchMembers();
+        fetchMembersRef.current();
         return prevMembers;
       }
       return sortMembers(filterAdmin(next), currentUserIdRef.current);
     });
 
     if (cleanUpdates.current_status === "offline") {
-      fetchMembers();
-      setTimeout(() => {
-        fetchMembers();
-      }, 1200);
+      fetchMembersRef.current();
     }
-  }, [fetchMembers]);
+  }, []);
+
+  fetchMembersRef.current = fetchMembers;
+  applyProfileUpdateRef.current = applyProfileUpdate;
+  updateActiveWinEventRef.current = updateActiveWinEvent;
 
   // Broadcast function to immediately notify all peers over WebSockets without DB lag
   const broadcastStatusChange = useCallback(async (payload: Partial<UserProfile> & { id: string }) => {
-    // 1. Apply locally immediately for instant feedback
+    // 1. Update mutation epoch for current user
+    const payloadEpoch = getMemberMutationEpoch(payload) || Date.now();
+    memberEpochMapRef.current.set(payload.id, Math.max(memberEpochMapRef.current.get(payload.id) || 0, payloadEpoch));
+
+    // 2. Apply locally immediately for instant feedback
     applyProfileUpdate(payload);
 
-    // 2. Broadcast to all peers
+    // 3. Broadcast to all peers & re-track presence
     if (channelRef.current) {
       try {
         await channelRef.current.send({
@@ -444,6 +522,13 @@ export function useLiveRoom(currentUserId?: string) {
           event: "member_status_update",
           payload,
         });
+        if (payload.id) {
+          channelRef.current.track({
+            user_id: payload.id,
+            online_at: new Date().toISOString(),
+            status: payload.current_status,
+          }).catch(() => {});
+        }
       } catch (err) {
         console.warn("Realtime broadcast send failed:", err);
       }
@@ -452,13 +537,38 @@ export function useLiveRoom(currentUserId?: string) {
 
   useEffect(() => {
     // 1. Initial fetch
-    fetchMembers();
+    fetchMembersRef.current();
 
     const adminId = getAdminUserId();
 
-    // 2. Set up Realtime channel (postgres_changes + instant peer broadcast)
-    const channel = supabase
-      .channel("room:live:global")
+    // Helper to aggregate present unique user IDs across all connected tabs/clients
+    const syncPresence = (presenceState: Record<string, any[]>) => {
+      const userIds = new Set<string>();
+      for (const key in presenceState) {
+        const presences = presenceState[key];
+        if (Array.isArray(presences)) {
+          for (const p of presences) {
+            if (p && p.user_id) {
+              userIds.add(p.user_id);
+            }
+          }
+        }
+      }
+      setPresentUserIds(userIds);
+      presentUserIdsRef.current = userIds;
+      setMembers((prev) =>
+        prev.map((m) => ({
+          ...m,
+          is_present: userIds.has(m.id) || m.id === currentUserIdRef.current,
+        }))
+      );
+    };
+
+    // 2. Set up Realtime channel (postgres_changes + instant peer broadcast + presence)
+    const channel = supabase.channel("room:live:global");
+    channelRef.current = channel;
+
+    channel
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "users" },
@@ -474,10 +584,21 @@ export function useLiveRoom(currentUserId?: string) {
             }
             setMembers((prev) => {
               if (prev.some((m) => m.id === newProfile.id)) return prev;
-              return sortMembers(filterAdmin([...prev, newProfile]), currentUserIdRef.current);
+              return sortMembers(
+                filterAdmin([
+                  ...prev,
+                  {
+                    ...newProfile,
+                    is_present:
+                      presentUserIdsRef.current.has(newProfile.id) ||
+                      newProfile.id === currentUserIdRef.current,
+                  },
+                ]),
+                currentUserIdRef.current
+              );
             });
           } else if (payload.eventType === "UPDATE") {
-            applyProfileUpdate(payload.new as UserProfile);
+            applyProfileUpdateRef.current(payload.new as UserProfile);
           } else if (payload.eventType === "DELETE") {
             const deletedId = (payload.old as { id: string })?.id;
             if (deletedId) {
@@ -491,7 +612,7 @@ export function useLiveRoom(currentUserId?: string) {
         { event: "member_status_update" },
         (msg) => {
           if (msg.payload && (msg.payload as { id?: string }).id) {
-            applyProfileUpdate(msg.payload as Partial<UserProfile> & { id: string });
+            applyProfileUpdateRef.current(msg.payload as Partial<UserProfile> & { id: string });
           }
         }
       )
@@ -511,7 +632,7 @@ export function useLiveRoom(currentUserId?: string) {
             try {
               localStorage.setItem("studyroom_active_rivalry_win", JSON.stringify(win));
             } catch {}
-            updateActiveWinEvent(win);
+            updateActiveWinEventRef.current(win);
             setActiveWinEvents((prev) => {
               const filtered = prev.filter((e) => (e.resolutionId || e.id) !== resId);
               return [win, ...filtered].slice(0, 10);
@@ -523,7 +644,7 @@ export function useLiveRoom(currentUserId?: string) {
         "postgres_changes",
         { event: "*", schema: "public", table: "study_sessions" },
         () => {
-          fetchMembers();
+          fetchMembersRef.current();
         }
       )
       .on(
@@ -571,7 +692,7 @@ export function useLiveRoom(currentUserId?: string) {
             try {
               localStorage.setItem("studyroom_active_rivalry_win", JSON.stringify(win));
             } catch {}
-            updateActiveWinEvent(win);
+            updateActiveWinEventRef.current(win);
             setActiveWinEvents((prev) => {
               const filtered = prev.filter((e) => (e.resolutionId || e.id) !== resId);
               return [win, ...filtered].slice(0, 10);
@@ -579,52 +700,90 @@ export function useLiveRoom(currentUserId?: string) {
           }
         }
       )
-      .subscribe((status) => {
+      .on("presence", { event: "sync" }, () => {
+        syncPresence(channel.presenceState());
+      })
+      .on("presence", { event: "join" }, () => {
+        syncPresence(channel.presenceState());
+      })
+      .on("presence", { event: "leave" }, () => {
+        syncPresence(channel.presenceState());
+      })
+      .subscribe(async (status) => {
         if (status === "SUBSCRIBED") {
           setIsRealtimeConnected(true);
-        } else if (status === "CLOSED" || status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          setConnectionState("connected");
+          if (currentUserIdRef.current) {
+            try {
+              await channel.track({
+                user_id: currentUserIdRef.current,
+                online_at: new Date().toISOString(),
+              });
+            } catch (trackErr) {
+              console.warn("Channel track failed:", trackErr);
+            }
+          }
+        } else if (status === "CLOSED") {
           setIsRealtimeConnected(false);
+          setConnectionState("offline");
+        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          setIsRealtimeConnected(false);
+          setConnectionState("reconnecting");
         }
       });
 
-    channelRef.current = channel;
-
-    // 3. Heartbeat polling (every 12 seconds when visible) to guarantee synchronization without bandwidth congestion
-    const pollInterval = setInterval(() => {
-      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
-        return;
-      }
-      fetchMembers();
-    }, 12000);
-
-    // 4. Immediate resync when tab is focused or returns from background
+    // 3. Event-driven resync on visibility change & focus & network online/offline
+    // (NO periodic 12s polling interval!)
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        fetchMembers();
+        fetchMembersRef.current();
+        if (channelRef.current && currentUserIdRef.current) {
+          channelRef.current
+            .track({
+              user_id: currentUserIdRef.current,
+              online_at: new Date().toISOString(),
+            })
+            .catch(() => {});
+        }
       }
     };
     const handleWindowFocus = () => {
-      fetchMembers();
+      fetchMembersRef.current();
     };
     const handleOnline = () => {
-      fetchMembers();
+      setConnectionState("connected");
+      setIsRealtimeConnected(true);
+      fetchMembersRef.current();
+      if (channelRef.current && currentUserIdRef.current) {
+        channelRef.current
+          .track({
+            user_id: currentUserIdRef.current,
+            online_at: new Date().toISOString(),
+          })
+          .catch(() => {});
+      }
+    };
+    const handleOffline = () => {
+      setConnectionState("offline");
+      setIsRealtimeConnected(false);
     };
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("focus", handleWindowFocus);
     window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
 
     return () => {
-      clearInterval(pollInterval);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", handleWindowFocus);
       window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
         channelRef.current = null;
       }
     };
-  }, [supabase, fetchMembers, currentUserId, applyProfileUpdate, updateActiveWinEvent]);
+  }, [supabase]);
 
   // Broadcast and persist rivalry win announcement to all connected peers and devices
   const broadcastRivalryWin = useCallback(async (winEvent: RivalryWinEvent) => {
@@ -718,6 +877,8 @@ export function useLiveRoom(currentUserId?: string) {
     members,
     loading,
     isRealtimeConnected,
+    connectionState,
+    presentUserIds,
     error,
     expectedPeakHours,
     activeWinEvent,

@@ -156,13 +156,18 @@ export const MemberCard = memo(function MemberCard({
           )}
 
           {/* Live Status Pulse Dot on Avatar */}
-          {!isOffline && (
+          {member.is_present && isOffline ? (
+            <span
+              className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-zinc-950 bg-zinc-400"
+              title="Present in room (Session stopped)"
+            />
+          ) : !isOffline ? (
             <span
               className={`absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-zinc-950 ${
                 isStudying ? "bg-fuchsia-500" : "bg-amber-500"
               }`}
             />
-          )}
+          ) : null}
         </div>
       </div>
 
@@ -247,6 +252,17 @@ export const MemberCard = memo(function MemberCard({
               <span className="font-mono font-bold text-zinc-200">{formatDurationSeconds(elapsedSeconds)}</span>
             </div>
           </>
+        ) : member.is_present ? (
+          <>
+            <span
+              className={`${compact ? "text-[9px] px-2.5 py-0.5" : "text-[10px] px-3 py-1"} text-zinc-400 font-bold uppercase tracking-wider rounded-full bg-zinc-800/80 border border-zinc-700/80 tabular-nums select-none transition-colors flex items-center space-x-1`}
+              title="Present in room (Session stopped)"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-zinc-400" />
+              <span>Stopped</span>
+            </span>
+            <div className={`${compact ? "h-2.5 mt-0.2" : "h-3.5 mt-0.5"}`} aria-hidden="true" />
+          </>
         ) : (
           <>
             <span
@@ -273,6 +289,7 @@ function areMemberCardsEqual(prev: MemberCardProps, next: MemberCardProps): bool
 
   if (mA.id !== mB.id) return false;
   if (mA.current_status !== mB.current_status) return false;
+  if (mA.is_present !== mB.is_present) return false;
   if (mA.display_name !== mB.display_name) return false;
   if (mA.avatar_url !== mB.avatar_url) return false;
   if (mA.has_achiever_badge !== mB.has_achiever_badge) return false;

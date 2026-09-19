@@ -35,6 +35,8 @@ interface MemberListProps {
   currentUserId?: string;
   currentUserElapsedSeconds?: number;
   isLoading?: boolean;
+  isRealtimeConnected?: boolean;
+  connectionState?: "connected" | "reconnecting" | "offline";
   winEvents?: RivalryWinEvent[] | null;
   winEvent?: RivalryWinEvent | null;
   onRivalryWin?: (event: RivalryWinEvent) => void;
@@ -46,6 +48,8 @@ export const MemberList = memo(function MemberList({
   currentUserId,
   currentUserElapsedSeconds,
   isLoading = false,
+  isRealtimeConnected = true,
+  connectionState,
   winEvents,
   winEvent,
   onRivalryWin,
@@ -478,8 +482,22 @@ export const MemberList = memo(function MemberList({
             </div>
 
             <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-[10px] font-bold text-zinc-300 shadow-sm shrink-0">
-              <span className="w-1.5 h-1.5 rounded-full bg-fuchsia-400" />
-              <span>Live Sync</span>
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  connectionState === "reconnecting"
+                    ? "bg-amber-400 animate-pulse"
+                    : connectionState === "offline" || (!connectionState && !isRealtimeConnected)
+                    ? "bg-zinc-500"
+                    : "bg-fuchsia-400 animate-pulse"
+                }`}
+              />
+              <span>
+                {connectionState === "reconnecting"
+                  ? "Reconnecting..."
+                  : connectionState === "offline" || (!connectionState && !isRealtimeConnected)
+                  ? "Offline"
+                  : "Live Sync"}
+              </span>
             </div>
           </div>
 

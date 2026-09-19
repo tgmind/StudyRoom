@@ -22,6 +22,7 @@ export default function RoomPage() {
     members,
     loading: roomLoading,
     isRealtimeConnected,
+    connectionState,
     expectedPeakHours,
     activeWinEvent,
     activeWinEvents,
@@ -136,6 +137,7 @@ export default function RoomPage() {
       <TopHeader
         memberCount={members.length}
         isRealtimeConnected={isRealtimeConnected}
+        connectionState={connectionState}
         profile={effectiveProfile}
         expectedPeakHours={expectedPeakHours}
       />
@@ -188,6 +190,8 @@ export default function RoomPage() {
             currentUserId={user?.id}
             currentUserElapsedSeconds={elapsedStudySeconds}
             isLoading={roomLoading}
+            isRealtimeConnected={isRealtimeConnected}
+            connectionState={connectionState}
             winEvent={activeWinEvent}
             winEvents={activeWinEvents}
             onRivalryWin={broadcastRivalryWin}

@@ -693,6 +693,11 @@ export function useActiveSession(
       setBlocks([]);
       setElapsedStudySeconds(0);
       dismissedBreakExpiryRef.current = true;
+      const currentWeekly = profileRef.current?.weekly_study_seconds ?? 0;
+      const updatedWeekly = currentWeekly + totalActiveSeconds;
+      const currentTotalSessions = (profileRef.current?.total_sessions_count ?? 0) + 1;
+      const currentWeeklySessions = (profileRef.current?.weekly_sessions_count ?? 0) + 1;
+
       if (onStatusChangeRef.current) {
         onStatusChangeRef.current("offline", {
           current_status: "offline",
@@ -700,6 +705,10 @@ export function useActiveSession(
           break_started_at: null,
           last_resumed_at: null,
           active_study_seconds_snapshot: 0,
+          last_offline_at: nowIso,
+          weekly_study_seconds: updatedWeekly,
+          total_sessions_count: currentTotalSessions,
+          weekly_sessions_count: currentWeeklySessions,
         });
       }
 

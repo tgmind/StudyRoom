@@ -309,5 +309,34 @@ describe("MemberList Component & Live Global View", () => {
     // CRITICAL: Must NOT declare victory just because the opponent logged out or stopped studying!
     expect(handleRivalryWin).not.toHaveBeenCalled();
   });
+
+  it("renders Live Sync connection status badge truthfully", () => {
+    const { rerender } = render(
+      <MemberList
+        members={[memberA]}
+        currentUserId="user-a"
+        connectionState="connected"
+      />
+    );
+    expect(screen.getByText("Live Sync")).toBeInTheDocument();
+
+    rerender(
+      <MemberList
+        members={[memberA]}
+        currentUserId="user-a"
+        connectionState="reconnecting"
+      />
+    );
+    expect(screen.getByText("Reconnecting...")).toBeInTheDocument();
+
+    rerender(
+      <MemberList
+        members={[memberA]}
+        currentUserId="user-a"
+        connectionState="offline"
+      />
+    );
+    expect(screen.getByText("Offline")).toBeInTheDocument();
+  });
 });
 

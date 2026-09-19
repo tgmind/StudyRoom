@@ -396,24 +396,51 @@ export function detectLiveRivalries(
     return [];
   }
 
-  // 4. Non-Greedy Deterministic Partitioning:
+  // 4. Non-Greedy Deterministic Partitioning with Branch-and-Bound:
   // Maximizes total weight (which favors 2 pairs over 1 trio leaving 1 starved,
   // gives affinity bonus to keep existing active rivalries stable, and minimizes gap penalties).
   candidateGroups.sort((a, b) => b.weight - a.weight);
 
+  // Fast greedy initialization for baseline bestTotalScore and aggressive branch pruning
   let bestTotalScore = 0;
   let bestSelection: CandidateGroup[] = [];
+  const greedyUsedIds = new Set<string>();
+  for (const cand of candidateGroups) {
+    if (!cand.participantIds.some((id) => greedyUsedIds.has(id))) {
+      for (const id of cand.participantIds) greedyUsedIds.add(id);
+      bestSelection.push(cand);
+      bestTotalScore += cand.weight;
+    }
+  }
+
+  // Precompute suffix maximum possible weights for O(1) branch-and-bound pruning
+  const nCands = candidateGroups.length;
+  const suffixMaxWeight = new Float64Array(nCands + 1);
+  for (let i = nCands - 1; i >= 0; i--) {
+    suffixMaxWeight[i] = suffixMaxWeight[i + 1] + candidateGroups[i].weight;
+  }
+
+  let searchSteps = 0;
+  const MAX_SEARCH_STEPS = 2000;
 
   function search(index: number, currentWeight: number, selection: CandidateGroup[], usedIds: Set<string>) {
     if (currentWeight > bestTotalScore) {
       bestTotalScore = currentWeight;
       bestSelection = [...selection];
     }
-    if (index >= candidateGroups.length) {
+    if (index >= nCands || ++searchSteps > MAX_SEARCH_STEPS) {
       return;
     }
 
-    for (let i = index; i < candidateGroups.length; i++) {
+    // Branch-and-bound upper bound pruning: if even taking ALL remaining candidates cannot beat bestTotalScore, prune
+    if (currentWeight + suffixMaxWeight[index] <= bestTotalScore) {
+      return;
+    }
+
+    for (let i = index; i < nCands; i++) {
+      if (currentWeight + suffixMaxWeight[i] <= bestTotalScore) {
+        break;
+      }
       const cand = candidateGroups[i];
       const hasOverlap = cand.participantIds.some((id) => usedIds.has(id));
       if (!hasOverlap) {

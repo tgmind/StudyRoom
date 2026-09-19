@@ -24,6 +24,7 @@ export interface UserProfile {
   last_offline_at?: string | null;
   leaderboard_score?: number;
   leaderboard_rank?: number;
+  is_present?: boolean;
 }
 
 export interface GoalTask {

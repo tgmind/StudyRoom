@@ -8,6 +8,7 @@ import { Star } from "lucide-react";
 interface TopHeaderProps {
   memberCount?: number;
   isRealtimeConnected?: boolean;
+  connectionState?: "connected" | "reconnecting" | "offline";
   profile?: UserProfile | null;
   expectedPeakHours?: string | null;
 }
@@ -15,6 +16,7 @@ interface TopHeaderProps {
 export const TopHeader = memo(function TopHeader({
   memberCount = 0,
   isRealtimeConnected = true,
+  connectionState,
   profile,
   expectedPeakHours,
 }: TopHeaderProps) {
@@ -26,6 +28,10 @@ export const TopHeader = memo(function TopHeader({
   const initials = profile?.display_name
     ? profile.display_name.substring(0, 2).toUpperCase()
     : "??";
+
+  const isReconnecting = connectionState === "reconnecting";
+  const isOffline = connectionState === "offline" || (!connectionState && !isRealtimeConnected);
+  const isConnected = connectionState === "connected" || (!connectionState && isRealtimeConnected);
 
   return (
     <header className="sticky top-0 z-30 bg-zinc-950/90 backdrop-blur-xl border-b border-zinc-800/80 px-0 py-2.5 sm:py-3 shadow-md">
@@ -44,8 +50,13 @@ export const TopHeader = memo(function TopHeader({
               <div className="flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full bg-zinc-900 border border-zinc-800 text-[11px] font-bold text-zinc-300 shrink-0">
                 <span
                   className={`w-2 h-2 rounded-full ${
-                    isRealtimeConnected ? "bg-fuchsia-500 animate-pulse" : "bg-zinc-600"
+                    isReconnecting
+                      ? "bg-amber-400 animate-pulse"
+                      : isOffline
+                      ? "bg-zinc-600"
+                      : "bg-fuchsia-500 animate-pulse"
                   }`}
+                  title={isReconnecting ? "Reconnecting..." : isOffline ? "Offline" : "Connected"}
                 />
                 <span>
                   {memberCount} {memberCount === 1 ? "member" : "members"}

@@ -145,4 +145,24 @@ describe("MemberCard Component", () => {
     // 10h past weekly + 30m live = 10h 30m
     expect(screen.getByText("10h 30m")).toBeInTheDocument();
   });
+
+  it("renders Stopped status pill and avatar indicator when member is offline but present in room", () => {
+    const now = new Date("2026-09-03T14:00:00Z");
+
+    render(
+      <MemberCard
+        member={{
+          ...baseMember,
+          current_status: "offline",
+          is_present: true,
+        }}
+        currentTimestamp={now}
+      />
+    );
+
+    expect(screen.getByText("Subodh")).toBeInTheDocument();
+    expect(screen.getByText("Stopped")).toBeInTheDocument();
+    expect(screen.queryByText(/Offline/i)).not.toBeInTheDocument();
+    expect(screen.getAllByTitle("Present in room (Session stopped)")).toHaveLength(2);
+  });
 });

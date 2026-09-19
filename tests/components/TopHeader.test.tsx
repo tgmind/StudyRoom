@@ -50,4 +50,33 @@ describe("TopHeader Component", () => {
     expect(screen.getByTitle("Account & Settings")).toBeDefined();
     expect(screen.getByTitle("⭐ Weekly Achiever")).toBeDefined();
   });
+
+  it("reflects connectionState in connection indicator title and styling", () => {
+    const { rerender } = render(
+      <TopHeader
+        memberCount={3}
+        connectionState="reconnecting"
+        profile={null}
+      />
+    );
+    expect(screen.getByTitle("Reconnecting...")).toBeInTheDocument();
+
+    rerender(
+      <TopHeader
+        memberCount={3}
+        connectionState="offline"
+        profile={null}
+      />
+    );
+    expect(screen.getByTitle("Offline")).toBeInTheDocument();
+
+    rerender(
+      <TopHeader
+        memberCount={3}
+        connectionState="connected"
+        profile={null}
+      />
+    );
+    expect(screen.getByTitle("Connected")).toBeInTheDocument();
+  });
 });
