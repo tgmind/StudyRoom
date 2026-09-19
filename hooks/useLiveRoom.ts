@@ -90,6 +90,13 @@ function isWinEventDismissed(id: string, winnerName?: string, loserName?: string
 }
 
 export function getMemberMutationEpoch(p: Partial<UserProfile>): number {
+  if (typeof (p as any).mutation_epoch === "number" && (p as any).mutation_epoch > 0) {
+    return (p as any).mutation_epoch;
+  }
+  if ((p as any).updated_at) {
+    const ms = new Date((p as any).updated_at).getTime();
+    if (!isNaN(ms) && ms > 0) return ms;
+  }
   const timestamps = [
     p.last_resumed_at,
     p.break_started_at,
@@ -495,10 +502,6 @@ export function useLiveRoom(currentUserId?: string) {
       }
       return sortMembers(filterAdmin(next), currentUserIdRef.current);
     });
-
-    if (cleanUpdates.current_status === "offline") {
-      fetchMembersRef.current();
-    }
   }, []);
 
   fetchMembersRef.current = fetchMembers;
@@ -508,11 +511,15 @@ export function useLiveRoom(currentUserId?: string) {
   // Broadcast function to immediately notify all peers over WebSockets without DB lag
   const broadcastStatusChange = useCallback(async (payload: Partial<UserProfile> & { id: string }) => {
     // 1. Update mutation epoch for current user
-    const payloadEpoch = getMemberMutationEpoch(payload) || Date.now();
+    const payloadEpoch = (payload as any).mutation_epoch || getMemberMutationEpoch(payload) || Date.now();
+    const enrichedPayload = {
+      ...payload,
+      mutation_epoch: payloadEpoch,
+    };
     memberEpochMapRef.current.set(payload.id, Math.max(memberEpochMapRef.current.get(payload.id) || 0, payloadEpoch));
 
     // 2. Apply locally immediately for instant feedback
-    applyProfileUpdate(payload);
+    applyProfileUpdate(enrichedPayload);
 
     // 3. Broadcast to all peers & re-track presence
     if (channelRef.current) {
@@ -520,7 +527,7 @@ export function useLiveRoom(currentUserId?: string) {
         await channelRef.current.send({
           type: "broadcast",
           event: "member_status_update",
-          payload,
+          payload: enrichedPayload,
         });
         if (payload.id) {
           channelRef.current.track({

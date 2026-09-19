@@ -146,6 +146,7 @@ export default function RoomPage() {
         ...m,
         ...(effectiveProfile || {}),
         current_status: status,
+        break_started_at: status === "break" ? (breakStartedAt || m.break_started_at) : null,
         active_study_seconds_snapshot:
           status === "studying" ? elapsedStudySeconds : m.active_study_seconds_snapshot,
       };
@@ -214,6 +215,7 @@ export default function RoomPage() {
             isLoading={roomLoading}
             isRealtimeConnected={isRealtimeConnected}
             connectionState={connectionState}
+            syncStatus={syncStatus}
             winEvent={activeWinEvent}
             winEvents={activeWinEvents}
             onRivalryWin={broadcastRivalryWin}

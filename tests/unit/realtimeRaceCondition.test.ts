@@ -129,6 +129,16 @@ describe("Realtime Synchronization & Race Condition Guard", () => {
       expect(getMemberMutationEpoch({})).toBe(0);
     });
 
+    it("prioritizes explicit mutation_epoch if present", () => {
+      const explicitEpoch = 1758273600000;
+      expect(getMemberMutationEpoch({ mutation_epoch: explicitEpoch } as any)).toBe(explicitEpoch);
+    });
+
+    it("extracts epoch from updated_at if present", () => {
+      const updatedAt = "2026-09-19T10:00:00.000Z";
+      expect(getMemberMutationEpoch({ updated_at: updatedAt } as any)).toBe(new Date(updatedAt).getTime());
+    });
+
     it("prevents stale in-flight REST response from overwriting newer realtime status", async () => {
       const oldTimestamp = "2026-09-19T08:00:00.000Z";
       const newTimestamp = "2026-09-19T09:00:00.000Z";

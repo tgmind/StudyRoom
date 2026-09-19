@@ -37,6 +37,7 @@ interface MemberListProps {
   isLoading?: boolean;
   isRealtimeConnected?: boolean;
   connectionState?: "connected" | "reconnecting" | "offline";
+  syncStatus?: "synced" | "syncing" | "reconnecting" | "no_network" | "error";
   winEvents?: RivalryWinEvent[] | null;
   winEvent?: RivalryWinEvent | null;
   onRivalryWin?: (event: RivalryWinEvent) => void;
@@ -50,6 +51,7 @@ export const MemberList = memo(function MemberList({
   isLoading = false,
   isRealtimeConnected = true,
   connectionState,
+  syncStatus,
   winEvents,
   winEvent,
   onRivalryWin,
@@ -217,7 +219,23 @@ export const MemberList = memo(function MemberList({
           p.scoreGap === next.scoreGap &&
           p.formattedGap === next.formattedGap &&
           p.rivalMembers.length === next.rivalMembers.length &&
-          p.rivalMembers.every((pm, mIdx) => pm.id === next.rivalMembers[mIdx].id)
+          p.rivalMembers.every((pm, mIdx) => {
+            const nm = next.rivalMembers[mIdx];
+            return (
+              pm.id === nm.id &&
+              pm.current_status === nm.current_status &&
+              pm.break_started_at === nm.break_started_at &&
+              pm.last_resumed_at === nm.last_resumed_at &&
+              pm.session_start_time === nm.session_start_time &&
+              pm.active_study_seconds_snapshot === nm.active_study_seconds_snapshot &&
+              pm.weekly_study_seconds === nm.weekly_study_seconds &&
+              pm.leaderboard_score === nm.leaderboard_score &&
+              pm.leaderboard_rank === nm.leaderboard_rank &&
+              pm.display_name === nm.display_name &&
+              pm.avatar_url === nm.avatar_url &&
+              pm.has_achiever_badge === nm.has_achiever_badge
+            );
+          })
         );
       });
       if (isIdentical) {
@@ -484,18 +502,28 @@ export const MemberList = memo(function MemberList({
             <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-[10px] font-bold text-zinc-300 shadow-sm shrink-0">
               <span
                 className={`w-1.5 h-1.5 rounded-full ${
-                  connectionState === "reconnecting"
-                    ? "bg-amber-400 animate-pulse"
-                    : connectionState === "offline" || (!connectionState && !isRealtimeConnected)
+                  syncStatus === "no_network" || connectionState === "offline" || (!connectionState && !isRealtimeConnected)
                     ? "bg-zinc-500"
+                    : syncStatus === "reconnecting" || connectionState === "reconnecting"
+                    ? "bg-amber-400 animate-pulse"
+                    : syncStatus === "syncing"
+                    ? "bg-blue-400 animate-pulse"
+                    : syncStatus === "error"
+                    ? "bg-rose-500"
                     : "bg-fuchsia-400 animate-pulse"
                 }`}
               />
               <span>
-                {connectionState === "reconnecting"
-                  ? "Reconnecting..."
+                {syncStatus === "no_network"
+                  ? "No network"
                   : connectionState === "offline" || (!connectionState && !isRealtimeConnected)
                   ? "Offline"
+                  : syncStatus === "reconnecting" || connectionState === "reconnecting"
+                  ? "Reconnecting..."
+                  : syncStatus === "syncing"
+                  ? "Syncing..."
+                  : syncStatus === "error"
+                  ? "Action failed"
                   : "Live Sync"}
               </span>
             </div>

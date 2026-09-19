@@ -827,5 +827,56 @@ describe("Live Study Rivalry Detection Engine", () => {
       expect(rankRivalry.rivalMembers.map((m) => m.id)).toEqual(["u3", "u4"]);
       expect(rankRivalry.formattedGap).toBe("1.2 pts");
     });
+
+    it("updates rival member live status (break/resume) in detected rivalries immediately", () => {
+      const fixedNow = new Date("2026-09-03T10:00:00.000Z");
+      const member1 = createMockMember("u1", "Subodh", "studying", 36000);
+      const member2 = createMockMember("u2", "Aditya", "studying", 35880);
+
+      // Both studying
+      const r1 = detectLiveRivalries([member1, member2], fixedNow);
+      expect(r1).toHaveLength(1);
+      expect(r1[0].rivalMembers.find((m) => m.id === "u1")?.current_status).toBe("studying");
+
+      // Subodh goes on BREAK
+      const member1Break: UserProfile = {
+        ...member1,
+        current_status: "break",
+        break_started_at: "2026-09-03T10:00:00.000Z",
+      };
+
+      const r2 = detectLiveRivalries([member1Break, member2], fixedNow, undefined, undefined, r1);
+      expect(r2).toHaveLength(1);
+      const subodhInRivalry = r2[0].rivalMembers.find((m) => m.id === "u1");
+      expect(subodhInRivalry?.current_status).toBe("break");
+      expect(subodhInRivalry?.break_started_at).toBe("2026-09-03T10:00:00.000Z");
+
+      // MemberList memoization equality simulation:
+      const prev = r1;
+      const next = r2;
+      const isIdentical = prev.every((p, idx) => {
+        const n = next[idx];
+        return (
+          p.id === n.id &&
+          p.mode === n.mode &&
+          p.isTrio === n.isTrio &&
+          p.primaryGapSeconds === n.primaryGapSeconds &&
+          p.scoreGap === n.scoreGap &&
+          p.formattedGap === n.formattedGap &&
+          p.rivalMembers.length === n.rivalMembers.length &&
+          p.rivalMembers.every((pm, mIdx) => {
+            const nm = n.rivalMembers[mIdx];
+            return (
+              pm.id === nm.id &&
+              pm.current_status === nm.current_status &&
+              pm.break_started_at === nm.break_started_at &&
+              pm.last_resumed_at === nm.last_resumed_at
+            );
+          })
+        );
+      });
+      // CRITICAL: isIdentical MUST be false when a member pauses/resumes!
+      expect(isIdentical).toBe(false);
+    });
   });
 });

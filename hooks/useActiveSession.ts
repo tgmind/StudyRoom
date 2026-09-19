@@ -1135,6 +1135,9 @@ export function useActiveSession(
           Object.assign(profileRef.current, confirmedDetails);
         }
         updateProfileOptimisticRef.current?.(confirmedDetails);
+        if (onStatusChangeRef.current) {
+          onStatusChangeRef.current("studying", confirmedDetails);
+        }
         removeActiveTransitionActions();
         await fetchSessionBlocks();
         setLocalStatusOverride(null);
@@ -1236,6 +1239,7 @@ export function useActiveSession(
       onStatusChangeRef.current("break", {
         current_status: "break",
         break_started_at: nowIso,
+        last_resumed_at: null,
         active_study_seconds_snapshot: currentStudySeconds,
       });
     }
@@ -1264,6 +1268,9 @@ export function useActiveSession(
           Object.assign(profileRef.current, confirmedDetails);
         }
         updateProfileOptimisticRef.current?.(confirmedDetails);
+        if (onStatusChangeRef.current) {
+          onStatusChangeRef.current("break", confirmedDetails);
+        }
         removeActiveTransitionActions();
         await fetchSessionBlocks();
         setLocalStatusOverride(null);
@@ -1397,6 +1404,9 @@ export function useActiveSession(
           Object.assign(profileRef.current, confirmedDetails);
         }
         updateProfileOptimisticRef.current?.(confirmedDetails);
+        if (onStatusChangeRef.current) {
+          onStatusChangeRef.current("studying", confirmedDetails);
+        }
         await fetchSessionBlocks();
         setLocalStatusOverride(null);
         setMutationPending(null);

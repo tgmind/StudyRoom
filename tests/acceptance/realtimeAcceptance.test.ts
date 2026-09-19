@@ -149,7 +149,10 @@ describe("STUDYROOM PRODUCTION REALTIME ACCEPTANCE TEST SUITE", () => {
     }
 
     // Wait for network delivery
-    await new Promise((r) => setTimeout(r, 600));
+    const waitStart = Date.now();
+    while (clientBReceived.length < 10 && Date.now() - waitStart < 3000) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
 
     const allTransitions = [...clientBReceived, ...clientAReceived];
     const measuredLatencies = allTransitions.map((t) => t.latency).filter((l) => typeof l === "number" && l >= 0);
