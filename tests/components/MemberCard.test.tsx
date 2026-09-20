@@ -146,7 +146,7 @@ describe("MemberCard Component", () => {
     expect(screen.getByText("10h 30m")).toBeInTheDocument();
   });
 
-  it("renders Stopped status pill and avatar indicator when member is offline but present in room", () => {
+  it("renders Online status pill and avatar indicator when member is offline but present in room", () => {
     const now = new Date("2026-09-03T14:00:00Z");
 
     render(
@@ -161,8 +161,8 @@ describe("MemberCard Component", () => {
     );
 
     expect(screen.getByText("Subodh")).toBeInTheDocument();
-    expect(screen.getByText("Stopped")).toBeInTheDocument();
+    expect(screen.getByText("Online")).toBeInTheDocument();
     expect(screen.queryByText(/Offline/i)).not.toBeInTheDocument();
-    expect(screen.getAllByTitle("Present in room (Session stopped)")).toHaveLength(2);
+    expect(screen.getAllByTitle("Present in room (Online)")).toHaveLength(2);
   });
 });

@@ -162,7 +162,7 @@ export const MemberCard = memo(function MemberCard({
           {member.is_present && isOffline ? (
             <span
               className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-zinc-950 bg-zinc-400"
-              title="Present in room (Session stopped)"
+              title="Present in room (Online)"
             />
           ) : !isOffline ? (
             <span
@@ -259,10 +259,10 @@ export const MemberCard = memo(function MemberCard({
           <>
             <span
               className={`${compact ? "text-[9px] px-2.5 py-0.5" : "text-[10px] px-3 py-1"} text-zinc-400 font-bold uppercase tracking-wider rounded-full bg-zinc-800/80 border border-zinc-700/80 tabular-nums select-none transition-colors flex items-center space-x-1`}
-              title="Present in room (Session stopped)"
+              title="Present in room (Online)"
             >
               <span className="w-1.5 h-1.5 rounded-full bg-zinc-400" />
-              <span>Stopped</span>
+              <span>Online</span>
             </span>
             <div className={`${compact ? "h-2.5 mt-0.2" : "h-3.5 mt-0.5"}`} aria-hidden="true" />
           </>

@@ -271,34 +271,34 @@ describe("Self-Healing Realtime Channel & Room Presence Architecture", () => {
     expect(result.current.connectionState).toBe("connected");
   });
 
-  it("5. SECONDARY BUG REGRESSION: Stopped member card shows 'Stopped' when present and 'Offline Xm' when absent without flickering", () => {
+  it("5. SECONDARY BUG REGRESSION: Online member card shows 'Online' when present and 'Offline Xm' when absent without flickering", () => {
     const memberPresent: UserProfile = createMockMember({
-      id: "user-stopped-present",
+      id: "user-online-present",
       current_status: "offline",
       is_present: true,
       last_offline_at: new Date(Date.now() - 300 * 1000).toISOString(),
     });
 
     const memberAbsent: UserProfile = createMockMember({
-      id: "user-stopped-absent",
+      id: "user-online-absent",
       current_status: "offline",
       is_present: false,
       last_offline_at: new Date(Date.now() - 300 * 1000).toISOString(),
     });
 
-    // 1. Member present in room -> "Stopped"
+    // 1. Member present in room -> "Online"
     const { rerender } = render(<MemberCard member={memberPresent} isCurrentUser={false} />);
-    expect(screen.getByText("Stopped")).toBeInTheDocument();
+    expect(screen.getByText("Online")).toBeInTheDocument();
     expect(screen.queryByText(/offline 5m/i)).not.toBeInTheDocument();
 
     // 2. Member leaves room -> "Offline 5m"
     rerender(<MemberCard member={memberAbsent} isCurrentUser={false} />);
     expect(screen.getByText(/5m/i)).toBeInTheDocument();
-    expect(screen.queryByText("Stopped")).not.toBeInTheDocument();
+    expect(screen.queryByText("Online")).not.toBeInTheDocument();
 
-    // 3. Current user viewing own room card with is_present: true -> "Stopped"
+    // 3. Current user viewing own room card with is_present: true -> "Online"
     rerender(<MemberCard member={memberPresent} isCurrentUser={true} />);
-    expect(screen.getByText("Stopped")).toBeInTheDocument();
+    expect(screen.getByText("Online")).toBeInTheDocument();
   });
 
   it("6. DECOUPLED ROOM INDICATOR: Local timer mutation syncStatus does NOT alter global room 'Live Sync' indicator", () => {
