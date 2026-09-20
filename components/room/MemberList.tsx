@@ -499,34 +499,49 @@ export const MemberList = memo(function MemberList({
               )}
             </div>
 
-            <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-[10px] font-bold text-zinc-300 shadow-sm shrink-0">
-              <span
-                className={`w-1.5 h-1.5 rounded-full ${
-                  syncStatus === "no_network" || connectionState === "offline" || (!connectionState && !isRealtimeConnected)
-                    ? "bg-zinc-500"
-                    : syncStatus === "reconnecting" || connectionState === "reconnecting"
-                    ? "bg-amber-400 animate-pulse"
-                    : syncStatus === "syncing"
-                    ? "bg-blue-400 animate-pulse"
-                    : syncStatus === "error"
-                    ? "bg-rose-500"
-                    : "bg-fuchsia-400 animate-pulse"
-                }`}
-              />
-              <span>
-                {syncStatus === "no_network"
-                  ? "No network"
-                  : connectionState === "offline" || (!connectionState && !isRealtimeConnected)
-                  ? "Offline"
-                  : syncStatus === "reconnecting" || connectionState === "reconnecting"
-                  ? "Reconnecting..."
-                  : syncStatus === "syncing"
-                  ? "Syncing..."
-                  : syncStatus === "error"
-                  ? "Action failed"
-                  : "Live Sync"}
-              </span>
-            </div>
+            {(() => {
+              const isOnline = typeof navigator === "undefined" || navigator.onLine;
+              const isTrulyConnected = isRealtimeConnected && (connectionState === "connected" || (!connectionState && isRealtimeConnected)) && isOnline && !isLoading;
+              const isNoNetwork = !isOnline || syncStatus === "no_network";
+              const isOffline = isNoNetwork || connectionState === "offline" || (!connectionState && !isRealtimeConnected);
+              const isReconnecting = !isOffline && (syncStatus === "reconnecting" || connectionState === "reconnecting");
+              const isSyncing = !isOffline && !isReconnecting && (isLoading || syncStatus === "syncing");
+              const isError = !isOffline && !isReconnecting && !isSyncing && syncStatus === "error";
+              const isLive = isTrulyConnected && !isSyncing && !isError;
+
+              return (
+                <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-[10px] font-bold text-zinc-300 shadow-sm shrink-0">
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      isOffline
+                        ? "bg-zinc-500"
+                        : isReconnecting
+                        ? "bg-amber-400 animate-pulse"
+                        : isSyncing
+                        ? "bg-blue-400 animate-pulse"
+                        : isError
+                        ? "bg-rose-500"
+                        : "bg-fuchsia-400 animate-pulse"
+                    }`}
+                  />
+                  <span>
+                    {isNoNetwork
+                      ? "No network"
+                      : isOffline
+                      ? "Offline"
+                      : isReconnecting
+                      ? "Reconnecting..."
+                      : isSyncing
+                      ? "Syncing..."
+                      : isError
+                      ? "Action failed"
+                      : isLive
+                      ? "Live Sync"
+                      : "Syncing..."}
+                  </span>
+                </div>
+              );
+            })()}
           </div>
 
           {nonRivalActiveMembers.length > 0 ? (

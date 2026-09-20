@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS public.users (
   pending_goal_seconds INTEGER DEFAULT NULL,
   pending_goal_reason TEXT DEFAULT NULL,
   last_offline_at TIMESTAMPTZ,
+  state_version BIGINT NOT NULL DEFAULT 1,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -43,6 +45,8 @@ ALTER TABLE public.users ADD COLUMN IF NOT EXISTS pending_goal_session_id UUID R
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS pending_goal_seconds INTEGER DEFAULT NULL;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS pending_goal_reason TEXT DEFAULT NULL;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_offline_at TIMESTAMPTZ;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS state_version BIGINT NOT NULL DEFAULT 1;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
 -- Clean up legacy push notification artifacts if upgrading an existing database
 ALTER TABLE public.users DROP COLUMN IF EXISTS three_hour_prompt_sent_at;
@@ -57,6 +61,24 @@ ALTER TABLE public.users REPLICA IDENTITY FULL;
 CREATE INDEX IF NOT EXISTS idx_users_current_status ON public.users(current_status);
 CREATE INDEX IF NOT EXISTS idx_users_created_at ON public.users(created_at);
 CREATE INDEX IF NOT EXISTS idx_users_is_admin ON public.users(is_admin) WHERE is_admin = TRUE;
+CREATE INDEX IF NOT EXISTS idx_users_state_version ON public.users(state_version);
+CREATE INDEX IF NOT EXISTS idx_users_updated_at ON public.users(updated_at);
+
+-- Before update trigger to monotonically increment state_version and set updated_at
+CREATE OR REPLACE FUNCTION public.trg_users_state_version()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  NEW.state_version = COALESCE(OLD.state_version, 0) + 1;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_users_state_version ON public.users;
+CREATE TRIGGER trg_users_state_version
+BEFORE UPDATE ON public.users
+FOR EACH ROW
+EXECUTE FUNCTION public.trg_users_state_version();
 
 -- Protect system fields from direct user update via trigger
 CREATE OR REPLACE FUNCTION public.prevent_user_badge_tampering()
@@ -179,6 +201,7 @@ CREATE TABLE IF NOT EXISTS public.session_blocks (
 CREATE INDEX IF NOT EXISTS idx_session_blocks_user_id ON public.session_blocks(user_id);
 CREATE INDEX IF NOT EXISTS idx_session_blocks_session_id ON public.session_blocks(session_id);
 CREATE INDEX IF NOT EXISTS idx_session_blocks_type ON public.session_blocks(block_type);
+CREATE INDEX IF NOT EXISTS idx_session_blocks_active_user ON public.session_blocks(user_id) WHERE session_id IS NULL;
 
 -- ------------------------------------------------------------
 -- 6. ROW LEVEL SECURITY (RLS)
@@ -320,23 +343,26 @@ DECLARE
   v_trimmed_focus TEXT;
   v_now TIMESTAMPTZ := NOW();
   v_block_id UUID;
+  v_version BIGINT;
 BEGIN
   v_user_id := auth.uid();
   IF v_user_id IS NULL THEN
     RAISE EXCEPTION 'Not authenticated';
   END IF;
 
-  -- Lock user row
-  SELECT current_status INTO v_status
+  -- Strict row-level lock
+  SELECT current_status, state_version INTO v_status, v_version
   FROM public.users
   WHERE id = v_user_id
   FOR UPDATE;
 
+  -- Idempotent check: if already studying, return current state without error
   IF v_status = 'studying' THEN
     RETURN jsonb_build_object(
       'success', true,
       'already_active', true,
       'status', 'studying',
+      'state_version', v_version,
       'server_now', v_now
     );
   END IF;
@@ -354,13 +380,14 @@ BEGIN
   -- Update user status with active resume timestamp
   UPDATE public.users
   SET current_status = 'studying',
-       current_focus = v_trimmed_focus,
-       session_start_time = v_now,
-       last_resumed_at = v_now,
-       break_started_at = NULL,
-       active_study_seconds_snapshot = 0,
-       last_break_expired_study_seconds = NULL
-  WHERE id = v_user_id;
+      current_focus = v_trimmed_focus,
+      session_start_time = v_now,
+      last_resumed_at = v_now,
+      break_started_at = NULL,
+      active_study_seconds_snapshot = 0,
+      last_break_expired_study_seconds = NULL
+  WHERE id = v_user_id
+  RETURNING state_version INTO v_version;
 
   -- Create active study block
   INSERT INTO public.session_blocks (user_id, block_type, start_time)
@@ -375,6 +402,7 @@ BEGIN
     'last_resumed_at', v_now,
     'active_study_seconds_snapshot', 0,
     'block_id', v_block_id,
+    'state_version', v_version,
     'server_now', v_now
   );
 END;
@@ -395,23 +423,29 @@ DECLARE
   v_break_started_at TIMESTAMPTZ;
   v_now TIMESTAMPTZ := COALESCE(p_paused_at, NOW());
   v_total_study_seconds INTEGER := 0;
+  v_version BIGINT;
+  v_snapshot INTEGER;
 BEGIN
   v_user_id := auth.uid();
   IF v_user_id IS NULL THEN
     RAISE EXCEPTION 'Not authenticated';
   END IF;
 
-  SELECT current_status, break_started_at INTO v_status, v_break_started_at
+  SELECT current_status, break_started_at, active_study_seconds_snapshot, state_version
+  INTO v_status, v_break_started_at, v_snapshot, v_version
   FROM public.users
   WHERE id = v_user_id
   FOR UPDATE;
 
+  -- Idempotency check: if already paused on break, return safe success
   IF v_status = 'break' THEN
     RETURN jsonb_build_object(
       'success', true,
       'already_paused', true,
       'status', 'break',
       'break_started_at', v_break_started_at,
+      'active_study_seconds_snapshot', v_snapshot,
+      'state_version', v_version,
       'server_now', v_now
     );
   END IF;
@@ -447,7 +481,8 @@ BEGIN
       last_resumed_at = NULL,
       break_started_at = v_now,
       active_study_seconds_snapshot = v_total_study_seconds
-  WHERE id = v_user_id;
+  WHERE id = v_user_id
+  RETURNING state_version INTO v_version;
 
   RETURN jsonb_build_object(
     'success', true,
@@ -455,6 +490,7 @@ BEGIN
     'paused_at', v_now,
     'break_started_at', v_now,
     'active_study_seconds_snapshot', v_total_study_seconds,
+    'state_version', v_version,
     'server_now', v_now
   );
 END;
@@ -474,22 +510,26 @@ DECLARE
   v_break_started_at TIMESTAMPTZ;
   v_now TIMESTAMPTZ := COALESCE(p_resumed_at, NOW());
   v_total_study_seconds INTEGER := 0;
+  v_version BIGINT;
 BEGIN
   v_user_id := auth.uid();
   IF v_user_id IS NULL THEN
     RAISE EXCEPTION 'Not authenticated';
   END IF;
 
-  SELECT current_status, break_started_at INTO v_status, v_break_started_at
+  SELECT current_status, break_started_at, state_version
+  INTO v_status, v_break_started_at, v_version
   FROM public.users
   WHERE id = v_user_id
   FOR UPDATE;
 
+  -- Idempotency check: if already resumed (studying), return safe success
   IF v_status = 'studying' THEN
     RETURN jsonb_build_object(
       'success', true,
       'already_resumed', true,
       'status', 'studying',
+      'state_version', v_version,
       'server_now', v_now
     );
   END IF;
@@ -501,7 +541,6 @@ BEGIN
   -- 1-HOUR BREAK EXPIRY ENFORCEMENT:
   -- If break exceeded 1 hour (3600 seconds), end session and save only study time before break
   IF v_break_started_at IS NOT NULL AND EXTRACT(EPOCH FROM (v_now - v_break_started_at)) >= 3600 THEN
-    -- Capture accrued study duration for cross-device notice
     SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(end_time, v_now) - start_time))), 0)::INTEGER
     INTO v_total_study_seconds
     FROM public.session_blocks
@@ -511,12 +550,14 @@ BEGIN
 
     UPDATE public.users
     SET last_break_expired_study_seconds = v_total_study_seconds
-    WHERE id = v_user_id;
+    WHERE id = v_user_id
+    RETURNING state_version INTO v_version;
 
     RETURN jsonb_build_object(
       'success', false,
       'error', 'break_expired',
       'message', 'You stayed on break for more than 1 hour. Session has been stopped. Start a new session.',
+      'state_version', v_version,
       'server_now', v_now
     );
   END IF;
@@ -530,18 +571,20 @@ BEGIN
   INSERT INTO public.session_blocks (user_id, block_type, start_time)
   VALUES (v_user_id, 'study', v_now);
 
-  -- Update user status with new resume timestamp (clearing break timestamp)
+  -- Update user status with new resume timestamp
   UPDATE public.users
   SET current_status = 'studying',
       last_resumed_at = v_now,
       break_started_at = NULL,
       last_break_expired_study_seconds = NULL
-  WHERE id = v_user_id;
+  WHERE id = v_user_id
+  RETURNING state_version INTO v_version;
 
   RETURN jsonb_build_object(
     'success', true,
     'status', 'studying',
     'resumed_at', v_now,
+    'state_version', v_version,
     'server_now', v_now
   );
 END;
@@ -598,6 +641,7 @@ DECLARE
   v_status TEXT;
   v_session_start TIMESTAMPTZ;
   v_focus TEXT;
+  v_version BIGINT;
   v_now TIMESTAMPTZ := NOW();
   v_tz TEXT := 'Asia/Kolkata';
   v_midnight TIMESTAMPTZ;
@@ -630,15 +674,18 @@ BEGIN
   END IF;
 
   -- Lock user profile row
-  SELECT current_status, session_start_time, current_focus INTO v_status, v_session_start, v_focus
+  SELECT current_status, session_start_time, current_focus, state_version 
+  INTO v_status, v_session_start, v_focus, v_version
   FROM public.users
   WHERE id = v_user_id
   FOR UPDATE;
 
+  -- Idempotency check: already finished
   IF v_status = 'offline' THEN
     RETURN jsonb_build_object(
       'success', true,
       'already_finished', true,
+      'state_version', v_version,
       'message', 'No active session found'
     );
   END IF;
@@ -667,6 +714,11 @@ BEGIN
     v_session_actual_end := v_now;
   END IF;
 
+  -- Enforce 3-hour limit on end time if app was closed longer than 3 hours
+  IF v_session_actual_end > (v_session_start + INTERVAL '3 hours') THEN
+    v_session_actual_end := v_session_start + INTERVAL '3 hours';
+  END IF;
+
   -- Calculate total break duration from unlinked break blocks
   SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(end_time, v_now) - start_time))), 0)
   INTO v_total_break_seconds
@@ -690,11 +742,9 @@ BEGIN
         AND start_time < v_midnight
         AND end_time > v_midnight
     LOOP
-      -- Insert block part after midnight
       INSERT INTO public.session_blocks (user_id, block_type, start_time, end_time, session_id)
       VALUES (v_user_id, v_block.block_type, v_midnight, v_block.end_time, NULL);
 
-      -- Truncate block part before midnight
       UPDATE public.session_blocks
       SET end_time = v_midnight
       WHERE id = v_block.id;
@@ -747,7 +797,6 @@ BEGIN
 
   -- Handle Session and Block insertion
   IF v_crossed_midnight THEN
-    -- Calculate study seconds before midnight
     SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (end_time - start_time))), 0)
     INTO v_total_study_seconds
     FROM public.session_blocks
@@ -757,7 +806,6 @@ BEGIN
       AND end_time <= v_midnight;
     v_dur_1 := LEAST(180, GREATEST(0, FLOOR(v_total_study_seconds / 60)::INTEGER));
 
-    -- Calculate study seconds after midnight
     SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (end_time - start_time))), 0)
     INTO v_total_study_seconds
     FROM public.session_blocks
@@ -767,7 +815,6 @@ BEGIN
       AND start_time >= v_midnight;
     v_dur_2 := LEAST(180, GREATEST(0, FLOOR(v_total_study_seconds / 60)::INTEGER));
 
-    -- Fallback: If blocks missing, use active_study_seconds_snapshot rather than blind wall-clock
     IF v_dur_1 = 0 AND v_dur_2 = 0 THEN
       SELECT COALESCE(active_study_seconds_snapshot, 0)
       INTO v_total_study_seconds
@@ -780,7 +827,6 @@ BEGIN
 
     v_duration_minutes := v_dur_1 + v_dur_2;
 
-    -- Insert Part 1 (Day 1) with completed_tasks and split_part = 1 (BUG-04)
     IF v_dur_1 > 0 OR v_dur_2 = 0 THEN
       INSERT INTO public.study_sessions (
         user_id, start_time, end_time, duration_minutes, break_minutes, completed_tasks, split_part
@@ -795,7 +841,6 @@ BEGIN
       WHERE user_id = v_user_id AND session_id IS NULL AND end_time <= v_midnight;
     END IF;
 
-    -- Insert Part 2 (Day 2) with split_part = 2, completed_tasks, and sibling_session_id linked to Part 1 (BUG-04, BUG-06)
     IF v_dur_2 > 0 THEN
       INSERT INTO public.study_sessions (
         user_id, start_time, end_time, duration_minutes, break_minutes, completed_tasks, split_part, sibling_session_id
@@ -805,7 +850,6 @@ BEGIN
       )
       RETURNING id INTO v_session_id_2;
 
-      -- Back-link Part 1 to Part 2
       IF v_session_id_1 IS NOT NULL THEN
         UPDATE public.study_sessions
         SET sibling_session_id = v_session_id_2
@@ -817,14 +861,12 @@ BEGIN
       WHERE user_id = v_user_id AND session_id IS NULL AND start_time >= v_midnight;
     END IF;
 
-    -- Link any remaining unlinked blocks
     UPDATE public.session_blocks
     SET session_id = COALESCE(v_session_id_2, v_session_id_1)
     WHERE user_id = v_user_id AND session_id IS NULL;
 
     v_session_id := COALESCE(v_session_id_2, v_session_id_1);
   ELSE
-    -- Standard single-day session
     SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(end_time, v_now) - start_time))), 0)
     INTO v_total_study_seconds
     FROM public.session_blocks
@@ -834,12 +876,10 @@ BEGIN
 
     v_duration_minutes := LEAST(180, GREATEST(0, FLOOR(v_total_study_seconds / 60)::INTEGER));
 
-    -- Insert study session record with actual study end time and break minutes
     INSERT INTO public.study_sessions (user_id, start_time, end_time, duration_minutes, break_minutes, completed_tasks)
     VALUES (v_user_id, v_session_start, v_session_actual_end, v_duration_minutes, v_break_minutes, v_session_completed_tasks)
     RETURNING id INTO v_session_id;
 
-    -- Associate unlinked blocks with this session
     UPDATE public.session_blocks
     SET session_id = v_session_id
     WHERE user_id = v_user_id AND session_id IS NULL;
@@ -858,7 +898,8 @@ BEGIN
       pending_goal_seconds = CASE WHEN v_has_completed_tasks THEN NULL ELSE (v_duration_minutes * 60) END,
       pending_goal_reason = CASE WHEN v_has_completed_tasks THEN NULL ELSE COALESCE(p_reason, 'manual_stop') END,
       last_offline_at = v_now
-  WHERE id = v_user_id;
+  WHERE id = v_user_id
+  RETURNING state_version INTO v_version;
 
   RETURN jsonb_build_object(
     'success', true,
@@ -875,6 +916,7 @@ BEGIN
     'pending_goal_session_id', CASE WHEN v_has_completed_tasks THEN NULL ELSE v_session_id END,
     'pending_goal_seconds', CASE WHEN v_has_completed_tasks THEN NULL ELSE (v_duration_minutes * 60) END,
     'pending_goal_reason', CASE WHEN v_has_completed_tasks THEN NULL ELSE COALESCE(p_reason, 'manual_stop') END,
+    'state_version', v_version,
     'server_now', v_now
   );
 END;
@@ -1880,15 +1922,21 @@ DECLARE
   v_session_id UUID;
   v_last_study_end TIMESTAMPTZ;
   v_session_actual_end TIMESTAMPTZ;
+  v_version BIGINT;
 BEGIN
-  SELECT current_status, session_start_time, current_focus
-  INTO v_status, v_session_start, v_focus
+  SELECT current_status, session_start_time, current_focus, state_version
+  INTO v_status, v_session_start, v_focus, v_version
   FROM public.users
   WHERE id = p_user_id
   FOR UPDATE;
 
   IF v_status IS NULL OR v_status = 'offline' THEN
-    RETURN jsonb_build_object('success', false, 'error', 'No active session');
+    RETURN jsonb_build_object(
+      'success', true, 
+      'already_finished', true, 
+      'message', 'No active session',
+      'state_version', v_version
+    );
   END IF;
 
   UPDATE public.session_blocks
@@ -1910,6 +1958,11 @@ BEGIN
     v_session_actual_end := v_last_study_end;
   ELSE
     v_session_actual_end := v_now;
+  END IF;
+
+  -- 3-Hour cap
+  IF v_session_actual_end > (v_session_start + INTERVAL '3 hours') THEN
+    v_session_actual_end := v_session_start + INTERVAL '3 hours';
   END IF;
 
   SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(end_time, v_now) - start_time))), 0)
@@ -1950,7 +2003,8 @@ BEGIN
       pending_goal_seconds = (v_duration_minutes * 60),
       pending_goal_reason = CASE WHEN v_status = 'break' THEN 'break_expired' ELSE 'session_limit' END,
       last_offline_at = v_now
-  WHERE id = p_user_id;
+  WHERE id = p_user_id
+  RETURNING state_version INTO v_version;
 
   RETURN jsonb_build_object(
     'success', true,
@@ -1960,6 +2014,7 @@ BEGIN
     'pending_goal_session_id', v_session_id,
     'pending_goal_seconds', (v_duration_minutes * 60),
     'pending_goal_reason', CASE WHEN v_status = 'break' THEN 'break_expired' ELSE 'session_limit' END,
+    'state_version', v_version,
     'server_now', v_now
   );
 END;
@@ -2083,16 +2138,21 @@ CREATE OR REPLACE FUNCTION public.rpc_acknowledge_break_expiry()
 RETURNS JSONB AS $$
 DECLARE
   v_user_id UUID := auth.uid();
+  v_version BIGINT;
 BEGIN
   IF v_user_id IS NULL THEN
     RAISE EXCEPTION 'Not authenticated';
   END IF;
 
   UPDATE public.users
-  SET last_break_expired_study_seconds = NULL
-  WHERE id = v_user_id;
+  SET last_break_expired_study_seconds = NULL,
+      pending_goal_session_id = NULL,
+      pending_goal_seconds = NULL,
+      pending_goal_reason = NULL
+  WHERE id = v_user_id
+  RETURNING state_version INTO v_version;
 
-  RETURN jsonb_build_object('success', true);
+  RETURN jsonb_build_object('success', true, 'state_version', v_version);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
@@ -2325,4 +2385,80 @@ CREATE POLICY "Admins can view and manage user_alerts"
   TO authenticated
   USING (public.check_is_admin())
   WITH CHECK (public.check_is_admin());
+
+-- RPC: rpc_reconcile_expired_sessions (Server-Side Zero-Client Session Expiration)
+CREATE OR REPLACE FUNCTION public.rpc_reconcile_expired_sessions()
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_caller_role TEXT;
+  v_user RECORD;
+  v_count INTEGER := 0;
+  v_study_count INTEGER := 0;
+  v_break_count INTEGER := 0;
+  v_start_time TIMESTAMPTZ := clock_timestamp();
+  v_duration_ms NUMERIC;
+BEGIN
+  -- Privilege Check: Allow only postgres (pg_cron), service_role (server cron), or authorized admins
+  v_caller_role := current_setting('role', true);
+  IF v_caller_role NOT IN ('postgres', 'service_role') AND NOT public.check_is_admin() THEN
+    RAISE EXCEPTION 'Access denied: rpc_reconcile_expired_sessions requires service_role or admin privileges';
+  END IF;
+
+  -- Reconcile users who have been studying continuously >= 3 hours (10,800 seconds)
+  FOR v_user IN
+    SELECT id FROM public.users
+    WHERE current_status = 'studying'
+      AND (
+        (session_start_time IS NOT NULL AND NOW() - session_start_time >= INTERVAL '3 hours') OR
+        (last_resumed_at IS NOT NULL AND NOW() - last_resumed_at >= INTERVAL '3 hours')
+      )
+  LOOP
+    BEGIN
+      PERFORM public.rpc_stop_user_session(v_user.id);
+      v_count := v_count + 1;
+      v_study_count := v_study_count + 1;
+    EXCEPTION WHEN OTHERS THEN
+      RAISE WARNING 'Failed to reconcile expired study session for user %: %', v_user.id, SQLERRM;
+    END;
+  END LOOP;
+
+  -- Reconcile users whose break has exceeded 1 hour (3,600 seconds)
+  FOR v_user IN
+    SELECT id FROM public.users
+    WHERE current_status = 'break'
+      AND break_started_at IS NOT NULL
+      AND NOW() - break_started_at >= INTERVAL '1 hour'
+  LOOP
+    BEGIN
+      PERFORM public.rpc_stop_user_session(v_user.id);
+      v_count := v_count + 1;
+      v_break_count := v_break_count + 1;
+    EXCEPTION WHEN OTHERS THEN
+      RAISE WARNING 'Failed to reconcile expired break for user %: %', v_user.id, SQLERRM;
+    END;
+  END LOOP;
+
+  v_duration_ms := ROUND(EXTRACT(EPOCH FROM (clock_timestamp() - v_start_time)) * 1000, 2);
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'reconciled_count', v_count,
+    'expired_study_count', v_study_count,
+    'expired_break_count', v_break_count,
+    'duration_ms', v_duration_ms,
+    'server_now', NOW()
+  );
+END;
+$$;
+
+-- Function Authorization Grants
+REVOKE EXECUTE ON FUNCTION public.rpc_reconcile_expired_sessions() FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.rpc_reconcile_expired_sessions() FROM anon;
+REVOKE EXECUTE ON FUNCTION public.rpc_reconcile_expired_sessions() FROM authenticated;
+GRANT EXECUTE ON FUNCTION public.rpc_reconcile_expired_sessions() TO service_role;
+GRANT EXECUTE ON FUNCTION public.rpc_reconcile_expired_sessions() TO postgres;
 

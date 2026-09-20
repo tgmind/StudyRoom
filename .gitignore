@@ -38,6 +38,8 @@ android/.gradle/
 android/app/build/
 android/build/
 android/keystore/
+android/local.properties
+local.properties
 *.apk
 *.aab
 *token*.txt

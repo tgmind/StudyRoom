@@ -1,7 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
+import crypto from "crypto";
 import { processWeeklyAchieverAutomation } from "@/lib/email/achieverAutomation";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * Constant-time string comparison to prevent timing attacks.
+ */
+function timingSafeEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(bufA, bufB);
+}
 
 /**
  * Weekly Achiever Cron / Automation Endpoint
@@ -22,14 +35,28 @@ async function handleRequest(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const cronSecret = process.env.CRON_SECRET;
+    if (!cronSecret) {
+      console.error("[Cron Weekly Achiever] CRON_SECRET is not configured on the server");
+      return NextResponse.json(
+        { success: false, error: "Unauthorized: server cron secret unconfigured" },
+        { status: 401 }
+      );
+    }
+
+    const authHeader = request.headers.get("authorization");
+    const bearerToken = authHeader?.startsWith("Bearer ")
+      ? authHeader.substring(7).trim()
+      : null;
     const providedSecret =
       request.headers.get("x-cron-secret") ||
-      request.headers.get("authorization")?.replace("Bearer ", "").trim() ||
+      bearerToken ||
       searchParams.get("secret");
 
-    // If CRON_SECRET is defined in environment, enforce it for automated security
-    if (cronSecret && providedSecret !== cronSecret) {
-      return NextResponse.json({ error: "Unauthorized cron request" }, { status: 401 });
+    if (!providedSecret || !timingSafeEqual(providedSecret, cronSecret)) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized cron request" },
+        { status: 401 }
+      );
     }
 
     const force = searchParams.get("force") === "true";
@@ -43,6 +70,7 @@ async function handleRequest(request: NextRequest) {
     return NextResponse.json(result, { status: result.success ? 200 : 500 });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal Server Error";
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    console.error("[Cron Weekly Achiever] Unexpected error:", message);
+    return NextResponse.json({ success: false, error: "Internal Server Error" }, { status: 500 });
   }
 }

@@ -9,6 +9,11 @@
 let serverTimeOffsetMs = 0;
 let isCalibrated = false;
 
+// Hardware monotonic anchor pair to ensure continuous monotonic progression immune to OS clock tampering
+let anchorServerTimeMs = 0;
+let anchorPerfTimeMs = 0;
+let anchorWallTimeMs = 0;
+
 // Attempt to load persisted offset from session/local storage for instant calibration on reload
 if (typeof window !== "undefined") {
   try {
@@ -18,6 +23,9 @@ if (typeof window !== "undefined") {
       // Sanity check: plausible device clock skew within +/- 2 hours
       if (!isNaN(parsed) && Math.abs(parsed) < 7200000) {
         serverTimeOffsetMs = parsed;
+        anchorWallTimeMs = Date.now();
+        anchorServerTimeMs = anchorWallTimeMs + parsed;
+        anchorPerfTimeMs = typeof performance !== "undefined" ? performance.now() : 0;
         isCalibrated = true;
       } else {
         sessionStorage.removeItem("studyroom_server_clock_offset");
@@ -54,6 +62,7 @@ export function calibrateWithServerTime(
   const oneWayLatency = Math.max(0, Math.floor(roundTripTimeMs / 2));
   const estimatedServerNow = serverMs + oneWayLatency;
   const clientNow = Date.now();
+  const perfNow = typeof performance !== "undefined" ? performance.now() : 0;
 
   const measuredOffset = estimatedServerNow - clientNow;
 
@@ -62,10 +71,16 @@ export function calibrateWithServerTime(
 
   if (!isCalibrated) {
     serverTimeOffsetMs = measuredOffset;
+    anchorServerTimeMs = estimatedServerNow;
+    anchorPerfTimeMs = perfNow;
+    anchorWallTimeMs = clientNow;
     isCalibrated = true;
   } else {
     // Smooth adjustment (exponential moving average) to prevent sudden jumps
     serverTimeOffsetMs = Math.round(serverTimeOffsetMs * 0.7 + measuredOffset * 0.3);
+    anchorServerTimeMs = clientNow + serverTimeOffsetMs;
+    anchorPerfTimeMs = perfNow;
+    anchorWallTimeMs = clientNow;
   }
 
   if (typeof window !== "undefined") {
@@ -93,13 +108,26 @@ export function calibrateFromResponseHeaders(headers?: Headers | null): void {
  * Replaces uncalibrated `new Date()` throughout timer-critical flows.
  */
 export function getServerNow(): Date {
-  return new Date(Date.now() + serverTimeOffsetMs);
+  return new Date(getServerTime());
 }
 
 /**
  * Returns current millisecond timestamp calibrated with server atomic time.
+ * Uses monotonic hardware clock (performance.now) when calibrated if an OS clock step,
+ * NTP jump, or timezone tampering (>1500ms deviation) is detected.
  */
 export function getServerTime(): number {
+  if (isCalibrated && typeof performance !== "undefined" && anchorPerfTimeMs > 0) {
+    const wallElapsed = Date.now() - anchorWallTimeMs;
+    const perfElapsed = performance.now() - anchorPerfTimeMs;
+
+    // If local wall clock stepped/jumped by more than 1.5 seconds, use monotonic anchor
+    if (Math.abs(wallElapsed - perfElapsed) > 1500) {
+      if (perfElapsed >= 0) {
+        return Math.round(anchorServerTimeMs + perfElapsed);
+      }
+    }
+  }
   return Date.now() + serverTimeOffsetMs;
 }
 
@@ -123,6 +151,9 @@ export function isServerTimeCalibrated(): boolean {
  */
 export function resetClockCalibration(): void {
   serverTimeOffsetMs = 0;
+  anchorServerTimeMs = 0;
+  anchorPerfTimeMs = 0;
+  anchorWallTimeMs = 0;
   isCalibrated = false;
   if (typeof window !== "undefined") {
     try {

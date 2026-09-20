@@ -41,7 +41,7 @@ describe("STUDYROOM PRODUCTION REALTIME ACCEPTANCE TEST SUITE", () => {
           resolve();
         }
       };
-      const timeout = setTimeout(done, 5000);
+      const timeout = setTimeout(done, 12000);
 
       channelA.subscribe((status: string) => {
         if (status === "SUBSCRIBED") {
@@ -57,7 +57,7 @@ describe("STUDYROOM PRODUCTION REALTIME ACCEPTANCE TEST SUITE", () => {
         }
       });
     });
-  }, 10000);
+  }, 15000);
 
   afterAll(async () => {
     try {

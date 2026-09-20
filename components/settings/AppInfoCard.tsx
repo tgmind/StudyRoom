@@ -107,7 +107,7 @@ export function AppInfoCard() {
         setDownloadState("idle");
         setDownloadProgress(null);
         isDownloadingRef.current = false;
-      }, 5000);
+      }, 4000);
     }
   };
 

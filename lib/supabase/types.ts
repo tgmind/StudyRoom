@@ -25,6 +25,8 @@ export interface UserProfile {
   leaderboard_score?: number;
   leaderboard_rank?: number;
   is_present?: boolean;
+  state_version?: number;
+  updated_at?: string | null;
 }
 
 export interface GoalTask {

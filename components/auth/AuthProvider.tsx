@@ -6,7 +6,13 @@ import { UserProfile } from "@/lib/supabase/types";
 import { User } from "@supabase/supabase-js";
 import { isAdminEmail } from "@/hooks/useAdmin";
 
-import { getCachedUserProfile, saveCachedUserProfile, with10sTimeout } from "@/lib/offline/sessionQueue";
+import {
+  getCachedUserProfile,
+  saveCachedUserProfile,
+  with10sTimeout,
+  purgeStaleActiveSession,
+  clearOfflineActiveSession,
+} from "@/lib/offline/sessionQueue";
 import { syncServerClockOnce } from "@/lib/time/clockSync";
 
 export interface AuthContextValue {
@@ -180,7 +186,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     syncServerClockOnce();
 
-    if (!user?.id) return;
+    // Periodic 5-minute background clock calibration for uninterrupted multi-hour study sessions
+    const intervalId = setInterval(() => {
+      syncServerClockOnce();
+    }, 5 * 60 * 1000);
+
+    if (!user?.id) {
+      return () => clearInterval(intervalId);
+    }
 
     const handleWakeup = () => {
       if (typeof document !== "undefined" && document.visibilityState === "visible") {
@@ -199,6 +212,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.addEventListener("online", handleOnline);
 
     return () => {
+      clearInterval(intervalId);
       document.removeEventListener("visibilitychange", handleWakeup);
       window.removeEventListener("focus", handleWakeup);
       window.removeEventListener("online", handleOnline);
@@ -223,6 +237,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setError(err instanceof Error ? err.message : "Failed to sign out");
     } finally {
       try {
+        purgeStaleActiveSession();
+        clearOfflineActiveSession();
         localStorage.removeItem("studyroom_admin_uid");
         localStorage.removeItem("pwa_banner_dismissed");
         localStorage.removeItem("studyroom_cached_user_profile");
@@ -230,6 +246,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         localStorage.removeItem("studyroom_cached_sessions");
         if (typeof document !== "undefined") {
           document.cookie = "studyroom_onboarded=; path=/; max-age=0";
+        }
+        if (typeof window !== "undefined" && (window as any).AndroidBridge?.onSessionStateResolved) {
+          (window as any).AndroidBridge.onSessionStateResolved(false, 0, 0, false, 0, "");
         }
       } catch {
         // ignore

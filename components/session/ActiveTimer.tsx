@@ -127,11 +127,7 @@ export function ActiveTimer({
 
         {/* Big Authoritative Study Time */}
         <div className="font-mono text-5xl sm:text-6xl font-black tracking-tight text-zinc-100 filter drop-shadow-md select-none text-center tabular-nums">
-          {isStudying && elapsedSeconds <= 0 ? (
-            <span className="text-3xl sm:text-4xl text-zinc-400 font-bold tracking-normal animate-pulse">Syncing...</span>
-          ) : (
-            formatDurationSeconds(elapsedSeconds)
-          )}
+          {formatDurationSeconds(Math.max(0, elapsedSeconds))}
         </div>
       </div>
 

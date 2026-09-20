@@ -129,6 +129,7 @@ export function useLiveRoom(currentUserId?: string) {
   const presentUserIdsRef = useRef<Set<string>>(presentUserIds);
   presentUserIdsRef.current = presentUserIds;
   const memberEpochMapRef = useRef<Map<string, number>>(new Map());
+  const memberVersionMapRef = useRef<Map<string, number>>(new Map());
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const recentlyStoppedBreakUserIdsRef = useRef<Map<string, number>>(new Map());
   const fetchMembersRef = useRef<() => Promise<void>>(() => Promise.resolve());
@@ -334,13 +335,18 @@ export function useLiveRoom(currentUserId?: string) {
           const isPresent = presentUserIdsRef.current.has(u.id) || (currentUserIdRef.current === u.id);
 
           const existing = membersRef.current.find((m) => m.id === u.id);
+          const lastVersion = memberVersionMapRef.current.get(u.id) || (existing?.state_version ?? 0);
+          const restVersion = typeof u.state_version === "number" ? u.state_version : 0;
           const lastEpoch = memberEpochMapRef.current.get(u.id) || 0;
           const restEpoch = getMemberMutationEpoch(u);
 
           // MONOTONIC VERSIONING / REST RACE PROTECTION:
-          // If local state has a newer realtime broadcast event than this REST response:
+          // If local state has a newer realtime broadcast/version event than this REST response:
           // Preserve the newer live status fields from existing local member!
-          if (existing && lastEpoch > restEpoch) {
+          const isLocalNewer = (lastVersion > 0 && restVersion > 0 && lastVersion > restVersion) ||
+                               (lastVersion === restVersion && lastEpoch > restEpoch);
+
+          if (existing && isLocalNewer) {
             return {
               ...u,
               current_status: existing.current_status,
@@ -356,9 +362,13 @@ export function useLiveRoom(currentUserId?: string) {
               leaderboard_score: lb ? lb.score : u.leaderboard_score,
               leaderboard_rank: lb ? lb.rank : u.leaderboard_rank,
               is_present: isPresent,
+              state_version: Math.max(lastVersion, restVersion),
             };
           }
 
+          if (restVersion > 0) {
+            memberVersionMapRef.current.set(u.id, Math.max(lastVersion, restVersion));
+          }
           if (restEpoch > 0) {
             memberEpochMapRef.current.set(u.id, Math.max(lastEpoch, restEpoch));
           }
@@ -373,6 +383,7 @@ export function useLiveRoom(currentUserId?: string) {
             leaderboard_score: lb ? lb.score : u.leaderboard_score,
             leaderboard_rank: lb ? lb.rank : u.leaderboard_rank,
             is_present: isPresent,
+            state_version: Math.max(lastVersion, restVersion),
           };
         });
         setMembers(sortMembers(filterAdmin(enriched), currentUserIdRef.current));
@@ -448,11 +459,21 @@ export function useLiveRoom(currentUserId?: string) {
       return;
     }
 
-    // Monotonic Epoch Check: Reject stale / out-of-order realtime updates
+    // Monotonic Version & Epoch Check: Reject stale / out-of-order realtime updates
+    const incomingVersion = typeof updatedProfile.state_version === "number" ? updatedProfile.state_version : 0;
+    const currentKnownVersion = memberVersionMapRef.current.get(updatedProfile.id) || 0;
+    if (incomingVersion > 0 && incomingVersion < currentKnownVersion) {
+      // Stale out-of-order broadcast/change with older version: drop
+      return;
+    }
+    if (incomingVersion > 0) {
+      memberVersionMapRef.current.set(updatedProfile.id, Math.max(currentKnownVersion, incomingVersion));
+    }
+
     const incomingEpoch = getMemberMutationEpoch(updatedProfile);
     const currentKnownEpoch = memberEpochMapRef.current.get(updatedProfile.id) || 0;
-    if (incomingEpoch > 0 && incomingEpoch < currentKnownEpoch) {
-      // Stale out-of-order broadcast/change: ignore
+    if (incomingVersion === 0 && incomingEpoch > 0 && incomingEpoch < currentKnownEpoch) {
+      // Stale out-of-order broadcast/change without version: ignore
       return;
     }
     if (incomingEpoch > 0) {
@@ -510,13 +531,20 @@ export function useLiveRoom(currentUserId?: string) {
 
   // Broadcast function to immediately notify all peers over WebSockets without DB lag
   const broadcastStatusChange = useCallback(async (payload: Partial<UserProfile> & { id: string }) => {
-    // 1. Update mutation epoch for current user
+    // 1. Update mutation version and epoch for current user
     const payloadEpoch = (payload as any).mutation_epoch || getMemberMutationEpoch(payload) || Date.now();
+    const currentVer = memberVersionMapRef.current.get(payload.id) || (payload.state_version ?? 0);
+    const nextVer = (payload.state_version && payload.state_version > currentVer)
+      ? payload.state_version
+      : currentVer + 1;
+    memberVersionMapRef.current.set(payload.id, nextVer);
+    memberEpochMapRef.current.set(payload.id, Math.max(memberEpochMapRef.current.get(payload.id) || 0, payloadEpoch));
+
     const enrichedPayload = {
       ...payload,
+      state_version: nextVer,
       mutation_epoch: payloadEpoch,
     };
-    memberEpochMapRef.current.set(payload.id, Math.max(memberEpochMapRef.current.get(payload.id) || 0, payloadEpoch));
 
     // 2. Apply locally immediately for instant feedback
     applyProfileUpdate(enrichedPayload);
@@ -720,6 +748,7 @@ export function useLiveRoom(currentUserId?: string) {
         if (status === "SUBSCRIBED") {
           setIsRealtimeConnected(true);
           setConnectionState("connected");
+          fetchMembersRef.current();
           if (currentUserIdRef.current) {
             try {
               await channel.track({
