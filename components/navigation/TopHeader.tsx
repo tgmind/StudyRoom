@@ -8,7 +8,7 @@ import { Star } from "lucide-react";
 interface TopHeaderProps {
   memberCount?: number;
   isRealtimeConnected?: boolean;
-  connectionState?: "connected" | "reconnecting" | "offline";
+  connectionState?: "connecting" | "connected" | "reconnecting" | "offline";
   profile?: UserProfile | null;
   expectedPeakHours?: string | null;
 }

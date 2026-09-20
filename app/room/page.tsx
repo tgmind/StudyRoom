@@ -30,6 +30,7 @@ export default function RoomPage() {
     dismissWinEvent,
     refreshMembers,
     broadcastStatusChange,
+    isRoomPresent,
   } = useLiveRoom(user?.id);
 
   // Own profile is always the canonical source for session state.
@@ -150,6 +151,7 @@ export default function RoomPage() {
         break_started_at: status === "break" ? (breakStartedAt || m.break_started_at) : null,
         active_study_seconds_snapshot:
           status === "studying" ? elapsedStudySeconds : m.active_study_seconds_snapshot,
+        is_present: isRoomPresent,
       };
     }
     return m;

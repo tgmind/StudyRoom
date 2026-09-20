@@ -43,6 +43,7 @@ import {
 import { getDateInTimezone, getTimeUntilMidnight } from "@/lib/scoring/streak";
 import { triggerHapticFeedback } from "@/lib/utils/haptics";
 import { useScreenWakeLock } from "@/hooks/useScreenWakeLock";
+import type { RealtimeConnectionState } from "./useLiveRoom";
 
 export interface TenMinuteWarningState {
   active: boolean;
@@ -206,7 +207,7 @@ export function useActiveSession(
   profile: UserProfile | null,
   onStatusChange?: (newStatus?: UserStatus, details?: Partial<UserProfile>) => void,
   updateProfileOptimistic?: (partial: Partial<UserProfile>) => void,
-  connectionState?: "connected" | "reconnecting" | "offline",
+  connectionState?: RealtimeConnectionState,
   isAuthLoading: boolean = false
 ) {
   const isAuthLoadingRef = useRef(isAuthLoading);

@@ -111,11 +111,31 @@ export function getMemberMutationEpoch(p: Partial<UserProfile>): number {
   return timestamps.length > 0 ? Math.max(...timestamps) : 0;
 }
 
+export type RealtimeConnectionState = "connecting" | "connected" | "reconnecting" | "offline";
+export type ChannelLifecycleState = "idle" | "creating" | "subscribed" | "reconnecting" | "closing" | "disposed";
+
+export function isChannelHealthy(channel: any): boolean {
+  if (!channel) return false;
+  if (channel._isDisposed || channel._isClosed) return false;
+  const state = channel.state || channel.channelAdapter?.state;
+  if (state !== undefined) {
+    return state === "joined";
+  }
+  return true;
+}
+
+export function markChannelClosed(channel: any) {
+  if (channel && typeof channel === "object") {
+    channel._isClosed = true;
+    channel._isDisposed = true;
+  }
+}
+
 export function useLiveRoom(currentUserId?: string) {
   const [members, setMembers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
-  const [connectionState, setConnectionState] = useState<"connected" | "reconnecting" | "offline">("connected");
+  const [connectionState, setConnectionState] = useState<RealtimeConnectionState>("connecting");
   const [presentUserIds, setPresentUserIds] = useState<Set<string>>(() => new Set());
   const [error, setError] = useState<string | null>(null);
   const [expectedPeakHours, setExpectedPeakHours] = useState<string>("6 PM – 9 PM");
@@ -124,6 +144,7 @@ export function useLiveRoom(currentUserId?: string) {
 
   const supabase = createClient();
   const currentUserIdRef = useRef(currentUserId);
+  currentUserIdRef.current = currentUserId;
   const membersRef = useRef<UserProfile[]>(members);
   membersRef.current = members;
   const presentUserIdsRef = useRef<Set<string>>(presentUserIds);
@@ -131,6 +152,12 @@ export function useLiveRoom(currentUserId?: string) {
   const memberEpochMapRef = useRef<Map<string, number>>(new Map());
   const memberVersionMapRef = useRef<Map<string, number>>(new Map());
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const channelGenRef = useRef<number>(0);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const backoffDelayRef = useRef<number>(1000);
+  const lifecycleRef = useRef<ChannelLifecycleState>("idle");
+  const createAndSubscribeChannelRef = useRef<(force?: boolean) => void>(() => {});
+  const ensureRoomChannelRef = useRef<(forceRecreate?: boolean) => void>(() => {});
   const recentlyStoppedBreakUserIdsRef = useRef<Map<string, number>>(new Map());
   const fetchMembersRef = useRef<() => Promise<void>>(() => Promise.resolve());
   const applyProfileUpdateRef = useRef<(updatedProfile: Partial<UserProfile> & { id: string }) => void>(() => {});
@@ -184,6 +211,15 @@ export function useLiveRoom(currentUserId?: string) {
   useEffect(() => {
     currentUserIdRef.current = currentUserId;
     setMembers((prev) => sortMembers(prev, currentUserId));
+    // If channel is already active and healthy, re-announce presence
+    if (channelRef.current && currentUserId) {
+      channelRef.current
+        .track({
+          user_id: currentUserId,
+          online_at: new Date().toISOString(),
+        })
+        .catch(() => {});
+    }
   }, [currentUserId]);
 
   const fetchMembers = useCallback(async () => {
@@ -550,7 +586,7 @@ export function useLiveRoom(currentUserId?: string) {
     applyProfileUpdate(enrichedPayload);
 
     // 3. Broadcast to all peers & re-track presence
-    if (channelRef.current) {
+    if (channelRef.current && isChannelHealthy(channelRef.current)) {
       try {
         await channelRef.current.send({
           type: "broadcast",
@@ -567,39 +603,147 @@ export function useLiveRoom(currentUserId?: string) {
       } catch (err) {
         console.warn("Realtime broadcast send failed:", err);
       }
+    } else {
+      ensureRoomChannelRef.current(true);
     }
   }, [applyProfileUpdate]);
 
-  useEffect(() => {
-    // 1. Initial fetch
-    fetchMembersRef.current();
-
-    const adminId = getAdminUserId();
-
-    // Helper to aggregate present unique user IDs across all connected tabs/clients
-    const syncPresence = (presenceState: Record<string, any[]>) => {
-      const userIds = new Set<string>();
-      for (const key in presenceState) {
-        const presences = presenceState[key];
-        if (Array.isArray(presences)) {
-          for (const p of presences) {
-            if (p && p.user_id) {
-              userIds.add(p.user_id);
-            }
+  // Helper to aggregate present unique user IDs across all connected tabs/clients
+  const syncPresence = useCallback((presenceState: Record<string, any[]>) => {
+    const userIds = new Set<string>();
+    for (const key in presenceState) {
+      const presences = presenceState[key];
+      if (Array.isArray(presences)) {
+        for (const p of presences) {
+          if (p && p.user_id) {
+            userIds.add(p.user_id);
           }
         }
       }
-      setPresentUserIds(userIds);
-      presentUserIdsRef.current = userIds;
-      setMembers((prev) =>
-        prev.map((m) => ({
+    }
+    setPresentUserIds(userIds);
+    presentUserIdsRef.current = userIds;
+    const myId = currentUserIdRef.current;
+    setMembers((prev) =>
+      prev.map((m) => {
+        const isPresent = userIds.has(m.id) || (myId ? m.id === myId : false);
+        if (m.is_present === isPresent) return m;
+        return {
           ...m,
-          is_present: userIds.has(m.id) || m.id === currentUserIdRef.current,
-        }))
-      );
-    };
+          is_present: isPresent,
+        };
+      })
+    );
+  }, []);
 
-    // 2. Set up Realtime channel (postgres_changes + instant peer broadcast + presence)
+  // Idempotent channel teardown that prevents Phoenix synchronous leave/close re-entrancy
+  const destroyChannel = useCallback((channelToDestroy: any, isIntentional: boolean = false) => {
+    if (!channelToDestroy) return;
+
+    if (channelToDestroy._isCleaningUp || channelToDestroy._isDisposed) {
+      if (channelRef.current === channelToDestroy) {
+        channelRef.current = null;
+      }
+      if (isIntentional) {
+        lifecycleRef.current = "disposed";
+        if (reconnectTimerRef.current) {
+          clearTimeout(reconnectTimerRef.current);
+          reconnectTimerRef.current = null;
+        }
+      }
+      return;
+    }
+
+    // Mark cleaning up BEFORE calling Supabase teardown to break any synchronous Phoenix re-entrancy
+    channelToDestroy._isCleaningUp = true;
+    channelToDestroy._isClosed = true;
+
+    if (channelRef.current === channelToDestroy) {
+      channelRef.current = null;
+    }
+
+    if (isIntentional) {
+      lifecycleRef.current = "disposed";
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+    }
+
+    try {
+      supabase.removeChannel(channelToDestroy);
+    } catch (err) {
+      console.warn("Error removing channel:", err);
+    } finally {
+      channelToDestroy._isCleaningUp = false;
+      channelToDestroy._isDisposed = true;
+    }
+  }, [supabase]);
+
+  // Serialized reconnect scheduler: treats reconnection as data/scheduling, not recursive control flow
+  const requestReconnect = useCallback((reason: string, immediate: boolean = false) => {
+    if (lifecycleRef.current === "disposed") {
+      return;
+    }
+
+    const isInitial = lifecycleRef.current === "idle";
+    const shouldBeImmediate = immediate || isInitial;
+
+    if (reconnectTimerRef.current) {
+      if (!shouldBeImmediate) {
+        return;
+      }
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+
+    lifecycleRef.current = "reconnecting";
+    setConnectionState((prev) => (prev === "connected" ? "reconnecting" : prev));
+
+    const delay = shouldBeImmediate ? 0 : backoffDelayRef.current;
+    if (!shouldBeImmediate) {
+      backoffDelayRef.current = Math.min(10000, backoffDelayRef.current * 2);
+    } else {
+      backoffDelayRef.current = 1000;
+    }
+
+    reconnectTimerRef.current = setTimeout(() => {
+      reconnectTimerRef.current = null;
+      if (lifecycleRef.current === "disposed") return;
+      createAndSubscribeChannelRef.current();
+    }, delay);
+  }, []);
+
+  // Channel Creation: single-flight creation of room channel with generation guard
+  const createAndSubscribeChannel = useCallback((force: boolean = false) => {
+    if (lifecycleRef.current === "disposed") {
+      return;
+    }
+
+    if (!force && lifecycleRef.current === "creating") {
+      return;
+    }
+
+    lifecycleRef.current = "creating";
+    setConnectionState((prev) => (prev === "connected" ? "reconnecting" : "connecting"));
+    setIsRealtimeConnected(false);
+
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+
+    // Teardown previous channel cleanly if still referenced
+    if (channelRef.current) {
+      const prevChannel = channelRef.current;
+      channelRef.current = null;
+      destroyChannel(prevChannel, false);
+    }
+
+    // Advance generation count
+    const thisGen = ++channelGenRef.current;
+
+    const adminId = getAdminUserId();
     const channel = supabase.channel("room:live:global");
     channelRef.current = channel;
 
@@ -608,6 +752,7 @@ export function useLiveRoom(currentUserId?: string) {
         "postgres_changes",
         { event: "*", schema: "public", table: "users" },
         (payload) => {
+          if (channelGenRef.current !== thisGen) return;
           if (payload.eventType === "INSERT") {
             const newProfile = payload.new as UserProfile;
             if (
@@ -619,14 +764,15 @@ export function useLiveRoom(currentUserId?: string) {
             }
             setMembers((prev) => {
               if (prev.some((m) => m.id === newProfile.id)) return prev;
+              const isPresent =
+                presentUserIdsRef.current.has(newProfile.id) ||
+                (currentUserIdRef.current ? newProfile.id === currentUserIdRef.current : false);
               return sortMembers(
                 filterAdmin([
                   ...prev,
                   {
                     ...newProfile,
-                    is_present:
-                      presentUserIdsRef.current.has(newProfile.id) ||
-                      newProfile.id === currentUserIdRef.current,
+                    is_present: isPresent,
                   },
                 ]),
                 currentUserIdRef.current
@@ -646,6 +792,7 @@ export function useLiveRoom(currentUserId?: string) {
         "broadcast",
         { event: "member_status_update" },
         (msg) => {
+          if (channelGenRef.current !== thisGen) return;
           if (msg.payload && (msg.payload as { id?: string }).id) {
             applyProfileUpdateRef.current(msg.payload as Partial<UserProfile> & { id: string });
           }
@@ -655,6 +802,7 @@ export function useLiveRoom(currentUserId?: string) {
         "broadcast",
         { event: "rivalry_won" },
         (msg) => {
+          if (channelGenRef.current !== thisGen) return;
           if (msg.payload && (msg.payload as RivalryWinEvent).id) {
             const win = msg.payload as RivalryWinEvent;
             if (win.resolutionType && win.resolutionType !== "WON") {
@@ -679,6 +827,7 @@ export function useLiveRoom(currentUserId?: string) {
         "postgres_changes",
         { event: "*", schema: "public", table: "study_sessions" },
         () => {
+          if (channelGenRef.current !== thisGen) return;
           fetchMembersRef.current();
         }
       )
@@ -686,6 +835,7 @@ export function useLiveRoom(currentUserId?: string) {
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "rivalry_events" },
         (payload) => {
+          if (channelGenRef.current !== thisGen) return;
           const row = payload.new as {
             id?: string;
             resolution_id?: string;
@@ -736,68 +886,128 @@ export function useLiveRoom(currentUserId?: string) {
         }
       )
       .on("presence", { event: "sync" }, () => {
+        if (channelGenRef.current !== thisGen) return;
         syncPresence(channel.presenceState());
       })
       .on("presence", { event: "join" }, () => {
+        if (channelGenRef.current !== thisGen) return;
         syncPresence(channel.presenceState());
       })
       .on("presence", { event: "leave" }, () => {
+        if (channelGenRef.current !== thisGen) return;
         syncPresence(channel.presenceState());
       })
       .subscribe(async (status) => {
+        // Drop any callbacks from channels currently in teardown, stale generations, or unmounted hook
+        if (
+          (channel as any)._isCleaningUp ||
+          channelGenRef.current !== thisGen ||
+          lifecycleRef.current === "disposed"
+        ) {
+          return;
+        }
+
         if (status === "SUBSCRIBED") {
-          setIsRealtimeConnected(true);
-          setConnectionState("connected");
-          fetchMembersRef.current();
+          lifecycleRef.current = "subscribed";
+          backoffDelayRef.current = 1000;
+          if (reconnectTimerRef.current) {
+            clearTimeout(reconnectTimerRef.current);
+            reconnectTimerRef.current = null;
+          }
+
+          if (channelGenRef.current === thisGen) {
+            setIsRealtimeConnected(true);
+            setConnectionState("connected");
+          }
+
           if (currentUserIdRef.current) {
-            try {
-              await channel.track({
+            channel
+              .track({
                 user_id: currentUserIdRef.current,
                 online_at: new Date().toISOString(),
+              })
+              .catch((trackErr) => {
+                console.warn("Channel track failed on subscribe:", trackErr);
               });
-            } catch (trackErr) {
-              console.warn("Channel track failed:", trackErr);
-            }
           }
+
+          fetchMembersRef.current();
         } else if (status === "CLOSED") {
+          lifecycleRef.current = "reconnecting";
           setIsRealtimeConnected(false);
           setConnectionState("offline");
+
+          destroyChannel(channel, false);
+          requestReconnect("channel_closed", false);
         } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          lifecycleRef.current = "reconnecting";
           setIsRealtimeConnected(false);
           setConnectionState("reconnecting");
+
+          destroyChannel(channel, false);
+          requestReconnect("channel_error", false);
         }
       });
+  }, [supabase, syncPresence, destroyChannel, requestReconnect]);
 
-    // 3. Event-driven resync on visibility change & focus & network online/offline
-    // (NO periodic 12s polling interval!)
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        fetchMembersRef.current();
-        if (channelRef.current && currentUserIdRef.current) {
-          channelRef.current
-            .track({
-              user_id: currentUserIdRef.current,
-              online_at: new Date().toISOString(),
-            })
-            .catch(() => {});
-        }
-      }
-    };
-    const handleWindowFocus = () => {
-      fetchMembersRef.current();
-    };
-    const handleOnline = () => {
-      setConnectionState("connected");
+  createAndSubscribeChannelRef.current = createAndSubscribeChannel;
+
+  const ensureRoomChannel = useCallback((forceRecreate: boolean = false) => {
+    if (lifecycleRef.current === "disposed") {
+      return;
+    }
+
+    const currentChannel = channelRef.current;
+    const isHealthy = currentChannel && isChannelHealthy(currentChannel) && lifecycleRef.current === "subscribed";
+
+    if (!forceRecreate && isHealthy && currentChannel) {
       setIsRealtimeConnected(true);
-      fetchMembersRef.current();
-      if (channelRef.current && currentUserIdRef.current) {
-        channelRef.current
+      setConnectionState("connected");
+      if (currentUserIdRef.current) {
+        currentChannel
           .track({
             user_id: currentUserIdRef.current,
             online_at: new Date().toISOString(),
           })
           .catch(() => {});
       }
+      fetchMembersRef.current();
+      return;
+    }
+
+    // Reset backoff delay when actively ensuring/recovering channel
+    backoffDelayRef.current = 1000;
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+
+    createAndSubscribeChannelRef.current(forceRecreate);
+  }, []);
+
+  ensureRoomChannelRef.current = ensureRoomChannel;
+
+  useEffect(() => {
+    // Reset lifecycle on mount so StrictMode / Fast Refresh re-mount does not lock out channel creation
+    lifecycleRef.current = "idle";
+
+    // 1. Initial fetch
+    fetchMembersRef.current();
+
+    // 2. Setup initial realtime channel
+    ensureRoomChannelRef.current(false);
+
+    // 3. Event-driven resync on visibility change, focus, and network online/offline
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        ensureRoomChannelRef.current(false);
+      }
+    };
+    const handleWindowFocus = () => {
+      ensureRoomChannelRef.current(false);
+    };
+    const handleOnline = () => {
+      ensureRoomChannelRef.current(false);
     };
     const handleOffline = () => {
       setConnectionState("offline");
@@ -809,17 +1019,42 @@ export function useLiveRoom(currentUserId?: string) {
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
 
+    // 4. Supabase Auth token refresh listener
+    let authSubscription: { unsubscribe: () => void } | null = null;
+    try {
+      const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+        if (event === "TOKEN_REFRESHED" || event === "SIGNED_IN") {
+          if (session?.access_token) {
+            try {
+              (supabase.realtime as any)?.setAuth(session.access_token);
+            } catch {}
+          }
+          if (!channelRef.current || !isChannelHealthy(channelRef.current)) {
+            ensureRoomChannelRef.current(true);
+          }
+        }
+      });
+      authSubscription = authListener?.subscription ?? null;
+    } catch {}
+
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", handleWindowFocus);
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
-        channelRef.current = null;
+      authSubscription?.unsubscribe();
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
       }
+      if (channelRef.current) {
+        const ch = channelRef.current;
+        channelRef.current = null;
+        destroyChannel(ch, true);
+      }
+      lifecycleRef.current = "disposed";
     };
-  }, [supabase]);
+  }, [supabase, destroyChannel]);
 
   // Broadcast and persist rivalry win announcement to all connected peers and devices
   const broadcastRivalryWin = useCallback(async (winEvent: RivalryWinEvent) => {
@@ -909,11 +1144,14 @@ export function useLiveRoom(currentUserId?: string) {
     setActiveWinEvents([]);
   }, [activeWinEvent]);
 
+  const isRoomPresent = isRealtimeConnected && Boolean(currentUserIdRef.current);
+
   return {
     members,
     loading,
     isRealtimeConnected,
     connectionState,
+    isRoomPresent,
     presentUserIds,
     error,
     expectedPeakHours,

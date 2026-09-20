@@ -36,7 +36,7 @@ interface MemberListProps {
   currentUserElapsedSeconds?: number;
   isLoading?: boolean;
   isRealtimeConnected?: boolean;
-  connectionState?: "connected" | "reconnecting" | "offline";
+  connectionState?: "connecting" | "connected" | "reconnecting" | "offline";
   syncStatus?: "synced" | "syncing" | "reconnecting" | "no_network" | "error";
   winEvents?: RivalryWinEvent[] | null;
   winEvent?: RivalryWinEvent | null;
@@ -502,12 +502,11 @@ export const MemberList = memo(function MemberList({
             {(() => {
               const isOnline = typeof navigator === "undefined" || navigator.onLine;
               const isTrulyConnected = isRealtimeConnected && (connectionState === "connected" || (!connectionState && isRealtimeConnected)) && isOnline && !isLoading;
-              const isNoNetwork = !isOnline || syncStatus === "no_network";
+              const isNoNetwork = !isOnline;
               const isOffline = isNoNetwork || connectionState === "offline" || (!connectionState && !isRealtimeConnected);
-              const isReconnecting = !isOffline && (syncStatus === "reconnecting" || connectionState === "reconnecting");
-              const isSyncing = !isOffline && !isReconnecting && (isLoading || syncStatus === "syncing");
-              const isError = !isOffline && !isReconnecting && !isSyncing && syncStatus === "error";
-              const isLive = isTrulyConnected && !isSyncing && !isError;
+              const isReconnecting = !isOffline && connectionState === "reconnecting";
+              const isSyncing = !isOffline && !isReconnecting && (isLoading || connectionState === "connecting");
+              const isLive = isTrulyConnected && !isSyncing;
 
               return (
                 <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-[10px] font-bold text-zinc-300 shadow-sm shrink-0">
@@ -519,8 +518,6 @@ export const MemberList = memo(function MemberList({
                         ? "bg-amber-400 animate-pulse"
                         : isSyncing
                         ? "bg-blue-400 animate-pulse"
-                        : isError
-                        ? "bg-rose-500"
                         : "bg-fuchsia-400 animate-pulse"
                     }`}
                   />
@@ -533,8 +530,6 @@ export const MemberList = memo(function MemberList({
                       ? "Reconnecting..."
                       : isSyncing
                       ? "Syncing..."
-                      : isError
-                      ? "Action failed"
                       : isLive
                       ? "Live Sync"
                       : "Syncing..."}
