@@ -43,3 +43,6 @@ local.properties
 *.apk
 *.aab
 *token*.txt
+
+# local documentation (excluded from repository / github pushes)
+local_docs/
