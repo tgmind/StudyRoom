@@ -12,6 +12,7 @@ import android.os.IBinder;
 import android.util.Log;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
+import android.content.SharedPreferences;
 import androidx.core.content.ContextCompat;
 
 public class StudySessionService extends Service {
@@ -28,6 +29,12 @@ public class StudySessionService extends Service {
 
     public static final String EXTRA_START_TIME_MS = "extra_start_time_ms";
     public static final String EXTRA_ACCRUED_SECONDS = "extra_accrued_seconds";
+
+    public static final String PREFS_NAME = "studyroom_break_service_prefs";
+    public static final String KEY_IS_BREAK_ACTIVE = "is_break_active";
+    public static final String KEY_BREAK_START_MS = "break_start_ms";
+    public static final String KEY_ACCRUED_SECONDS = "accrued_seconds";
+    public static final long MAX_BREAK_DURATION_MS = 3600 * 1000L; // 1 hour max break limit
 
     // Track active notification state to prevent redundant re-alerting & chronometer oscillation
     private String lastAction = "";
@@ -65,13 +72,51 @@ public class StudySessionService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        // Handle service recreation after Android process death / restart
         if (intent == null || intent.getAction() == null) {
+            SharedPreferences prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            boolean isBreakActive = prefs.getBoolean(KEY_IS_BREAK_ACTIVE, false);
+            long breakStartMs = prefs.getLong(KEY_BREAK_START_MS, 0);
+            long accrued = prefs.getLong(KEY_ACCRUED_SECONDS, 0);
+            long now = System.currentTimeMillis();
+
+            if (isBreakActive && breakStartMs > 0 && (now - breakStartMs < MAX_BREAK_DURATION_MS)) {
+                lastAction = ACTION_START_BREAK;
+                lastBaseTimeMs = breakStartMs;
+                lastAccruedSec = accrued;
+
+                String formattedAccrued = formatDuration(accrued);
+                String title = "Break in progress";
+                String subtext = "Accrued Study: " + formattedAccrued + " • 1-hour break limit";
+
+                Notification notification = buildModernNotification(title, subtext, breakStartMs, true, accrued);
+                try {
+                    startForeground(NOTIFICATION_ID, notification);
+                    isForegroundRunning = true;
+                    Log.i(TAG, "Restored active break notification on service recreation.");
+                    return START_STICKY;
+                } catch (Exception e) {
+                    Log.e(TAG, "Failed to restore startForeground: " + e.getMessage());
+                }
+            }
+
+            // Stale or expired break: clean up
+            prefs.edit().clear().apply();
+            lastAction = "";
+            lastBaseTimeMs = 0;
+            lastAccruedSec = -1;
+            isForegroundRunning = false;
+            stopForeground(true);
+            stopSelf();
             return START_NOT_STICKY;
         }
 
         String action = intent.getAction();
 
         if (ACTION_STOP_SESSION.equals(action)) {
+            SharedPreferences prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            prefs.edit().clear().apply();
+
             lastAction = "";
             lastBaseTimeMs = 0;
             lastAccruedSec = -1;
@@ -84,6 +129,14 @@ public class StudySessionService extends Service {
         if (ACTION_START_BREAK.equals(action)) {
             long breakStartTimeMs = intent.getLongExtra(EXTRA_START_TIME_MS, System.currentTimeMillis());
             long accrued = intent.getLongExtra(EXTRA_ACCRUED_SECONDS, 0);
+
+            // Persist native break state for recreation across process death & task removal
+            SharedPreferences prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            prefs.edit()
+                    .putBoolean(KEY_IS_BREAK_ACTIVE, true)
+                    .putLong(KEY_BREAK_START_MS, breakStartTimeMs)
+                    .putLong(KEY_ACCRUED_SECONDS, accrued)
+                    .apply();
 
             // Deduplication: if already running with matching break start time within 2s and same accrued time
             if (isForegroundRunning && ACTION_START_BREAK.equals(lastAction)
@@ -111,6 +164,39 @@ public class StudySessionService extends Service {
         }
 
         return START_NOT_STICKY;
+    }
+
+    @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        super.onTaskRemoved(rootIntent);
+        // CRITICAL ANDROID LIFECYCLE PERSISTENCE RULE:
+        // Do NOT call stopSelf()! When the user swipes StudyRoom out of Android Recents,
+        // the break notification must remain ongoing, ticking, and visible in the notification shade.
+        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        boolean isBreakActive = prefs.getBoolean(KEY_IS_BREAK_ACTIVE, false);
+        long breakStartMs = prefs.getLong(KEY_BREAK_START_MS, 0);
+        long accrued = prefs.getLong(KEY_ACCRUED_SECONDS, 0);
+        long now = System.currentTimeMillis();
+
+        if (isBreakActive && breakStartMs > 0 && (now - breakStartMs < MAX_BREAK_DURATION_MS)) {
+            String formattedAccrued = formatDuration(accrued);
+            String title = "Break in progress";
+            String subtext = "Accrued Study: " + formattedAccrued + " • 1-hour break limit";
+
+            Notification notification = buildModernNotification(title, subtext, breakStartMs, true, accrued);
+            try {
+                startForeground(NOTIFICATION_ID, notification);
+                isForegroundRunning = true;
+                Log.i(TAG, "onTaskRemoved: Break notification preserved ongoing.");
+            } catch (Exception e) {
+                Log.e(TAG, "onTaskRemoved startForeground error: " + e.getMessage());
+            }
+        } else {
+            // Break expired while task removed
+            prefs.edit().clear().apply();
+            stopForeground(true);
+            stopSelf();
+        }
     }
 
     private Notification buildModernNotification(String title, String subtext, long baseTimeMs, boolean isBreak, long accruedSeconds) {

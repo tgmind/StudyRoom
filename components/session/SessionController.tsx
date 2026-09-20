@@ -11,6 +11,8 @@ import { requestNotificationPermission } from "@/hooks/useActiveSession";
 
 import { SessionSyncStatus } from "@/hooks/useActiveSession";
 
+export type SessionControllerState = "hydrating" | "idle" | "studying" | "break";
+
 interface SessionControllerProps {
   status: UserStatus;
   focus?: string | null;
@@ -25,6 +27,7 @@ interface SessionControllerProps {
   activeGoal: DailyGoal | null;
   countdown: GoalCountdownResult;
   isLoading?: boolean;
+  isHydrating?: boolean;
 }
 
 export const SessionController = memo(function SessionController({
@@ -40,12 +43,22 @@ export const SessionController = memo(function SessionController({
   activeGoal,
   countdown,
   isLoading = false,
+  isHydrating = false,
 }: SessionControllerProps) {
   const [isGoalSetupModalOpen, setIsGoalSetupModalOpen] = useState(false);
 
-  const isIdle = status === "offline";
-  const isStudying = status === "studying";
-  const isBreak = status === "break";
+  const controllerState: SessionControllerState = isHydrating
+    ? "hydrating"
+    : status === "studying"
+    ? "studying"
+    : status === "break"
+    ? "break"
+    : "idle";
+
+  const isIdle = controllerState === "idle";
+  const isStudying = controllerState === "studying";
+  const isBreak = controllerState === "break";
+  const isHydratingState = controllerState === "hydrating";
 
   const isGoalMissingOrExpired = !activeGoal || countdown.isExpired;
 
@@ -115,8 +128,20 @@ export const SessionController = memo(function SessionController({
 
   return (
     <div className="w-full bg-zinc-900/70 border border-zinc-800/90 rounded-2xl p-4 sm:p-5 shadow-xl space-y-4 backdrop-blur-md">
+      {/* Session Hydration Skeleton (structural parity, prevents false Start button / timer flash) */}
+      {isHydratingState && (
+        <div className="w-full flex flex-col items-center justify-center py-2 space-y-3">
+          <div className="w-full max-w-sm px-6 py-6 rounded-2xl bg-gradient-to-b from-zinc-900/90 via-zinc-950 to-zinc-950 border border-zinc-800/80 flex flex-col items-center justify-center space-y-3 shadow-[0_0_20px_rgba(0,0,0,0.4)]">
+            <div className="w-24 h-3 bg-zinc-800/60 rounded-full animate-pulse" />
+            <div className="w-36 h-9 bg-zinc-800/80 rounded-xl animate-pulse" />
+            <div className="w-28 h-3 bg-zinc-800/40 rounded-full animate-pulse" />
+          </div>
+          <div className="w-full h-12 rounded-xl bg-zinc-800/60 animate-pulse" />
+        </div>
+      )}
+
       {/* Session Timer */}
-      {!isIdle && (
+      {!isIdle && !isHydratingState && (
         <div className="space-y-2">
           <ActiveTimer
             elapsedSeconds={elapsedSeconds}
@@ -126,7 +151,7 @@ export const SessionController = memo(function SessionController({
           />
         </div>
       )}
-      {isIdle && syncStatus && syncStatus !== "synced" && (
+      {isIdle && !isHydratingState && syncStatus && syncStatus !== "synced" && (
         <div className="flex items-center justify-end px-1 -mt-2 mb-1">
           <div className="flex items-center space-x-1 text-[9px] font-semibold tracking-normal select-none">
             {syncStatus === "syncing" && (
@@ -158,68 +183,70 @@ export const SessionController = memo(function SessionController({
       )}
 
       {/* Action Controls */}
-      <div className="flex items-center justify-center space-x-3">
-        {isIdle && (
-          <Button
-            size="lg"
-            variant="primary"
-            onClick={handleStartStudyingClick}
-            isLoading={isLoading}
-            className="w-full font-extrabold text-xs sm:text-sm py-3.5 space-x-2 shadow-lg"
-          >
-            <Play className="w-4 h-4 sm:w-5 sm:h-5 fill-current text-zinc-950" />
-            <span>Start Studying</span>
-          </Button>
-        )}
-
-        {isStudying && (
-          <>
+      {!isHydratingState && (
+        <div className="flex items-center justify-center space-x-3">
+          {isIdle && (
             <Button
-              size="md"
-              variant="secondary"
-              onClick={handlePause}
-              className="flex-1 space-x-2 border-amber-500/30 text-amber-300 hover:bg-amber-500/10 font-bold"
-            >
-              <Pause className="w-4 h-4 fill-current" />
-              <span>Pause</span>
-            </Button>
-            <Button
-              size="md"
-              variant="danger"
-              onClick={handleStop}
-              isLoading={isLoading}
-              className="flex-1 space-x-2 font-bold"
-            >
-              <Square className="w-4 h-4 fill-current" />
-              <span>Stop</span>
-            </Button>
-          </>
-        )}
-
-        {isBreak && (
-          <>
-            <Button
-              size="md"
+              size="lg"
               variant="primary"
-              onClick={handleResume}
-              className="flex-1 space-x-2 font-extrabold"
-            >
-              <RotateCcw className="w-4 h-4" />
-              <span>Resume</span>
-            </Button>
-            <Button
-              size="md"
-              variant="danger"
-              onClick={handleStop}
+              onClick={handleStartStudyingClick}
               isLoading={isLoading}
-              className="flex-1 space-x-2 font-bold"
+              className="w-full font-extrabold text-xs sm:text-sm py-3.5 space-x-2 shadow-lg"
             >
-              <Square className="w-4 h-4 fill-current" />
-              <span>Stop</span>
+              <Play className="w-4 h-4 sm:w-5 sm:h-5 fill-current text-zinc-950" />
+              <span>Start Studying</span>
             </Button>
-          </>
-        )}
-      </div>
+          )}
+
+          {isStudying && (
+            <>
+              <Button
+                size="md"
+                variant="secondary"
+                onClick={handlePause}
+                className="flex-1 space-x-2 border-amber-500/30 text-amber-300 hover:bg-amber-500/10 font-bold"
+              >
+                <Pause className="w-4 h-4 fill-current" />
+                <span>Pause</span>
+              </Button>
+              <Button
+                size="md"
+                variant="danger"
+                onClick={handleStop}
+                isLoading={isLoading}
+                className="flex-1 space-x-2 font-bold"
+              >
+                <Square className="w-4 h-4 fill-current" />
+                <span>Stop</span>
+              </Button>
+            </>
+          )}
+
+          {isBreak && (
+            <>
+              <Button
+                size="md"
+                variant="primary"
+                onClick={handleResume}
+                className="flex-1 space-x-2 font-extrabold"
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span>Resume</span>
+              </Button>
+              <Button
+                size="md"
+                variant="danger"
+                onClick={handleStop}
+                isLoading={isLoading}
+                className="flex-1 space-x-2 font-bold"
+              >
+                <Square className="w-4 h-4 fill-current" />
+                <span>Stop</span>
+              </Button>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Goal Setup Prompt Modal */}
       <CreateGoalModal

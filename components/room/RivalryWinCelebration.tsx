@@ -164,6 +164,16 @@ export const RivalryWinCelebration = memo(function RivalryWinCelebration({
       return current;
     });
 
+    setDismissedIds((prev) => {
+      const next = new Set(prev);
+      next.add(eventKey);
+      if (eventToDismiss.id) next.add(eventToDismiss.id);
+      if (eventToDismiss.winnerName && eventToDismiss.loserName) {
+        next.add(`pair_${eventToDismiss.winnerName}_${eventToDismiss.loserName}`);
+      }
+      return next;
+    });
+
     triggerHapticFeedback(15);
 
     try {

@@ -17,7 +17,7 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 
 export default function RoomPage() {
   const isOnline = useOnlineStatus();
-  const { user, profile, refreshProfile, updateProfileOptimistic } = useAuth();
+  const { user, profile, loading: authLoading, refreshProfile, updateProfileOptimistic } = useAuth();
   const {
     members,
     loading: roomLoading,
@@ -82,7 +82,8 @@ export default function RoomPage() {
       }
     },
     updateProfileOptimistic,
-    connectionState
+    connectionState,
+    authLoading
   );
 
   useEffect(() => {
@@ -203,6 +204,7 @@ export default function RoomPage() {
             activeGoal={activeGoal}
             countdown={countdown}
             isLoading={actionLoading || mutationPending !== null}
+            isHydrating={authLoading && status === "offline"}
           />
         </section>
 

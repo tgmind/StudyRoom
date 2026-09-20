@@ -38,6 +38,7 @@ import {
   flushSessionActionQueue,
   CompletedOfflineSessionRecord,
   OfflineSessionBlock,
+  getCachedUserProfile,
 } from "@/lib/offline/sessionQueue";
 import { getDateInTimezone, getTimeUntilMidnight } from "@/lib/scoring/streak";
 import { triggerHapticFeedback } from "@/lib/utils/haptics";
@@ -73,14 +74,127 @@ type RpcCaller = {
   ) => Promise<{ data: unknown; error: Error | null }>;
 };
 
+function getProvisionalDiskSession(): {
+  status: UserStatus;
+  elapsedSeconds: number;
+  sessionStartTime: string | null;
+  breakStartedAt: string | null;
+  lastResumedAt: string | null;
+  focus: string | null;
+} | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const now = getServerNow();
+    const serverOffset = getServerTimeOffset();
+
+    // 1. Check active break in localStorage
+    const breakRaw = localStorage.getItem("studyroom_active_break");
+    if (breakRaw) {
+      const parsed = JSON.parse(breakRaw);
+      const breakStart = parsed.serverBreakStartedAt || parsed.breakStartedAt;
+      if (breakStart) {
+        const breakMs = now.getTime() - new Date(breakStart).getTime();
+        // Break limit: 1 hour (3600s)
+        if (breakMs < 3600 * 1000) {
+          return {
+            status: "break",
+            elapsedSeconds: parsed.accruedSeconds || 0,
+            sessionStartTime: null,
+            breakStartedAt: breakStart,
+            lastResumedAt: null,
+            focus: null,
+          };
+        }
+      }
+    }
+
+    // 2. Check active study state in localStorage
+    const studyState = getActiveStudyState();
+    if (studyState && studyState.sessionStartTime) {
+      const resumeTime = studyState.lastResumedAt
+        ? new Date(studyState.lastResumedAt).getTime() - serverOffset
+        : new Date(studyState.sessionStartTime).getTime() - serverOffset;
+      const currentPeriod = Math.max(0, Math.floor((Date.now() - resumeTime) / 1000));
+      const totalAccrued = (studyState.snapshotSeconds || 0) + currentPeriod;
+      if (totalAccrued < MAX_SESSION_STUDY_SECONDS) {
+        return {
+          status: "studying",
+          elapsedSeconds: totalAccrued,
+          sessionStartTime: studyState.sessionStartTime,
+          breakStartedAt: null,
+          lastResumedAt: studyState.lastResumedAt || studyState.sessionStartTime,
+          focus: studyState.focus || null,
+        };
+      }
+    }
+
+    // 3. Check offline active session
+    const offlineSession = getOfflineActiveSession();
+    if (offlineSession) {
+      if (offlineSession.status === "break" && offlineSession.breakStartedAt) {
+        const breakMs = now.getTime() - new Date(offlineSession.breakStartedAt).getTime();
+        if (breakMs < 3600 * 1000) {
+          return {
+            status: "break",
+            elapsedSeconds: offlineSession.elapsedStudySeconds || 0,
+            sessionStartTime: offlineSession.startTime || null,
+            breakStartedAt: offlineSession.breakStartedAt,
+            lastResumedAt: null,
+            focus: null,
+          };
+        }
+      } else if (offlineSession.status === "studying") {
+        const accrued = calculateActiveStudySeconds((offlineSession.blocks || []) as SessionBlock[], now);
+        if (accrued < MAX_SESSION_STUDY_SECONDS) {
+          return {
+            status: "studying",
+            elapsedSeconds: accrued,
+            sessionStartTime: offlineSession.startTime || null,
+            breakStartedAt: null,
+            lastResumedAt: offlineSession.lastResumedAt || offlineSession.startTime || null,
+            focus: null,
+          };
+        }
+      }
+    }
+
+    // 4. Check cached user profile
+    const cachedProf = getCachedUserProfile<UserProfile>();
+    if (cachedProf && cachedProf.current_status && cachedProf.current_status !== "offline") {
+      const eff = getEffectiveMemberStatus(cachedProf, now);
+      if (eff !== "offline") {
+        const accrued = calculateMemberElapsedStudySeconds(cachedProf, now);
+        return {
+          status: eff,
+          elapsedSeconds: accrued,
+          sessionStartTime: cachedProf.session_start_time || null,
+          breakStartedAt: cachedProf.break_started_at || null,
+          lastResumedAt: cachedProf.last_resumed_at || null,
+          focus: cachedProf.current_focus || null,
+        };
+      }
+    }
+  } catch {}
+  return null;
+}
+
 export function useActiveSession(
   profile: UserProfile | null,
   onStatusChange?: (newStatus?: UserStatus, details?: Partial<UserProfile>) => void,
   updateProfileOptimistic?: (partial: Partial<UserProfile>) => void,
-  connectionState?: "connected" | "reconnecting" | "offline"
+  connectionState?: "connected" | "reconnecting" | "offline",
+  isAuthLoading: boolean = false
 ) {
+  const isAuthLoadingRef = useRef(isAuthLoading);
+  isAuthLoadingRef.current = isAuthLoading;
+
   const [blocks, setBlocks] = useState<SessionBlock[]>([]);
-  const [elapsedStudySeconds, setElapsedStudySeconds] = useState(0);
+  const [elapsedStudySeconds, setElapsedStudySeconds] = useState<number>(() => {
+    if (profile) {
+      return calculateMemberElapsedStudySeconds(profile, getServerNow());
+    }
+    return 0;
+  });
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -147,7 +261,6 @@ export function useActiveSession(
 
   const supabase = createClient();
 
-  // Compute status: localStatusOverride takes precedence for instant 0ms offline responsiveness
   const serverRawStatus: UserStatus = profile?.current_status ?? "offline";
   const serverEffectiveStatus: UserStatus = profile
     ? getEffectiveMemberStatus(profile, getServerNow())
@@ -164,13 +277,15 @@ export function useActiveSession(
   );
 
   // Truthful Sync Status Semantics (Single Authoritative Source):
-  // 1. "syncing": mutation currently in flight OR timer calibration / reconciliation occurring
+  // 1. "syncing": mutation currently in flight OR timer calibration / reconciliation occurring (including auth/profile hydration)
   // 2. "no_network": device indicates no usable network connection (navigator.onLine === false)
   // 3. "error": requested session mutation failed
   // 4. "reconnecting": realtime / network connection is being restored
   // 5. "synced": latest mutation acknowledged, authoritative state reconciled, valid timer, no mutation/reconciliation pending
   useEffect(() => {
     if (mutationPending !== null) {
+      setSyncStatus("syncing");
+    } else if (isAuthLoading || (profile === null && !localStatusOverrideRef.current)) {
       setSyncStatus("syncing");
     } else if (!isOnline || (typeof navigator !== "undefined" && !navigator.onLine)) {
       setSyncStatus("no_network");
@@ -183,7 +298,7 @@ export function useActiveSession(
     } else {
       setSyncStatus("synced");
     }
-  }, [mutationPending, isOnline, error, connectionState, isTimerCalibrating]);
+  }, [mutationPending, isAuthLoading, profile, isOnline, error, connectionState, isTimerCalibrating]);
 
   // Screen Wake Lock: keep screen active during live study mode
   useScreenWakeLock(effectiveStatus === "studying");
@@ -283,6 +398,29 @@ export function useActiveSession(
   useEffect(() => {
     sanitizeSessionQueue();
 
+    // If server profile is not yet loaded, recover provisional disk session immediately after client mount
+    if (!profileRef.current) {
+      const prov = getProvisionalDiskSession();
+      if (prov) {
+        setElapsedStudySeconds(prov.elapsedSeconds);
+        elapsedStudySecondsRef.current = prov.elapsedSeconds;
+        applyLocalStatusOverride(prov.status);
+        if (prov.status === "break" && prov.breakStartedAt) {
+          initialBreakStartIsoRef.current = prov.breakStartedAt;
+        }
+        if (onStatusChangeRef.current) {
+          onStatusChangeRef.current(prov.status, {
+            current_status: prov.status,
+            session_start_time: prov.sessionStartTime,
+            break_started_at: prov.breakStartedAt,
+            last_resumed_at: prov.lastResumedAt,
+            current_focus: prov.focus,
+          });
+        }
+        return;
+      }
+    }
+
     const currentUid = profileRef.current?.id;
     const offlineSession = getOfflineActiveSession(currentUid);
     if (!offlineSession) return;
@@ -321,8 +459,8 @@ export function useActiveSession(
     }
 
     const isOfflineMode = typeof navigator !== "undefined" && !navigator.onLine;
-    if (!isOfflineMode) {
-      // In online mode, the server profile is authoritative. Stale disk blocks
+    if (!isOfflineMode && profileRef.current) {
+      // In online mode with profile loaded, the server profile is authoritative. Stale disk blocks
       // must not override live study state or cause reload timer jumping.
       return;
     }
@@ -440,6 +578,11 @@ export function useActiveSession(
   // BREAK NOTIFICATION & CHRONOMETER SYNCHRONIZATION
   // -----------------------------------------------------------------------
   useEffect(() => {
+    // GUARD: Never wipe disk state or dispatch STOP to native bridge during auth/profile hydration
+    if (isAuthLoading || (profile === null && !localStatusOverrideRef.current)) {
+      return;
+    }
+
     if (effectiveStatus === "break") {
       const openBreak = blocksRef.current.find((b) => b.block_type === "break" && !b.end_time);
       if (!initialBreakStartIsoRef.current) {
@@ -519,7 +662,7 @@ export function useActiveSession(
         } catch {}
       }
     }
-  }, [effectiveStatus, profile?.break_started_at]);
+  }, [effectiveStatus, profile?.break_started_at, isAuthLoading, profile]);
 
   // -----------------------------------------------------------------------
   // FETCH SESSION BLOCKS (When Online)
@@ -533,7 +676,9 @@ export function useActiveSession(
     // stale server fetch triggered by the realtime session_blocks subscription.
     if (localStatusOverrideRef.current) return;
 
-    if (!profile || effectiveStatus === "offline" || profile.current_status === "offline") {
+    if (!profile) return;
+
+    if (effectiveStatus === "offline" || profile.current_status === "offline") {
       const offlineSession = getOfflineActiveSession();
       if (!offlineSession) {
         setBlocks([]);
@@ -749,18 +894,23 @@ export function useActiveSession(
       const currentTotalSessions = (profileRef.current?.total_sessions_count ?? 0) + 1;
       const currentWeeklySessions = (profileRef.current?.weekly_sessions_count ?? 0) + 1;
 
+      const optimisticFinishDetails: Partial<UserProfile> = {
+        current_status: "offline",
+        session_start_time: null,
+        break_started_at: null,
+        last_resumed_at: null,
+        active_study_seconds_snapshot: 0,
+        last_offline_at: nowIso,
+        weekly_study_seconds: updatedWeekly,
+        total_sessions_count: currentTotalSessions,
+        weekly_sessions_count: currentWeeklySessions,
+      };
+      if (profileRef.current) {
+        Object.assign(profileRef.current, optimisticFinishDetails);
+      }
+      updateProfileOptimisticRef.current?.(optimisticFinishDetails);
       if (onStatusChangeRef.current) {
-        onStatusChangeRef.current("offline", {
-          current_status: "offline",
-          session_start_time: null,
-          break_started_at: null,
-          last_resumed_at: null,
-          active_study_seconds_snapshot: 0,
-          last_offline_at: nowIso,
-          weekly_study_seconds: updatedWeekly,
-          total_sessions_count: currentTotalSessions,
-          weekly_sessions_count: currentWeeklySessions,
-        });
+        onStatusChangeRef.current("offline", optimisticFinishDetails);
       }
 
       // 5. Attempt immediate fast sync with 10s safety timeout
@@ -861,7 +1011,7 @@ export function useActiveSession(
     }
 
     const checkBreakTimeout = async () => {
-      if (isAutoTerminatingRef.current) return;
+      if (isAutoTerminatingRef.current || isAuthLoadingRef.current || !profileRef.current) return;
 
       const openBreak = blocksRef.current.find((b) => b.block_type === "break" && !b.end_time);
       const breakStart = profileRef.current?.break_started_at || openBreak?.start_time;
@@ -944,7 +1094,7 @@ export function useActiveSession(
     }
 
     const checkSessionLimit = async () => {
-      if (isAutoTerminatingLimitRef.current) return;
+      if (isAutoTerminatingLimitRef.current || isAuthLoadingRef.current || !profileRef.current) return;
 
       const serverNow = getServerNow();
       let currentAccrued = 0;
@@ -1028,7 +1178,19 @@ export function useActiveSession(
         return calculateMemberElapsedStudySeconds(p, now);
       }
       const b = blocksRef.current;
-      return calculateActiveStudySeconds(b, now);
+      if (b && b.length > 0) {
+        return calculateActiveStudySeconds(b, now);
+      }
+      const studyState = getActiveStudyState();
+      if (studyState && studyState.sessionStartTime) {
+        const serverOffset = getServerTimeOffset();
+        const resumeTime = studyState.lastResumedAt
+          ? new Date(studyState.lastResumedAt).getTime() - serverOffset
+          : new Date(studyState.sessionStartTime).getTime() - serverOffset;
+        const currentPeriod = Math.max(0, Math.floor((Date.now() - resumeTime) / 1000));
+        return (studyState.snapshotSeconds || 0) + currentPeriod;
+      }
+      return 0;
     };
 
     const tick = () => {
@@ -1103,14 +1265,19 @@ export function useActiveSession(
     applyLocalStatusOverride("studying");
     setBlocks([newBlock]);
     setElapsedStudySeconds(0);
+    const optimisticStartDetails: Partial<UserProfile> = {
+      current_status: "studying",
+      session_start_time: nowIso,
+      break_started_at: null,
+      active_study_seconds_snapshot: 0,
+      last_resumed_at: nowIso,
+    };
+    if (profileRef.current) {
+      Object.assign(profileRef.current, optimisticStartDetails);
+    }
+    updateProfileOptimisticRef.current?.(optimisticStartDetails);
     if (onStatusChangeRef.current) {
-      onStatusChangeRef.current("studying", {
-        current_status: "studying",
-        session_start_time: nowIso,
-        break_started_at: null,
-        active_study_seconds_snapshot: 0,
-        last_resumed_at: nowIso,
-      });
+      onStatusChangeRef.current("studying", optimisticStartDetails);
     }
 
     // 3. Remote RPC with 10s safety timeout
@@ -1235,13 +1402,18 @@ export function useActiveSession(
     applyLocalStatusOverride("break");
     setBlocks(updatedBlocks);
     setElapsedStudySeconds(currentStudySeconds);
+    const optimisticPauseDetails: Partial<UserProfile> = {
+      current_status: "break",
+      break_started_at: nowIso,
+      last_resumed_at: null,
+      active_study_seconds_snapshot: currentStudySeconds,
+    };
+    if (profileRef.current) {
+      Object.assign(profileRef.current, optimisticPauseDetails);
+    }
+    updateProfileOptimisticRef.current?.(optimisticPauseDetails);
     if (onStatusChangeRef.current) {
-      onStatusChangeRef.current("break", {
-        current_status: "break",
-        break_started_at: nowIso,
-        last_resumed_at: null,
-        active_study_seconds_snapshot: currentStudySeconds,
-      });
+      onStatusChangeRef.current("break", optimisticPauseDetails);
     }
 
     // 4. Remote RPC with 10s safety timeout
@@ -1364,13 +1536,18 @@ export function useActiveSession(
     applyLocalStatusOverride("studying");
     setBlocks(updatedBlocks);
     const accruedSnapshot = elapsedStudySecondsRef.current;
+    const optimisticResumeDetails: Partial<UserProfile> = {
+      current_status: "studying",
+      break_started_at: null,
+      last_resumed_at: nowIso,
+      active_study_seconds_snapshot: accruedSnapshot,
+    };
+    if (profileRef.current) {
+      Object.assign(profileRef.current, optimisticResumeDetails);
+    }
+    updateProfileOptimisticRef.current?.(optimisticResumeDetails);
     if (onStatusChangeRef.current) {
-      onStatusChangeRef.current("studying", {
-        current_status: "studying",
-        break_started_at: null,
-        last_resumed_at: nowIso,
-        active_study_seconds_snapshot: accruedSnapshot,
-      });
+      onStatusChangeRef.current("studying", optimisticResumeDetails);
     }
 
     // 4. Remote RPC with 10s safety timeout
