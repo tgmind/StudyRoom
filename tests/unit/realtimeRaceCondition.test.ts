@@ -3,6 +3,8 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 import { useLiveRoom, getMemberMutationEpoch } from "@/hooks/useLiveRoom";
 import { generateStableRivalryId, detectLiveRivalries, evaluateRivalryResolution } from "@/lib/time/rivalry";
 import { UserProfile } from "@/lib/supabase/types";
+import { saveCachedRoomMembers } from "@/lib/offline/sessionQueue";
+import { STORAGE_KEYS } from "@/lib/offline/storageKeys";
 
 const mockRpc = vi.fn();
 const mockFrom = vi.fn();
@@ -425,6 +427,306 @@ describe("Realtime Synchronization & Race Condition Guard", () => {
       });
       expect(result.current.connectionState).toBe("connected");
       expect(result.current.isRealtimeConnected).toBe(true);
+    });
+  });
+
+  describe("5. Realtime 3.0: Instant Cache Hydration & Diagnostics", () => {
+    it("instantly renders cached members at t=0 with loading=false before network resolves", () => {
+      const cachedUser = createMockUser({
+        id: "cached-user-1",
+        display_name: "Cached Student",
+        current_status: "studying",
+        session_start_time: new Date().toISOString(),
+      });
+
+      // Populate localStorage cache before mount
+      saveCachedRoomMembers([cachedUser]);
+
+      const { result } = renderHook(() => useLiveRoom("my-user-id"));
+
+      // Instant hydration check: members must exist on initial render and loading must be false
+      expect(result.current.loading).toBe(false);
+      expect(result.current.members).toHaveLength(1);
+      expect(result.current.members[0].display_name).toBe("Cached Student");
+      expect(result.current.members[0].current_status).toBe("studying");
+
+      // Clean up localStorage
+      localStorage.removeItem(STORAGE_KEYS.CACHED_ROOM_MEMBERS);
+    });
+
+    it("protects active local user session from stale REST response that returns offline", async () => {
+      const myId = "my-user-id";
+      const initialMember = createMockUser({
+        id: myId,
+        display_name: "Me",
+        current_status: "studying",
+        session_start_time: new Date().toISOString(),
+        last_resumed_at: new Date().toISOString(),
+      });
+
+      // REST returns offline (e.g. stale cache or replica lag)
+      const staleRestUser = createMockUser({
+        id: myId,
+        display_name: "Me",
+        current_status: "offline",
+      });
+      defaultMockSetup([staleRestUser]);
+
+      // Seed local hook with studying state
+      saveCachedRoomMembers([initialMember]);
+      const { result } = renderHook(() => useLiveRoom(myId));
+
+      expect(result.current.members.find((m) => m.id === myId)?.current_status).toBe("studying");
+
+      // Trigger REST refetch
+      await act(async () => {
+        await result.current.refreshMembers();
+      });
+
+      // Must NOT be overwritten to offline!
+      const memberAfterRest = result.current.members.find((m) => m.id === myId);
+      expect(memberAfterRest?.current_status).toBe("studying");
+
+      localStorage.removeItem(STORAGE_KEYS.CACHED_ROOM_MEMBERS);
+    });
+
+    it("records broadcast latency telemetry when receiving member_status_update", () => {
+      const { result } = renderHook(() => useLiveRoom("my-user-id"));
+      const now = Date.now();
+
+      act(() => {
+        channelCallbacks["broadcast:member_status_update"]?.({
+          payload: {
+            id: "peer-user-diag",
+            display_name: "Peer",
+            current_status: "studying",
+            mutation_epoch: now - 35,
+          },
+        });
+      });
+
+      expect(window.__studyRoomDiag).toBeDefined();
+      expect(typeof window.__studyRoomDiag?.lastBroadcastLatencyMs).toBe("number");
+      expect(window.__studyRoomDiag?.lastBroadcastLatencyMs).toBeGreaterThanOrEqual(30);
+    });
+  });
+
+  describe("6. Realtime 3.0 Hardening: Deterministic Ordering & Two-Phase Live Snapshot", () => {
+    it("Scenario 1: Stale cache present on startup reconciles to authoritative server snapshot", async () => {
+      const peerId = "peer-subodh-1";
+      const twoHoursAgo = new Date(Date.now() - 2 * 3600 * 1000).toISOString();
+      const oneHourAgo = new Date(Date.now() - 1 * 3600 * 1000).toISOString();
+
+      // Local cache has Subodh studying 2 hours ago
+      const cachedSubodh = createMockUser({
+        id: peerId,
+        display_name: "Subodh",
+        current_status: "studying",
+        session_start_time: twoHoursAgo,
+        last_resumed_at: twoHoursAgo,
+        state_version: 1,
+      });
+      saveCachedRoomMembers([cachedSubodh]);
+
+      // Server snapshot has Subodh offline (session ended 1 hour ago) with state_version 2
+      const serverSubodh = createMockUser({
+        id: peerId,
+        display_name: "Subodh",
+        current_status: "offline",
+        last_offline_at: oneHourAgo,
+        updated_at: oneHourAgo,
+        state_version: 2,
+      });
+      defaultMockSetup([serverSubodh]);
+
+      const { result } = renderHook(() => useLiveRoom("my-user-id"));
+
+      // Initial t=0 render: cached state is visible
+      expect(result.current.members.find((m) => m.id === peerId)?.current_status).toBe("studying");
+
+      // Authoritative snapshot resolves
+      await act(async () => {
+        await result.current.refreshMembers();
+      });
+
+      // Status MUST reconcile to server snapshot (offline)
+      const reconciled = result.current.members.find((m) => m.id === peerId);
+      expect(reconciled?.current_status).toBe("offline");
+      expect(reconciled?.state_version).toBe(2);
+
+      localStorage.removeItem(STORAGE_KEYS.CACHED_ROOM_MEMBERS);
+    });
+
+    it("Scenario 2: Older snapshot arriving AFTER newer broadcast does NOT roll back live status", async () => {
+      const peerId = "peer-aditya-2";
+      const t1 = new Date(Date.now() - 5000).toISOString(); // Old snapshot
+      const t2 = new Date(Date.now()).toISOString();        // Newer broadcast
+
+      const oldServerMember = createMockUser({
+        id: peerId,
+        display_name: "Aditya",
+        current_status: "offline",
+        last_offline_at: t1,
+        updated_at: t1,
+        state_version: 1,
+      });
+
+      defaultMockSetup([oldServerMember]);
+
+      const { result } = renderHook(() => useLiveRoom("my-user-id"));
+
+      await waitFor(() => {
+        expect(result.current.members).toHaveLength(1);
+      });
+
+      // Live broadcast arrives: Aditya started studying (v=2, epoch=t2)
+      act(() => {
+        channelCallbacks["broadcast:member_status_update"]?.({
+          payload: {
+            id: peerId,
+            display_name: "Aditya",
+            current_status: "studying",
+            session_start_time: t2,
+            last_resumed_at: t2,
+            state_version: 2,
+            mutation_epoch: new Date(t2).getTime(),
+          },
+        });
+      });
+
+      expect(result.current.members.find((m) => m.id === peerId)?.current_status).toBe("studying");
+
+      // In-flight REST returns older snapshot (v=1, offline)
+      await act(async () => {
+        await result.current.refreshMembers();
+      });
+
+      // Broadcast state MUST be preserved!
+      const memberAfterSnapshot = result.current.members.find((m) => m.id === peerId);
+      expect(memberAfterSnapshot?.current_status).toBe("studying");
+      expect(memberAfterSnapshot?.state_version).toBe(2);
+    });
+
+    it("Scenario 3: Older delayed broadcast packet arriving AFTER newer snapshot is dropped", async () => {
+      const peerId = "peer-member-3";
+      const t1 = new Date(Date.now() - 10000).toISOString();
+      const t2 = new Date(Date.now()).toISOString();
+
+      // Newer authoritative snapshot from server (v=3, break)
+      const serverSnapshot = createMockUser({
+        id: peerId,
+        display_name: "Member 3",
+        current_status: "break",
+        break_started_at: t2,
+        updated_at: t2,
+        state_version: 3,
+      });
+
+      defaultMockSetup([serverSnapshot]);
+
+      const { result } = renderHook(() => useLiveRoom("my-user-id"));
+
+      await act(async () => {
+        await result.current.refreshMembers();
+      });
+
+      expect(result.current.members.find((m) => m.id === peerId)?.current_status).toBe("break");
+
+      // Delayed broadcast packet arrives with v=1 (from earlier studying action at t1)
+      act(() => {
+        channelCallbacks["broadcast:member_status_update"]?.({
+          payload: {
+            id: peerId,
+            display_name: "Member 3",
+            current_status: "studying",
+            session_start_time: t1,
+            state_version: 1,
+            mutation_epoch: new Date(t1).getTime(),
+          },
+        });
+      });
+
+      // Older packet dropped; status remains "break" with v=3
+      const memberAfterDelayedPacket = result.current.members.find((m) => m.id === peerId);
+      expect(memberAfterDelayedPacket?.current_status).toBe("break");
+      expect(memberAfterDelayedPacket?.state_version).toBe(3);
+    });
+
+    it("Scenario 4: Two-Phase snapshot renders live status immediately and enriches secondary stats", async () => {
+      const peerId = "peer-subodh-4";
+      const nowIso = new Date().toISOString();
+
+      const serverUser = createMockUser({
+        id: peerId,
+        display_name: "Subodh",
+        current_status: "studying",
+        session_start_time: nowIso,
+        last_resumed_at: nowIso,
+        state_version: 4,
+      });
+
+      mockFrom.mockImplementation((table: string) => {
+        if (table === "users") {
+          return {
+            select: vi.fn().mockReturnValue({
+              neq: vi.fn().mockResolvedValue({ data: [serverUser], error: null }),
+              then: (cb: any) => Promise.resolve({ data: [serverUser], error: null }).then(cb),
+            }),
+          };
+        }
+        if (table === "study_sessions") {
+          return {
+            select: vi.fn().mockReturnValue({
+              gte: vi.fn().mockReturnThis(),
+              then: (cb: any) =>
+                Promise.resolve({
+                  data: [
+                    {
+                      user_id: peerId,
+                      duration_minutes: 45,
+                      start_time: nowIso,
+                      end_time: nowIso,
+                    },
+                  ],
+                  error: null,
+                }).then(cb),
+            }),
+          };
+        }
+        return {
+          select: vi.fn().mockReturnValue({
+            gte: vi.fn().mockReturnThis(),
+            order: vi.fn().mockReturnThis(),
+            limit: vi.fn().mockResolvedValue({ data: [], error: null }),
+            then: (cb: any) => Promise.resolve({ data: [], error: null }).then(cb),
+          }),
+        };
+      });
+
+      mockRpc.mockImplementation((name: string) => {
+        if (name === "rpc_get_leaderboard") {
+          return {
+            then: (cb: any) =>
+              Promise.resolve({
+                data: [{ user_id: peerId, score: 250 }],
+                error: null,
+              }).then(cb),
+          };
+        }
+        return { then: (cb: any) => Promise.resolve({ data: [], error: null }).then(cb) };
+      });
+
+      const { result } = renderHook(() => useLiveRoom("my-user-id"));
+
+      await act(async () => {
+        await result.current.refreshMembers();
+      });
+
+      const member = result.current.members.find((m) => m.id === peerId);
+      expect(member?.current_status).toBe("studying");
+      expect(member?.past_24h_study_seconds).toBe(45 * 60);
+      expect(member?.leaderboard_score).toBe(250);
+      expect(member?.leaderboard_rank).toBe(1);
     });
   });
 });

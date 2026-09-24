@@ -44,6 +44,7 @@ import { getDateInTimezone, getTimeUntilMidnight } from "@/lib/scoring/streak";
 import { triggerHapticFeedback } from "@/lib/utils/haptics";
 import { useScreenWakeLock } from "@/hooks/useScreenWakeLock";
 import type { RealtimeConnectionState } from "./useLiveRoom";
+import { recordDiagEvent } from "@/lib/utils/diagnostics";
 
 export interface TenMinuteWarningState {
   active: boolean;
@@ -310,7 +311,7 @@ export function useActiveSession(
   useEffect(() => {
     if (mutationPending !== null) {
       setSyncStatus("syncing");
-    } else if (isAuthLoading || profile === null || localStatusOverride !== null) {
+    } else if (isAuthLoading || profile === null) {
       setSyncStatus("syncing");
     } else if (!isOnline || (typeof navigator !== "undefined" && !navigator.onLine)) {
       setSyncStatus("no_network");
@@ -323,7 +324,7 @@ export function useActiveSession(
     } else {
       setSyncStatus("synced");
     }
-  }, [mutationPending, isAuthLoading, profile, localStatusOverride, isOnline, error, connectionState, isTimerCalibrating]);
+  }, [mutationPending, isAuthLoading, profile, isOnline, error, connectionState, isTimerCalibrating]);
 
   // Screen Wake Lock: keep screen active during live study mode
   useScreenWakeLock(effectiveStatus === "studying");
@@ -1018,9 +1019,6 @@ export function useActiveSession(
           setMutationPending(null);
           setSyncStatus("synced");
           setActionLoading(false);
-          if (onStatusChangeRef.current) {
-            onStatusChangeRef.current("offline", confirmedDetails);
-          }
           setPendingGoalSessionId(targetSessionId);
           setPendingGoalSeconds(durationMinutes * 60);
           setPendingGoalReason(reason);
@@ -1350,6 +1348,7 @@ export function useActiveSession(
     if (onStatusChangeRef.current) {
       onStatusChangeRef.current("studying", optimisticStartDetails);
     }
+    recordDiagEvent("action_to_ui", { action: "start" }, Date.now() - now);
 
     // 3. Remote RPC with 10s safety timeout
     try {
@@ -1373,11 +1372,7 @@ export function useActiveSession(
           Object.assign(profileRef.current, confirmedDetails);
         }
         updateProfileOptimisticRef.current?.(confirmedDetails);
-        if (onStatusChangeRef.current) {
-          onStatusChangeRef.current("studying", confirmedDetails);
-        }
         removeActiveTransitionActions();
-        await fetchSessionBlocks();
         setLocalStatusOverride(null);
         setMutationPending(null);
         setSyncStatus("synced");
@@ -1512,6 +1507,7 @@ export function useActiveSession(
     if (onStatusChangeRef.current) {
       onStatusChangeRef.current("break", optimisticPauseDetails);
     }
+    recordDiagEvent("action_to_ui", { action: "pause" }, Date.now() - now);
 
     // 4. Remote RPC with 10s safety timeout
     try {
@@ -1537,11 +1533,7 @@ export function useActiveSession(
           Object.assign(profileRef.current, confirmedDetails);
         }
         updateProfileOptimisticRef.current?.(confirmedDetails);
-        if (onStatusChangeRef.current) {
-          onStatusChangeRef.current("break", confirmedDetails);
-        }
         removeActiveTransitionActions();
-        await fetchSessionBlocks();
         setLocalStatusOverride(null);
         setMutationPending(null);
         setSyncStatus("synced");
@@ -1664,6 +1656,7 @@ export function useActiveSession(
     if (onStatusChangeRef.current) {
       onStatusChangeRef.current("studying", optimisticResumeDetails);
     }
+    recordDiagEvent("action_to_ui", { action: "resume" }, Date.now() - now);
 
     // 4. Remote RPC with 10s safety timeout
     try {
@@ -1696,10 +1689,6 @@ export function useActiveSession(
           Object.assign(profileRef.current, confirmedDetails);
         }
         updateProfileOptimisticRef.current?.(confirmedDetails);
-        if (onStatusChangeRef.current) {
-          onStatusChangeRef.current("studying", confirmedDetails);
-        }
-        await fetchSessionBlocks();
         setLocalStatusOverride(null);
         setMutationPending(null);
         setSyncStatus("synced");

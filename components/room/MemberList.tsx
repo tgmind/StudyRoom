@@ -505,8 +505,9 @@ export const MemberList = memo(function MemberList({
               const isNoNetwork = !isOnline;
               const isOffline = isNoNetwork || connectionState === "offline" || (!connectionState && !isRealtimeConnected);
               const isReconnecting = !isOffline && connectionState === "reconnecting";
-              const isSyncing = !isOffline && !isReconnecting && (isLoading || connectionState === "connecting");
-              const isLive = isTrulyConnected && !isSyncing;
+              const isConnecting = !isOffline && !isReconnecting && connectionState === "connecting";
+              const isSyncing = !isOffline && !isReconnecting && !isConnecting && isLoading;
+              const isLive = isTrulyConnected && !isSyncing && !isConnecting;
 
               return (
                 <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-[10px] font-bold text-zinc-300 shadow-sm shrink-0">
@@ -516,6 +517,8 @@ export const MemberList = memo(function MemberList({
                         ? "bg-zinc-500"
                         : isReconnecting
                         ? "bg-amber-400 animate-pulse"
+                        : isConnecting
+                        ? "bg-sky-400 animate-pulse"
                         : isSyncing
                         ? "bg-blue-400 animate-pulse"
                         : "bg-fuchsia-400 animate-pulse"
@@ -528,11 +531,13 @@ export const MemberList = memo(function MemberList({
                       ? "Offline"
                       : isReconnecting
                       ? "Reconnecting..."
+                      : isConnecting
+                      ? "Connecting..."
                       : isSyncing
                       ? "Syncing..."
                       : isLive
                       ? "Live Sync"
-                      : "Syncing..."}
+                      : "Connecting..."}
                   </span>
                 </div>
               );

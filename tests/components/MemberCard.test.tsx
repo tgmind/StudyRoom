@@ -57,6 +57,25 @@ describe("MemberCard Component", () => {
     expect(screen.queryByText(/Session:/i)).not.toBeInTheDocument();
   });
 
+  it("renders 00:00 cleanly without flashing Syncing... when customElapsedSeconds is 0", () => {
+    render(
+      <MemberCard
+        member={{
+          ...baseMember,
+          current_status: "studying",
+          session_start_time: new Date().toISOString(),
+          last_resumed_at: new Date().toISOString(),
+          active_study_seconds_snapshot: 0,
+        }}
+        customElapsedSeconds={0}
+      />
+    );
+
+    expect(screen.getByText("Studying")).toBeInTheDocument();
+    expect(screen.getByText("00:00")).toBeInTheDocument();
+    expect(screen.queryByText("Syncing...")).not.toBeInTheDocument();
+  });
+
   it("renders break status with live break timer in pill and current session time as subtext", () => {
     const now = new Date("2026-09-03T10:10:00Z");
     const breakStart = new Date("2026-09-03T10:05:00Z").toISOString(); // 5m on break

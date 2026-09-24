@@ -13,6 +13,8 @@ import { getEffectiveMemberStatus, isMemberBreakExpired, isMemberStudyExpired } 
 import { getServerNow } from "@/lib/time/clockSync";
 import { calculateExpectedPeakTraffic } from "@/lib/time/traffic";
 import { RivalryWinEvent } from "@/lib/time/rivalry";
+import { getCachedRoomMembers, saveCachedRoomMembers } from "@/lib/offline/sessionQueue";
+import { recordDiagEvent } from "@/lib/utils/diagnostics";
 
 type RpcCaller = {
   rpc: (name: string, params?: Record<string, unknown>) => PromiseLike<{ data: unknown; error: { message: string } | null }>;
@@ -132,8 +134,14 @@ export function markChannelClosed(channel: any) {
 }
 
 export function useLiveRoom(currentUserId?: string) {
-  const [members, setMembers] = useState<UserProfile[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [members, setMembers] = useState<UserProfile[]>(() => {
+    const cached = getCachedRoomMembers<UserProfile>();
+    return cached && cached.length > 0 ? sortMembers(filterAdmin(cached), currentUserId) : [];
+  });
+  const [loading, setLoading] = useState<boolean>(() => {
+    const cached = getCachedRoomMembers<UserProfile>();
+    return !cached || cached.length === 0;
+  });
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
   const [connectionState, setConnectionState] = useState<RealtimeConnectionState>("connecting");
   const [presentUserIds, setPresentUserIds] = useState<Set<string>>(() => new Set());
@@ -153,6 +161,7 @@ export function useLiveRoom(currentUserId?: string) {
   const memberVersionMapRef = useRef<Map<string, number>>(new Map());
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const channelGenRef = useRef<number>(0);
+  const fetchGenRef = useRef<number>(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const backoffDelayRef = useRef<number>(1000);
   const lifecycleRef = useRef<ChannelLifecycleState>("idle");
@@ -223,8 +232,16 @@ export function useLiveRoom(currentUserId?: string) {
   }, [currentUserId]);
 
   const fetchMembers = useCallback(async () => {
+    const fetchStartMs = Date.now();
+    const thisFetchGen = ++fetchGenRef.current;
     try {
       setError(null);
+
+      // =====================================================================
+      // PHASE 1: CRITICAL LIVE SNAPSHOT (<30ms)
+      // Fast single-table query on `users` to immediately resolve live statuses,
+      // start/resume timestamps, and member cards.
+      // =====================================================================
       let query = supabase.from("users").select("*");
       const adminId = getAdminUserId();
       if (adminId) {
@@ -236,151 +253,36 @@ export function useLiveRoom(currentUserId?: string) {
         throw fetchErr;
       }
 
-      // Fetch study sessions to compute rolling 24-hour study duration, weekly study duration, and completed session counts
-      const serverNow = getServerNow();
-      const cutoffTime = serverNow.getTime() - 24 * 60 * 60 * 1000;
-      const weekStartTime = getWeekStartTimestamp(serverNow);
-      // Bound query to oldest required timestamp (past 24h, current week, and 3-day peak traffic window with buffer)
-      const oldestRequiredTime = new Date(
-        Math.min(cutoffTime, weekStartTime, serverNow.getTime() - 4 * 86400000)
-      ).toISOString();
-
-      // Fetch study sessions and leaderboard concurrently (graceful fallback if RPC fails)
-      let rpcPromise: PromiseLike<{ data: unknown; error: { message: string } | null }> | null = null;
-      try {
-        const res = (supabase as unknown as RpcCaller).rpc("rpc_get_leaderboard", {});
-        if (res && typeof res.then === "function") {
-          rpcPromise = res;
-        }
-      } catch {
-        // Graceful fallback
+      if (thisFetchGen !== fetchGenRef.current) {
+        return;
       }
-
-      const [sessionDataResult, leaderboardResult] = await Promise.allSettled([
-        supabase
-          .from("study_sessions")
-          .select("user_id, duration_minutes, end_time, start_time")
-          .gte("start_time", oldestRequiredTime),
-        rpcPromise ? Promise.resolve(rpcPromise) : Promise.resolve({ data: null, error: null }),
-      ]);
-
-      type SessionRow = { user_id: string; duration_minutes: number; end_time: string; start_time?: string };
-      const rawSessions =
-        sessionDataResult.status === "fulfilled"
-          ? (sessionDataResult.value.data as unknown as SessionRow[] | null)
-          : null;
-
-      const leaderboardMap = new Map<string, { score: number; rank: number }>();
-      if (
-        leaderboardResult.status === "fulfilled" &&
-        leaderboardResult.value &&
-        !leaderboardResult.value.error &&
-        Array.isArray(leaderboardResult.value.data)
-      ) {
-        leaderboardResult.value.data.forEach((entry: { user_id?: string; score?: number }, idx: number) => {
-          if (entry && entry.user_id) {
-            leaderboardMap.set(entry.user_id, {
-              score: typeof entry.score === "number" ? entry.score : 0,
-              rank: idx + 1,
-            });
-          }
-        });
-      }
-
-      const statsMap = new Map<string, { past24hSeconds: number; weeklySeconds: number; weeklySessions: number; totalSessions: number; latestSessionEndMs: number }>();
-      if (rawSessions) {
-        for (const s of rawSessions) {
-          const entry = statsMap.get(s.user_id) || { past24hSeconds: 0, weeklySeconds: 0, weeklySessions: 0, totalSessions: 0, latestSessionEndMs: 0 };
-          entry.totalSessions += 1;
-          const sessionStartTime = s.start_time ? new Date(s.start_time).getTime() : (s.end_time ? new Date(s.end_time).getTime() : 0);
-          const sessionEndTime = s.end_time ? new Date(s.end_time).getTime() : sessionStartTime;
-          if (sessionEndTime >= cutoffTime) {
-            entry.past24hSeconds += (s.duration_minutes || 0) * 60;
-          }
-          if (sessionStartTime >= weekStartTime) {
-            entry.weeklySeconds += (s.duration_minutes || 0) * 60;
-            entry.weeklySessions += 1;
-          } else if (sessionEndTime > weekStartTime) {
-            // Session started before the week cutoff (e.g. Sunday late night) but ended inside current week
-            const minsInWeek = Math.max(0, Math.floor((sessionEndTime - weekStartTime) / 60000));
-            entry.weeklySeconds += Math.min(s.duration_minutes || 0, minsInWeek) * 60;
-            entry.weeklySessions += 1;
-          }
-          if (sessionEndTime > entry.latestSessionEndMs) {
-            entry.latestSessionEndMs = sessionEndTime;
-          }
-          statsMap.set(s.user_id, entry);
-        }
-      }
-
-      // Compute expected peak traffic range from past 3 days sessions
-      const peakHours = calculateExpectedPeakTraffic(rawSessions, serverNow);
-      setExpectedPeakHours(peakHours);
 
       if (data) {
-        const now = getServerNow();
-        const expiredUsers = (data as UserProfile[]).filter(
-          (u) =>
-            u.id !== currentUserIdRef.current &&
-            ((u.current_status === "break" && isMemberBreakExpired(u, now, 60)) ||
-              (u.current_status === "studying" && isMemberStudyExpired(u, now, 60)))
-        );
-
-        if (expiredUsers.length > 0) {
-          try {
-            const nowMs = now.getTime();
-            if (recentlyStoppedBreakUserIdsRef.current.size > 200) {
-              recentlyStoppedBreakUserIdsRef.current.clear();
-            }
-            expiredUsers.forEach((expired) => {
-              const lastAttempt = recentlyStoppedBreakUserIdsRef.current.get(expired.id) || 0;
-              if (nowMs - lastAttempt > 15000) {
-                recentlyStoppedBreakUserIdsRef.current.set(expired.id, nowMs);
-                Promise.resolve(
-                  (supabase as unknown as RpcCaller).rpc("rpc_stop_user_session", { p_user_id: expired.id })
-                )
-                  .then(({ error: rpcErr }) => {
-                    if (rpcErr) {
-                      console.warn("[LiveRoom] Auto-stop expired session RPC error:", rpcErr);
-                    }
-                  })
-                  .catch((err: unknown) => {
-                    console.warn("[LiveRoom] Auto-stop expired session failed:", err);
-                  });
-              }
-            });
-          } catch (autoStopErr) {
-            console.warn("[LiveRoom] Error initiating auto-stop for expired sessions:", autoStopErr);
-          }
-        }
-
-        const enriched = (data as UserProfile[]).map((u) => {
-          const stat = statsMap.get(u.id) || { past24hSeconds: 0, weeklySeconds: 0, weeklySessions: 0, totalSessions: 0, latestSessionEndMs: 0 };
-          const uLastOfflineMs = u.last_offline_at ? new Date(u.last_offline_at).getTime() : 0;
-          const bestOfflineMs = Math.max(
-            isNaN(uLastOfflineMs) ? 0 : uLastOfflineMs,
-            stat.latestSessionEndMs
-          );
-          const resolvedOfflineMs = bestOfflineMs > 0
-            ? bestOfflineMs
-            : u.created_at
-            ? new Date(u.created_at).getTime()
-            : 0;
-
-          const lb = leaderboardMap.get(u.id);
-          const isPresent = presentUserIdsRef.current.has(u.id) || (currentUserIdRef.current === u.id);
-
+        const liveMembers = (data as UserProfile[]).map((u) => {
           const existing = membersRef.current.find((m) => m.id === u.id);
           const lastVersion = memberVersionMapRef.current.get(u.id) || (existing?.state_version ?? 0);
           const restVersion = typeof u.state_version === "number" ? u.state_version : 0;
           const lastEpoch = memberEpochMapRef.current.get(u.id) || 0;
           const restEpoch = getMemberMutationEpoch(u);
 
+          const isCurrentUser = Boolean(currentUserIdRef.current && u.id === currentUserIdRef.current);
+          const isLocalActive = Boolean(existing && (existing.current_status === "studying" || existing.current_status === "break"));
+
           // MONOTONIC VERSIONING / REST RACE PROTECTION:
-          // If local state has a newer realtime broadcast/version event than this REST response:
-          // Preserve the newer live status fields from existing local member!
-          const isLocalNewer = (lastVersion > 0 && restVersion > 0 && lastVersion > restVersion) ||
-                               (lastVersion === restVersion && lastEpoch > restEpoch);
+          // 1. Current user active session in local memory is ALWAYS authoritative over stale REST (unless server has strictly higher state_version)
+          // 2. Local state has strictly higher state_version
+          // 3. Local state has equal version but strictly higher mutation epoch
+          // 4. Local state has versioned state while server has legacy unversioned row
+          // 5. Local member is studying/break and server returns stale offline row with older epoch
+          const isLocalNewer =
+            (isCurrentUser && isLocalActive && (restVersion === 0 || lastVersion >= restVersion)) ||
+            (lastVersion > 0 && restVersion > 0 && lastVersion > restVersion) ||
+            (lastVersion === restVersion && lastEpoch > restEpoch) ||
+            (lastVersion > 0 && restVersion === 0) ||
+            (lastEpoch > 0 && restEpoch === 0) ||
+            (isLocalActive && u.current_status === "offline" && (lastEpoch >= restEpoch - 2000));
+
+          const isPresent = presentUserIdsRef.current.has(u.id) || (currentUserIdRef.current === u.id);
 
           if (existing && isLocalNewer) {
             return {
@@ -390,13 +292,13 @@ export function useLiveRoom(currentUserId?: string) {
               last_resumed_at: existing.last_resumed_at,
               break_started_at: existing.break_started_at,
               active_study_seconds_snapshot: existing.active_study_seconds_snapshot,
-              last_offline_at: existing.last_offline_at ?? (resolvedOfflineMs > 0 ? new Date(resolvedOfflineMs).toISOString() : u.created_at),
-              past_24h_study_seconds: stat.past24hSeconds,
-              weekly_study_seconds: Math.max(stat.weeklySeconds, existing.weekly_study_seconds ?? 0),
-              total_sessions_count: stat.weeklySessions,
-              weekly_sessions_count: stat.weeklySessions,
-              leaderboard_score: lb ? lb.score : u.leaderboard_score,
-              leaderboard_rank: lb ? lb.rank : u.leaderboard_rank,
+              last_offline_at: existing.last_offline_at ?? u.last_offline_at ?? u.created_at,
+              past_24h_study_seconds: existing.past_24h_study_seconds ?? 0,
+              weekly_study_seconds: existing.weekly_study_seconds ?? 0,
+              total_sessions_count: existing.total_sessions_count ?? 0,
+              weekly_sessions_count: existing.weekly_sessions_count ?? 0,
+              leaderboard_score: existing.leaderboard_score ?? u.leaderboard_score,
+              leaderboard_rank: existing.leaderboard_rank ?? u.leaderboard_rank,
               is_present: isPresent,
               state_version: Math.max(lastVersion, restVersion),
             };
@@ -411,39 +313,161 @@ export function useLiveRoom(currentUserId?: string) {
 
           return {
             ...u,
-            last_offline_at: resolvedOfflineMs > 0 ? new Date(resolvedOfflineMs).toISOString() : u.created_at,
-            past_24h_study_seconds: stat.past24hSeconds,
-            weekly_study_seconds: stat.weeklySeconds,
-            total_sessions_count: stat.weeklySessions,
-            weekly_sessions_count: stat.weeklySessions,
-            leaderboard_score: lb ? lb.score : u.leaderboard_score,
-            leaderboard_rank: lb ? lb.rank : u.leaderboard_rank,
+            last_offline_at: u.last_offline_at ?? u.created_at,
+            past_24h_study_seconds: existing?.past_24h_study_seconds ?? 0,
+            weekly_study_seconds: existing?.weekly_study_seconds ?? 0,
+            total_sessions_count: existing?.total_sessions_count ?? 0,
+            weekly_sessions_count: existing?.weekly_sessions_count ?? 0,
+            leaderboard_score: existing?.leaderboard_score ?? u.leaderboard_score,
+            leaderboard_rank: existing?.leaderboard_rank ?? u.leaderboard_rank,
             is_present: isPresent,
             state_version: Math.max(lastVersion, restVersion),
           };
         });
-        setMembers(sortMembers(filterAdmin(enriched), currentUserIdRef.current));
+
+        const liveSorted = sortMembers(filterAdmin(liveMembers), currentUserIdRef.current);
+        setMembers(liveSorted);
+        saveCachedRoomMembers(liveSorted);
+        setLoading(false);
+        recordDiagEvent("critical_live_snapshot_rendered", { count: liveSorted.length }, Date.now() - fetchStartMs);
       }
 
-      // 5. Authoritative sync of global active rivalry win announcements across all devices
-      try {
-        const fifteenMinsAgoIso = new Date(serverNow.getTime() - 15 * 60 * 1000).toISOString();
-        const { data: winData, error: winErr } = await (supabase.from("rivalry_events") as any)
-          .select("id, resolution_id, rivalry_id, winner_id, winner_name, loser_id, loser_name, resolution_type, final_standings, occurred_at, created_at, rivalry_mode")
-          .gte("created_at", fifteenMinsAgoIso)
-          .order("created_at", { ascending: false })
-          .limit(10);
+      // =====================================================================
+      // PHASE 2: SECONDARY ASYNC ENRICHMENT
+      // Concurrently fetches study_sessions (past 24h & peak hours), leaderboard,
+      // and rivalry events in background. Updates secondary statistical fields
+      // WITHOUT touching active timer or session states.
+      // =====================================================================
+      const serverNow = getServerNow();
+      const cutoffTime = serverNow.getTime() - 24 * 60 * 60 * 1000;
+      const weekStartTime = getWeekStartTimestamp(serverNow);
+      const oldestRequiredTime = new Date(
+        Math.min(cutoffTime, weekStartTime, serverNow.getTime() - 4 * 86400000)
+      ).toISOString();
 
-        if (!winErr && winData && Array.isArray(winData) && winData.length > 0) {
+      let rpcPromise: PromiseLike<{ data: unknown; error: { message: string } | null }> | null = null;
+      try {
+        const res = (supabase as unknown as RpcCaller).rpc("rpc_get_leaderboard", {});
+        if (res && typeof res.then === "function") {
+          rpcPromise = res;
+        }
+      } catch {
+        // Graceful fallback
+      }
+
+      const secondaryPromise = Promise.allSettled([
+        supabase
+          .from("study_sessions")
+          .select("user_id, duration_minutes, end_time, start_time")
+          .gte("start_time", oldestRequiredTime),
+        rpcPromise ? Promise.resolve(rpcPromise) : Promise.resolve({ data: null, error: null }),
+        (async () => {
+          try {
+            const fifteenMinsAgoIso = new Date(serverNow.getTime() - 15 * 60 * 1000).toISOString();
+            return await (supabase.from("rivalry_events") as any)
+              .select("id, resolution_id, rivalry_id, winner_id, winner_name, loser_id, loser_name, resolution_type, final_standings, occurred_at, created_at, rivalry_mode")
+              .gte("created_at", fifteenMinsAgoIso)
+              .order("created_at", { ascending: false })
+              .limit(10);
+          } catch {
+            return { data: null, error: null };
+          }
+        })(),
+      ]).then(([sessionDataResult, leaderboardResult, rivalryResult]) => {
+        if (thisFetchGen !== fetchGenRef.current) return;
+
+        type SessionRow = { user_id: string; duration_minutes: number; end_time: string; start_time?: string };
+        const rawSessions =
+          sessionDataResult.status === "fulfilled"
+            ? (sessionDataResult.value.data as unknown as SessionRow[] | null)
+            : null;
+
+        const leaderboardMap = new Map<string, { score: number; rank: number }>();
+        if (
+          leaderboardResult.status === "fulfilled" &&
+          leaderboardResult.value &&
+          !leaderboardResult.value.error &&
+          Array.isArray(leaderboardResult.value.data)
+        ) {
+          leaderboardResult.value.data.forEach((entry: { user_id?: string; score?: number }, idx: number) => {
+            if (entry && entry.user_id) {
+              leaderboardMap.set(entry.user_id, {
+                score: typeof entry.score === "number" ? entry.score : 0,
+                rank: idx + 1,
+              });
+            }
+          });
+        }
+
+        const statsMap = new Map<string, { past24hSeconds: number; weeklySeconds: number; weeklySessions: number; totalSessions: number; latestSessionEndMs: number }>();
+        if (rawSessions) {
+          for (const s of rawSessions) {
+            const entry = statsMap.get(s.user_id) || { past24hSeconds: 0, weeklySeconds: 0, weeklySessions: 0, totalSessions: 0, latestSessionEndMs: 0 };
+            entry.totalSessions += 1;
+            const sessionStartTime = s.start_time ? new Date(s.start_time).getTime() : (s.end_time ? new Date(s.end_time).getTime() : 0);
+            const sessionEndTime = s.end_time ? new Date(s.end_time).getTime() : sessionStartTime;
+            if (sessionEndTime >= cutoffTime) {
+              entry.past24hSeconds += (s.duration_minutes || 0) * 60;
+            }
+            if (sessionStartTime >= weekStartTime) {
+              entry.weeklySeconds += (s.duration_minutes || 0) * 60;
+              entry.weeklySessions += 1;
+            } else if (sessionEndTime > weekStartTime) {
+              const minsInWeek = Math.max(0, Math.floor((sessionEndTime - weekStartTime) / 60000));
+              entry.weeklySeconds += Math.min(s.duration_minutes || 0, minsInWeek) * 60;
+              entry.weeklySessions += 1;
+            }
+            if (sessionEndTime > entry.latestSessionEndMs) {
+              entry.latestSessionEndMs = sessionEndTime;
+            }
+            statsMap.set(s.user_id, entry);
+          }
+        }
+
+        const peakHours = calculateExpectedPeakTraffic(rawSessions, serverNow);
+        setExpectedPeakHours(peakHours);
+
+        // Patch secondary stats into members list
+        setMembers((prevMembers) => {
+          const enriched = prevMembers.map((m) => {
+            const stat = statsMap.get(m.id);
+            const lb = leaderboardMap.get(m.id);
+            const mOfflineMs = m.last_offline_at ? new Date(m.last_offline_at).getTime() : 0;
+            const latestEndMs = stat?.latestSessionEndMs ?? 0;
+            const bestOfflineMs = Math.max(isNaN(mOfflineMs) ? 0 : mOfflineMs, latestEndMs);
+
+            return {
+              ...m,
+              past_24h_study_seconds: stat?.past24hSeconds ?? m.past_24h_study_seconds ?? 0,
+              weekly_study_seconds: stat?.weeklySeconds ?? m.weekly_study_seconds ?? 0,
+              total_sessions_count: stat?.weeklySessions ?? m.total_sessions_count ?? 0,
+              weekly_sessions_count: stat?.weeklySessions ?? m.weekly_sessions_count ?? 0,
+              leaderboard_score: lb ? lb.score : m.leaderboard_score,
+              leaderboard_rank: lb ? lb.rank : m.leaderboard_rank,
+              last_offline_at: m.current_status === "offline" && bestOfflineMs > 0
+                ? new Date(bestOfflineMs).toISOString()
+                : m.last_offline_at,
+            };
+          });
+          const sorted = sortMembers(filterAdmin(enriched), currentUserIdRef.current);
+          saveCachedRoomMembers(sorted);
+          return sorted;
+        });
+
+        // Parse rivalry win events
+        if (
+          rivalryResult.status === "fulfilled" &&
+          rivalryResult.value &&
+          !rivalryResult.value.error &&
+          Array.isArray(rivalryResult.value.data) &&
+          rivalryResult.value.data.length > 0
+        ) {
+          const winData = rivalryResult.value.data;
           const validWinEvents: RivalryWinEvent[] = [];
           for (const row of winData) {
-            if (row.resolution_type && row.resolution_type !== "WON") {
-              continue;
-            }
+            if (row.resolution_type && row.resolution_type !== "WON") continue;
             const resId = row.resolution_id || row.id;
-            if (isWinEventDismissed(resId, row.winner_name, row.loser_name)) {
-              continue;
-            }
+            if (isWinEventDismissed(resId, row.winner_name, row.loser_name)) continue;
             const eventTimestamp = row.occurred_at
               ? new Date(row.occurred_at).getTime()
               : (row.created_at ? new Date(row.created_at).getTime() : Date.now());
@@ -472,9 +496,38 @@ export function useLiveRoom(currentUserId?: string) {
             } catch {}
           }
         }
-      } catch {
-        // Non-blocking if rivalry_events table is not yet created
+
+        recordDiagEvent("secondary_enrichment_finished", { timestamp: Date.now() }, Date.now() - fetchStartMs);
+      });
+
+      // Background auto-stop expired sessions check
+      if (data) {
+        const now = getServerNow();
+        const expiredUsers = (data as UserProfile[]).filter(
+          (u) =>
+            u.id !== currentUserIdRef.current &&
+            ((u.current_status === "break" && isMemberBreakExpired(u, now, 60)) ||
+              (u.current_status === "studying" && isMemberStudyExpired(u, now, 60)))
+        );
+
+        if (expiredUsers.length > 0) {
+          const nowMs = now.getTime();
+          if (recentlyStoppedBreakUserIdsRef.current.size > 200) {
+            recentlyStoppedBreakUserIdsRef.current.clear();
+          }
+          expiredUsers.forEach((expired) => {
+            const lastAttempt = recentlyStoppedBreakUserIdsRef.current.get(expired.id) || 0;
+            if (nowMs - lastAttempt > 15000) {
+              recentlyStoppedBreakUserIdsRef.current.set(expired.id, nowMs);
+              Promise.resolve(
+                (supabase as unknown as RpcCaller).rpc("rpc_stop_user_session", { p_user_id: expired.id })
+              ).catch(() => {});
+            }
+          });
+        }
       }
+
+      await secondaryPromise;
     } catch (err) {
       console.error("Failed to fetch group members:", err);
       setError(err instanceof Error ? err.message : "Failed to load group members");
@@ -557,7 +610,9 @@ export function useLiveRoom(currentUserId?: string) {
         fetchMembersRef.current();
         return prevMembers;
       }
-      return sortMembers(filterAdmin(next), currentUserIdRef.current);
+      const sorted = sortMembers(filterAdmin(next), currentUserIdRef.current);
+      saveCachedRoomMembers(sorted);
+      return sorted;
     });
   }, []);
 
@@ -702,7 +757,7 @@ export function useLiveRoom(currentUserId?: string) {
 
     const delay = shouldBeImmediate ? 0 : backoffDelayRef.current;
     if (!shouldBeImmediate) {
-      backoffDelayRef.current = Math.min(10000, backoffDelayRef.current * 2);
+      backoffDelayRef.current = Math.min(3000, Math.floor(backoffDelayRef.current * 1.5));
     } else {
       backoffDelayRef.current = 1000;
     }
@@ -794,7 +849,13 @@ export function useLiveRoom(currentUserId?: string) {
         (msg) => {
           if (channelGenRef.current !== thisGen) return;
           if (msg.payload && (msg.payload as { id?: string }).id) {
-            applyProfileUpdateRef.current(msg.payload as Partial<UserProfile> & { id: string });
+            const payload = msg.payload as Partial<UserProfile> & { id: string };
+            const epoch = (payload as any).mutation_epoch;
+            if (typeof epoch === "number" && epoch > 0) {
+              const latencyMs = Math.max(0, Date.now() - epoch);
+              recordDiagEvent("broadcast_received", { senderId: payload.id, latencyMs }, latencyMs);
+            }
+            applyProfileUpdateRef.current(payload);
           }
         }
       )
@@ -821,14 +882,6 @@ export function useLiveRoom(currentUserId?: string) {
               return [win, ...filtered].slice(0, 10);
             });
           }
-        }
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "study_sessions" },
-        () => {
-          if (channelGenRef.current !== thisGen) return;
-          fetchMembersRef.current();
         }
       )
       .on(

@@ -60,14 +60,13 @@ export const SessionController = memo(function SessionController({
   const isBreak = controllerState === "break";
   const isHydratingState = controllerState === "hydrating";
 
-  const [submittingAction, setSubmittingAction] = useState<"pause" | "resume" | "stop" | "start" | null>(null);
-  const isAnySubmitting = isLoading || submittingAction !== null;
+  const [submittingAction, setSubmittingAction] = useState<"stop" | "start" | null>(null);
 
   const isGoalMissingOrExpired = !activeGoal || countdown.isExpired;
 
   // Direct Start Studying Flow - immediately starts or prompts for goal setup
   const handleStartStudyingClick = async () => {
-    if (isAnySubmitting) return;
+    if (submittingAction !== null) return;
     setSubmittingAction("start");
     // Request notification permission during direct user gesture
     requestNotificationPermission().catch(() => {});
@@ -85,7 +84,7 @@ export const SessionController = memo(function SessionController({
   };
 
   const handleStop = async () => {
-    if (isAnySubmitting) return;
+    if (submittingAction !== null) return;
     setSubmittingAction("stop");
     try {
       await onFinishSession([]);
@@ -111,28 +110,22 @@ export const SessionController = memo(function SessionController({
   };
 
   const handlePause = React.useCallback(async () => {
-    if (isLoading || submittingAction !== null) return;
-    setSubmittingAction("pause");
+    if (submittingAction === "stop") return;
     try {
       await onPauseSession();
     } catch {
       // handled by parent
-    } finally {
-      setSubmittingAction(null);
     }
-  }, [onPauseSession, isLoading, submittingAction]);
+  }, [onPauseSession, submittingAction]);
 
   const handleResume = React.useCallback(async () => {
-    if (isLoading || submittingAction !== null) return;
-    setSubmittingAction("resume");
+    if (submittingAction === "stop") return;
     try {
       await onResumeSession();
     } catch {
       // handled by parent
-    } finally {
-      setSubmittingAction(null);
     }
-  }, [onResumeSession, isLoading, submittingAction]);
+  }, [onResumeSession, submittingAction]);
 
   React.useEffect(() => {
     if (isBreak) {
@@ -212,8 +205,8 @@ export const SessionController = memo(function SessionController({
               size="lg"
               variant="primary"
               onClick={handleStartStudyingClick}
-              isLoading={submittingAction === "start" || (isLoading && submittingAction === null)}
-              disabled={isAnySubmitting}
+              isLoading={submittingAction === "start"}
+              disabled={submittingAction === "start" || submittingAction === "stop"}
               className="w-full font-extrabold text-xs sm:text-sm py-3.5 space-x-2 shadow-lg"
             >
               <Play className="w-4 h-4 sm:w-5 sm:h-5 fill-current text-zinc-950" />
@@ -227,8 +220,7 @@ export const SessionController = memo(function SessionController({
                 size="md"
                 variant="secondary"
                 onClick={handlePause}
-                isLoading={submittingAction === "pause"}
-                disabled={isAnySubmitting}
+                disabled={submittingAction === "stop"}
                 className="flex-1 space-x-2 border-amber-500/30 text-amber-300 hover:bg-amber-500/10 font-bold"
               >
                 <Pause className="w-4 h-4 fill-current" />
@@ -238,8 +230,8 @@ export const SessionController = memo(function SessionController({
                 size="md"
                 variant="danger"
                 onClick={handleStop}
-                isLoading={submittingAction === "stop" || (isLoading && submittingAction === null)}
-                disabled={isAnySubmitting}
+                isLoading={submittingAction === "stop"}
+                disabled={submittingAction === "stop"}
                 className="flex-1 space-x-2 font-bold"
               >
                 <Square className="w-4 h-4 fill-current" />
@@ -254,8 +246,7 @@ export const SessionController = memo(function SessionController({
                 size="md"
                 variant="primary"
                 onClick={handleResume}
-                isLoading={submittingAction === "resume"}
-                disabled={isAnySubmitting}
+                disabled={submittingAction === "stop"}
                 className="flex-1 space-x-2 font-extrabold"
               >
                 <RotateCcw className="w-4 h-4" />
@@ -265,8 +256,8 @@ export const SessionController = memo(function SessionController({
                 size="md"
                 variant="danger"
                 onClick={handleStop}
-                isLoading={submittingAction === "stop" || (isLoading && submittingAction === null)}
-                disabled={isAnySubmitting}
+                isLoading={submittingAction === "stop"}
+                disabled={submittingAction === "stop"}
                 className="flex-1 space-x-2 font-bold"
               >
                 <Square className="w-4 h-4 fill-current" />

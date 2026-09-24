@@ -506,6 +506,32 @@ export function saveCachedSessions(sessions: unknown): void {
   } catch {}
 }
 
+export function getCachedRoomMembers<T = unknown>(): T[] | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.CACHED_ROOM_MEMBERS);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      localStorage.removeItem(STORAGE_KEYS.CACHED_ROOM_MEMBERS);
+      return null;
+    }
+    return parsed as T[];
+  } catch {
+    try {
+      localStorage.removeItem(STORAGE_KEYS.CACHED_ROOM_MEMBERS);
+    } catch {}
+    return null;
+  }
+}
+
+export function saveCachedRoomMembers(members: unknown): void {
+  if (typeof window === "undefined" || !members || !Array.isArray(members)) return;
+  try {
+    localStorage.setItem(STORAGE_KEYS.CACHED_ROOM_MEMBERS, JSON.stringify(members));
+  } catch {}
+}
+
 export function clearUserHistoryCache(userId?: string): void {
   if (typeof window === "undefined") return;
   try {
