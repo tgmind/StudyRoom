@@ -4,6 +4,7 @@ import ReactDOMServer from "react-dom/server";
 import { render, screen } from "@testing-library/react";
 import { SessionController } from "@/components/session/SessionController";
 import { RivalryWinCelebration } from "@/components/room/RivalryWinCelebration";
+import { TopHeader } from "@/components/navigation/TopHeader";
 
 describe("Deterministic SSR and Client Hydration Architecture", () => {
   const dummyProps = {
@@ -174,4 +175,79 @@ describe("Deterministic SSR and Client Hydration Architecture", () => {
     expect(html).toContain("Alice");
     expect(html).toContain("Bob");
   });
+
+  describe("TopHeader Hydration Parity", () => {
+    it("SSR RENDER: TopHeader with initial memberCount=0 produces no member badge or mismatch markers", () => {
+      const html = ReactDOMServer.renderToString(
+        <TopHeader
+          memberCount={0}
+          isRealtimeConnected={false}
+          connectionState="connecting"
+          profile={null}
+        />
+      );
+
+      // Must render brand
+      expect(html).toContain("StudyRoom");
+      // Must NOT render member count badge when count is 0
+      expect(html).not.toContain("members");
+      expect(html).not.toContain("member");
+      // Must NOT render profile avatar when profile is null or unmounted
+      expect(html).not.toContain("Account & Settings");
+    });
+
+    it("CLIENT HYDRATION PARITY: TopHeader initial render with memberCount=0 matches SSR markup structurally", () => {
+      const { container } = render(
+        <TopHeader
+          memberCount={0}
+          isRealtimeConnected={false}
+          connectionState="connecting"
+          profile={null}
+        />
+      );
+
+      expect(screen.getByText("StudyRoom")).toBeInTheDocument();
+      expect(screen.queryByText(/members/i)).toBeNull();
+      expect(screen.queryByText(/member/i)).toBeNull();
+      expect(container.querySelector(".shrink-0")).toBeInTheDocument(); // StudyRoom Link is shrink-0
+    });
+
+    it("POST-HYDRATION UPDATE: TopHeader renders memberCount badge and connection dot when members arrive", () => {
+      const { rerender } = render(
+        <TopHeader
+          memberCount={0}
+          isRealtimeConnected={false}
+          connectionState="connecting"
+          profile={null}
+        />
+      );
+
+      // Members hydrate after mount effect / network resolves
+      rerender(
+        <TopHeader
+          memberCount={13}
+          isRealtimeConnected={true}
+          connectionState="connected"
+          profile={null}
+        />
+      );
+
+      expect(screen.getByText("13 members")).toBeInTheDocument();
+      expect(screen.getByTitle("Connected")).toBeInTheDocument();
+    });
+
+    it("CONNECTING STATE: TopHeader displays dedicated 'Connecting...' state instead of falling through to Connected", () => {
+      render(
+        <TopHeader
+          memberCount={5}
+          connectionState="connecting"
+          profile={null}
+        />
+      );
+
+      expect(screen.getByTitle("Connecting...")).toBeInTheDocument();
+      expect(screen.getByText("5 members")).toBeInTheDocument();
+    });
+  });
 });
+

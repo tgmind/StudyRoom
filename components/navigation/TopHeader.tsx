@@ -30,6 +30,7 @@ export const TopHeader = memo(function TopHeader({
     : "??";
 
   const isReconnecting = connectionState === "reconnecting";
+  const isConnecting = connectionState === "connecting";
   const isOffline = connectionState === "offline" || (!connectionState && !isRealtimeConnected);
   const isConnected = connectionState === "connected" || (!connectionState && isRealtimeConnected);
 
@@ -52,11 +53,21 @@ export const TopHeader = memo(function TopHeader({
                   className={`w-2 h-2 rounded-full ${
                     isReconnecting
                       ? "bg-amber-400 animate-pulse"
+                      : isConnecting
+                      ? "bg-sky-400 animate-pulse"
                       : isOffline
                       ? "bg-zinc-600"
                       : "bg-fuchsia-500 animate-pulse"
                   }`}
-                  title={isReconnecting ? "Reconnecting..." : isOffline ? "Offline" : "Connected"}
+                  title={
+                    isReconnecting
+                      ? "Reconnecting..."
+                      : isConnecting
+                      ? "Connecting..."
+                      : isOffline
+                      ? "Offline"
+                      : "Connected"
+                  }
                 />
                 <span>
                   {memberCount} {memberCount === 1 ? "member" : "members"}

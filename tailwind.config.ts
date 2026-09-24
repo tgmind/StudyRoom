@@ -9,6 +9,9 @@ const config: Config = {
   safelist: ["grid-cols-7"],
   theme: {
     extend: {
+      screens: {
+        xs: "475px",
+      },
       colors: {
         background: "#09090b",
         foreground: "#fafafa",

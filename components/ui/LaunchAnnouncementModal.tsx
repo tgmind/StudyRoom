@@ -56,7 +56,8 @@ export function LaunchAnnouncementModal() {
     pathname === "/onboarding" ||
     pathname.startsWith("/login") ||
     pathname.startsWith("/signup") ||
-    pathname.startsWith("/onboarding");
+    pathname.startsWith("/onboarding") ||
+    pathname.startsWith("/public");
 
   useEffect(() => {
     // 1. Strictly do NOT show on login, signup, or onboarding pages

@@ -134,14 +134,9 @@ export function markChannelClosed(channel: any) {
 }
 
 export function useLiveRoom(currentUserId?: string) {
-  const [members, setMembers] = useState<UserProfile[]>(() => {
-    const cached = getCachedRoomMembers<UserProfile>();
-    return cached && cached.length > 0 ? sortMembers(filterAdmin(cached), currentUserId) : [];
-  });
-  const [loading, setLoading] = useState<boolean>(() => {
-    const cached = getCachedRoomMembers<UserProfile>();
-    return !cached || cached.length === 0;
-  });
+  // Deterministic SSR & first-client-render initial state
+  const [members, setMembers] = useState<UserProfile[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
   const [connectionState, setConnectionState] = useState<RealtimeConnectionState>("connecting");
   const [presentUserIds, setPresentUserIds] = useState<Set<string>>(() => new Set());
@@ -163,12 +158,14 @@ export function useLiveRoom(currentUserId?: string) {
   const channelGenRef = useRef<number>(0);
   const fetchGenRef = useRef<number>(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debouncedFetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const backoffDelayRef = useRef<number>(1000);
   const lifecycleRef = useRef<ChannelLifecycleState>("idle");
   const createAndSubscribeChannelRef = useRef<(force?: boolean) => void>(() => {});
   const ensureRoomChannelRef = useRef<(forceRecreate?: boolean) => void>(() => {});
   const recentlyStoppedBreakUserIdsRef = useRef<Map<string, number>>(new Map());
   const fetchMembersRef = useRef<() => Promise<void>>(() => Promise.resolve());
+  const triggerDebouncedFetchRef = useRef<() => void>(() => {});
   const applyProfileUpdateRef = useRef<(updatedProfile: Partial<UserProfile> & { id: string }) => void>(() => {});
   const updateActiveWinEventRef = useRef<(newEvent: RivalryWinEvent | null) => void>(() => {});
 
@@ -269,18 +266,21 @@ export function useLiveRoom(currentUserId?: string) {
           const isLocalActive = Boolean(existing && (existing.current_status === "studying" || existing.current_status === "break"));
 
           // MONOTONIC VERSIONING / REST RACE PROTECTION:
-          // 1. Current user active session in local memory is ALWAYS authoritative over stale REST (unless server has strictly higher state_version)
-          // 2. Local state has strictly higher state_version
-          // 3. Local state has equal version but strictly higher mutation epoch
-          // 4. Local state has versioned state while server has legacy unversioned row
-          // 5. Local member is studying/break and server returns stale offline row with older epoch
-          const isLocalNewer =
-            (isCurrentUser && isLocalActive && (restVersion === 0 || lastVersion >= restVersion)) ||
-            (lastVersion > 0 && restVersion > 0 && lastVersion > restVersion) ||
-            (lastVersion === restVersion && lastEpoch > restEpoch) ||
-            (lastVersion > 0 && restVersion === 0) ||
-            (lastEpoch > 0 && restEpoch === 0) ||
-            (isLocalActive && u.current_status === "offline" && (lastEpoch >= restEpoch - 2000));
+          // 1. Current user active session in local memory is ALWAYS authoritative over stale REST responses.
+          // 2. For peer members: local state is preserved only if it was updated by a newer live realtime broadcast
+          //    with a strictly higher state_version or strictly newer mutation epoch.
+          //    Stale local cache (e.g. from localStorage on initial render) has no in-memory version/epoch and
+          //    will never override authoritative server state.
+          let isLocalNewer = false;
+          if (isCurrentUser) {
+            isLocalNewer = isLocalActive && (restVersion === 0 || lastVersion >= restVersion);
+          } else if (existing) {
+            if (lastVersion > 0 && restVersion > 0) {
+              isLocalNewer = lastVersion > restVersion;
+            } else if (lastEpoch > 0 && restEpoch > 0) {
+              isLocalNewer = lastEpoch > restEpoch;
+            }
+          }
 
           const isPresent = presentUserIdsRef.current.has(u.id) || (currentUserIdRef.current === u.id);
 
@@ -304,15 +304,27 @@ export function useLiveRoom(currentUserId?: string) {
             };
           }
 
-          if (restVersion > 0) {
-            memberVersionMapRef.current.set(u.id, Math.max(lastVersion, restVersion));
-          }
-          if (restEpoch > 0) {
-            memberEpochMapRef.current.set(u.id, Math.max(lastEpoch, restEpoch));
+          if (u.current_status === "offline") {
+            memberVersionMapRef.current.delete(u.id);
+            if (restEpoch > 0) {
+              memberEpochMapRef.current.set(u.id, restEpoch);
+            }
+          } else {
+            if (restVersion > 0) {
+              memberVersionMapRef.current.set(u.id, Math.max(lastVersion, restVersion));
+            }
+            if (restEpoch > 0) {
+              memberEpochMapRef.current.set(u.id, Math.max(lastEpoch, restEpoch));
+            }
           }
 
           return {
             ...u,
+            session_start_time: u.current_status === "offline" ? null : u.session_start_time,
+            break_started_at: u.current_status === "offline" ? null : u.break_started_at,
+            last_resumed_at: u.current_status === "offline" ? null : u.last_resumed_at,
+            active_study_seconds_snapshot: u.current_status === "offline" ? 0 : (u.active_study_seconds_snapshot ?? 0),
+            current_focus: u.current_status === "offline" ? null : u.current_focus,
             last_offline_at: u.last_offline_at ?? u.created_at,
             past_24h_study_seconds: existing?.past_24h_study_seconds ?? 0,
             weekly_study_seconds: existing?.weekly_study_seconds ?? 0,
@@ -548,25 +560,54 @@ export function useLiveRoom(currentUserId?: string) {
       return;
     }
 
+    const isOfflineUpdate = updatedProfile.current_status === "offline";
+
     // Monotonic Version & Epoch Check: Reject stale / out-of-order realtime updates
     const incomingVersion = typeof updatedProfile.state_version === "number" ? updatedProfile.state_version : 0;
     const currentKnownVersion = memberVersionMapRef.current.get(updatedProfile.id) || 0;
-    if (incomingVersion > 0 && incomingVersion < currentKnownVersion) {
-      // Stale out-of-order broadcast/change with older version: drop
-      return;
-    }
-    if (incomingVersion > 0) {
-      memberVersionMapRef.current.set(updatedProfile.id, Math.max(currentKnownVersion, incomingVersion));
-    }
-
     const incomingEpoch = getMemberMutationEpoch(updatedProfile);
     const currentKnownEpoch = memberEpochMapRef.current.get(updatedProfile.id) || 0;
-    if (incomingVersion === 0 && incomingEpoch > 0 && incomingEpoch < currentKnownEpoch) {
-      // Stale out-of-order broadcast/change without version: ignore
-      return;
-    }
-    if (incomingEpoch > 0) {
-      memberEpochMapRef.current.set(updatedProfile.id, Math.max(currentKnownEpoch, incomingEpoch));
+
+    if (isOfflineUpdate) {
+      // Offline transition:
+      // The only scenario to drop an offline update is if the local client is ALREADY tracking
+      // a newer active session for this member that started after this offline event.
+      const existing = membersRef.current.find((m) => m.id === updatedProfile.id);
+      if (
+        existing &&
+        (existing.current_status === "studying" || existing.current_status === "break") &&
+        existing.session_start_time
+      ) {
+        const existingStartMs = new Date(existing.session_start_time).getTime();
+        const offlineMs = updatedProfile.last_offline_at
+          ? new Date(updatedProfile.last_offline_at).getTime()
+          : incomingEpoch;
+        if (offlineMs > 0 && existingStartMs > 0 && offlineMs < existingStartMs - 5000) {
+          // Obsolete offline packet from a previous session that ended before the current active session started
+          return;
+        }
+      }
+      // Member is transitioning to offline: clean up version map to prevent version poisoning
+      memberVersionMapRef.current.delete(updatedProfile.id);
+      if (incomingEpoch > 0) {
+        memberEpochMapRef.current.set(updatedProfile.id, Math.max(currentKnownEpoch, incomingEpoch));
+      }
+    } else {
+      // Active status update (studying / break): apply monotonic guards
+      if (incomingVersion > 0 && incomingVersion < currentKnownVersion) {
+        // Stale out-of-order broadcast/change with older version: drop
+        return;
+      }
+      if (incomingVersion > 0) {
+        memberVersionMapRef.current.set(updatedProfile.id, Math.max(currentKnownVersion, incomingVersion));
+      }
+      if (incomingVersion === 0 && incomingEpoch > 0 && incomingEpoch < currentKnownEpoch) {
+        // Stale out-of-order broadcast/change without version: ignore
+        return;
+      }
+      if (incomingEpoch > 0) {
+        memberEpochMapRef.current.set(updatedProfile.id, Math.max(currentKnownEpoch, incomingEpoch));
+      }
     }
 
     const cleanUpdates = Object.fromEntries(
@@ -576,11 +617,16 @@ export function useLiveRoom(currentUserId?: string) {
     setMembers((prevMembers) => {
       const exists = prevMembers.some((m) => m.id === updatedProfile.id);
       let next: UserProfile[];
+      let shouldDebounceRefresh = false;
+
       if (exists) {
         next = prevMembers.map((m) => {
           if (m.id === updatedProfile.id) {
             const isTransitioningToOffline =
               cleanUpdates.current_status === "offline" && m.current_status !== "offline";
+            if (isTransitioningToOffline) {
+              shouldDebounceRefresh = true;
+            }
             const newOfflineAt = isTransitioningToOffline
               ? getServerNow().toISOString()
               : cleanUpdates.last_offline_at ?? m.last_offline_at;
@@ -588,6 +634,27 @@ export function useLiveRoom(currentUserId?: string) {
               cleanUpdates.is_present !== undefined
                 ? cleanUpdates.is_present
                 : presentUserIdsRef.current.has(m.id) || m.id === currentUserIdRef.current;
+
+            if (cleanUpdates.current_status === "offline") {
+              return {
+                ...m,
+                ...cleanUpdates,
+                current_status: "offline",
+                session_start_time: null,
+                break_started_at: null,
+                last_resumed_at: null,
+                active_study_seconds_snapshot: 0,
+                current_focus: null,
+                is_present: isPresent,
+                last_offline_at: newOfflineAt,
+                past_24h_study_seconds: cleanUpdates.past_24h_study_seconds ?? m.past_24h_study_seconds ?? 0,
+                weekly_study_seconds: cleanUpdates.weekly_study_seconds ?? m.weekly_study_seconds ?? 0,
+                total_sessions_count: cleanUpdates.total_sessions_count ?? m.total_sessions_count ?? 0,
+                weekly_sessions_count: cleanUpdates.weekly_sessions_count ?? m.weekly_sessions_count ?? 0,
+                state_version: 0,
+              };
+            }
+
             return {
               ...m,
               ...cleanUpdates,
@@ -612,9 +679,23 @@ export function useLiveRoom(currentUserId?: string) {
       }
       const sorted = sortMembers(filterAdmin(next), currentUserIdRef.current);
       saveCachedRoomMembers(sorted);
+      if (shouldDebounceRefresh) {
+        triggerDebouncedFetchRef.current?.();
+      }
       return sorted;
     });
   }, []);
+
+  const triggerDebouncedFetch = useCallback(() => {
+    if (debouncedFetchTimerRef.current) {
+      clearTimeout(debouncedFetchTimerRef.current);
+    }
+    debouncedFetchTimerRef.current = setTimeout(() => {
+      debouncedFetchTimerRef.current = null;
+      fetchMembersRef.current();
+    }, 500);
+  }, []);
+  triggerDebouncedFetchRef.current = triggerDebouncedFetch;
 
   fetchMembersRef.current = fetchMembers;
   applyProfileUpdateRef.current = applyProfileUpdate;
@@ -622,17 +703,29 @@ export function useLiveRoom(currentUserId?: string) {
 
   // Broadcast function to immediately notify all peers over WebSockets without DB lag
   const broadcastStatusChange = useCallback(async (payload: Partial<UserProfile> & { id: string }) => {
-    // 1. Update mutation version and epoch for current user
+    const isOffline = payload.current_status === "offline";
     const payloadEpoch = (payload as any).mutation_epoch || getMemberMutationEpoch(payload) || Date.now();
-    const currentVer = memberVersionMapRef.current.get(payload.id) || (payload.state_version ?? 0);
-    const nextVer = (payload.state_version && payload.state_version > currentVer)
-      ? payload.state_version
-      : currentVer + 1;
-    memberVersionMapRef.current.set(payload.id, nextVer);
-    memberEpochMapRef.current.set(payload.id, Math.max(memberEpochMapRef.current.get(payload.id) || 0, payloadEpoch));
+
+    let nextVer = 0;
+    if (isOffline) {
+      memberVersionMapRef.current.delete(payload.id);
+      memberEpochMapRef.current.set(payload.id, Math.max(memberEpochMapRef.current.get(payload.id) || 0, payloadEpoch));
+    } else {
+      const currentVer = memberVersionMapRef.current.get(payload.id) || (payload.state_version ?? 0);
+      nextVer = (payload.state_version && payload.state_version > currentVer)
+        ? payload.state_version
+        : currentVer + 1;
+      memberVersionMapRef.current.set(payload.id, nextVer);
+      memberEpochMapRef.current.set(payload.id, Math.max(memberEpochMapRef.current.get(payload.id) || 0, payloadEpoch));
+    }
 
     const enrichedPayload = {
       ...payload,
+      session_start_time: isOffline ? null : payload.session_start_time,
+      break_started_at: isOffline ? null : payload.break_started_at,
+      last_resumed_at: isOffline ? null : payload.last_resumed_at,
+      active_study_seconds_snapshot: isOffline ? 0 : payload.active_study_seconds_snapshot,
+      current_focus: isOffline ? null : payload.current_focus,
       state_version: nextVer,
       mutation_epoch: payloadEpoch,
     };
@@ -844,6 +937,14 @@ export function useLiveRoom(currentUserId?: string) {
         }
       )
       .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "study_sessions" },
+        () => {
+          if (channelGenRef.current !== thisGen) return;
+          triggerDebouncedFetchRef.current?.();
+        }
+      )
+      .on(
         "broadcast",
         { event: "member_status_update" },
         (msg) => {
@@ -1044,6 +1145,14 @@ export function useLiveRoom(currentUserId?: string) {
     // Reset lifecycle on mount so StrictMode / Fast Refresh re-mount does not lock out channel creation
     lifecycleRef.current = "idle";
 
+    // Hydrate cached members from localStorage immediately on client mount
+    // This maintains instant offline UX while establishing the invariant: SSR HTML === first client render HTML
+    const cached = getCachedRoomMembers<UserProfile>();
+    if (cached && cached.length > 0) {
+      setMembers(sortMembers(filterAdmin(cached), currentUserIdRef.current));
+      setLoading(false);
+    }
+
     // 1. Initial fetch
     fetchMembersRef.current();
 
@@ -1099,6 +1208,10 @@ export function useLiveRoom(currentUserId?: string) {
       if (reconnectTimerRef.current) {
         clearTimeout(reconnectTimerRef.current);
         reconnectTimerRef.current = null;
+      }
+      if (debouncedFetchTimerRef.current) {
+        clearTimeout(debouncedFetchTimerRef.current);
+        debouncedFetchTimerRef.current = null;
       }
       if (channelRef.current) {
         const ch = channelRef.current;

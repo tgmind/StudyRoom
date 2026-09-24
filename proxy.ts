@@ -18,7 +18,8 @@ export const config = {
      * - icons/ (PWA icons)
      * - offline.html (Offline page)
      * - api/ (API routes)
+     * - public (Public landing website and public admin)
      */
-    "/((?!_next/static|_next/image|favicon.ico|manifest.json|sw.js|icons/|offline.html|api/).*)",
+    "/((?!_next/static|_next/image|favicon.ico|manifest.json|sw.js|icons/|offline.html|api/|public).*)",
   ],
 };
