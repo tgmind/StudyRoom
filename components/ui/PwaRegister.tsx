@@ -1,11 +1,30 @@
 "use client";
 
 import { useEffect } from "react";
+import { scheduleStartupCleanup } from "@/lib/cache/cacheManager";
 
 export function PwaRegister() {
   useEffect(() => {
+    // Schedule asynchronous idle cache maintenance (with 24h cooldown)
+    const cancelCleanup = scheduleStartupCleanup();
+
+    const handleVisibility = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        scheduleStartupCleanup();
+      }
+    };
+
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", handleVisibility);
+    }
+
     if (typeof window === "undefined" || !("serviceWorker" in navigator)) {
-      return;
+      return () => {
+        cancelCleanup();
+        if (typeof document !== "undefined") {
+          document.removeEventListener("visibilitychange", handleVisibility);
+        }
+      };
     }
 
     // In development or localhost, unregister any active service workers to prevent
@@ -27,7 +46,12 @@ export function PwaRegister() {
           }
         });
       }
-      return;
+      return () => {
+        cancelCleanup();
+        if (typeof document !== "undefined") {
+          document.removeEventListener("visibilitychange", handleVisibility);
+        }
+      };
     }
 
     const registerSw = () => {
@@ -57,9 +81,23 @@ export function PwaRegister() {
       registerSw();
     } else {
       window.addEventListener("load", registerSw);
-      return () => window.removeEventListener("load", registerSw);
+      return () => {
+        cancelCleanup();
+        window.removeEventListener("load", registerSw);
+        if (typeof document !== "undefined") {
+          document.removeEventListener("visibilitychange", handleVisibility);
+        }
+      };
     }
+
+    return () => {
+      cancelCleanup();
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", handleVisibility);
+      }
+    };
   }, []);
 
   return null;
 }
+

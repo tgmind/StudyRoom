@@ -5,6 +5,7 @@ import Link from "next/link";
 import { PublicWebsiteContent, PaymentSubmission, PublicCoupon, ReferralEnrollment } from "@/lib/public-website/types";
 import { DEFAULT_PUBLIC_CONTENT } from "@/lib/public-website/defaultContent";
 import { extractDriveId, getDriveImageUrls } from "@/lib/public-website/driveUtils";
+import { synchronizeContentPricing } from "@/lib/public-website/priceUtils";
 import {
   Lock,
   Unlock,
@@ -25,6 +26,7 @@ import {
   LogOut,
   Ticket,
   Plus,
+  Trash2,
 } from "lucide-react";
 
 export default function PublicSiteAdminPage() {
@@ -236,6 +238,133 @@ export default function PublicSiteAdminPage() {
     }
   };
 
+  const formatSafeDateTime = (val: string | null | undefined) => {
+    if (!val) return "—";
+    const d = new Date(val);
+    if (isNaN(d.getTime())) return "—";
+    return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+  };
+
+  const handleDeleteSubmission = async (id: string) => {
+    if (!confirm("Are you sure you want to permanently delete this payment submission?")) {
+      return;
+    }
+    try {
+      const res = await fetch("/api/public-website/admin/submissions", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to delete submission.");
+      setSubmissions((prev) => prev.filter((s) => s.id !== id));
+      setSaveToast("Submission deleted successfully.");
+      setTimeout(() => setSaveToast(null), 3000);
+    } catch (err: any) {
+      alert(err.message || "Failed to delete submission.");
+    }
+  };
+
+  const handleClearRejectedSubmissions = async () => {
+    if (!confirm("Are you sure you want to delete all rejected payment submissions?")) {
+      return;
+    }
+    try {
+      const res = await fetch("/api/public-website/admin/submissions", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "rejected" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to clear rejected submissions.");
+      setSubmissions((prev) => prev.filter((s) => s.status !== "rejected"));
+      setSaveToast("All rejected submissions deleted.");
+      setTimeout(() => setSaveToast(null), 3000);
+    } catch (err: any) {
+      alert(err.message || "Failed to clear rejected submissions.");
+    }
+  };
+
+  const handleClearAllSubmissions = async () => {
+    if (!confirm("Are you sure you want to delete ALL payment submissions from the database?")) {
+      return;
+    }
+    try {
+      const res = await fetch("/api/public-website/admin/submissions", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ all: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to clear submissions.");
+      setSubmissions([]);
+      setSaveToast("All payment submissions deleted.");
+      setTimeout(() => setSaveToast(null), 3000);
+    } catch (err: any) {
+      alert(err.message || "Failed to clear submissions.");
+    }
+  };
+
+  const handleDeleteCoupon = async (code: string) => {
+    if (!confirm(`Are you sure you want to permanently delete coupon "${code}"?`)) {
+      return;
+    }
+    try {
+      const res = await fetch("/api/public-website/admin/coupons", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "coupon", code }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to delete coupon.");
+      setCoupons((prev) => prev.filter((c) => c.code.toUpperCase() !== code.toUpperCase()));
+      setSaveToast(`Coupon "${code}" deleted successfully.`);
+      setTimeout(() => setSaveToast(null), 3000);
+    } catch (err: any) {
+      alert(err.message || "Failed to delete coupon.");
+    }
+  };
+
+  const handleDeleteReferral = async (id: string) => {
+    if (!confirm("Are you sure you want to permanently delete this referral enrollment?")) {
+      return;
+    }
+    try {
+      const res = await fetch("/api/public-website/admin/coupons", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "referral", id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to delete referral.");
+      setReferrals((prev) => prev.filter((r) => r.id !== id));
+      setSaveToast("Referral enrollment deleted successfully.");
+      setTimeout(() => setSaveToast(null), 3000);
+    } catch (err: any) {
+      alert(err.message || "Failed to delete referral.");
+    }
+  };
+
+  const handleClearAllReferrals = async () => {
+    if (!confirm("Are you sure you want to delete ALL referral enrollments? This cannot be undone.")) {
+      return;
+    }
+    try {
+      const res = await fetch("/api/public-website/admin/coupons", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "all_referrals" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to clear referrals.");
+      setReferrals([]);
+      setSaveToast("All referral enrollments cleared.");
+      setTimeout(() => setSaveToast(null), 3000);
+    } catch (err: any) {
+      alert(err.message || "Failed to clear referrals.");
+    }
+  };
+
   // Google Drive Preview Helper
   const qrDriveId = extractDriveId(content.branding.qrCodeDriveUrl);
   const qrPreviewUrls = getDriveImageUrls(content.branding.qrCodeDriveUrl);
@@ -377,7 +506,7 @@ export default function PublicSiteAdminPage() {
             { id: "sections", label: "Hero & Features" },
             { id: "conditions", label: "Rules & Policies" },
             { id: "faqs", label: "FAQs" },
-            { id: "submissions", label: `₹50 Submissions (${submissions.filter((s) => s.status === "pending").length} pending)` },
+            { id: "submissions", label: `₹${content.membership?.priceInr ?? 50} Submissions (${submissions.filter((s) => s.status === "pending").length} pending)` },
             { id: "coupons", label: `Referral Coupons (${coupons.filter((c) => c.isActive).length} active)` },
           ].map((tab) => (
             <button
@@ -656,20 +785,28 @@ export default function PublicSiteAdminPage() {
                 </label>
                 <input
                   type="number"
-                  value={content.membership.priceInr}
-                  onChange={(e) =>
-                    setContent({
-                      ...content,
-                      membership: {
-                        ...content.membership,
-                        priceInr: Number(e.target.value) || 50,
-                      },
-                    })
-                  }
+                  min="0"
+                  value={content.membership?.priceInr ?? 50}
+                  onChange={(e) => {
+                    const val = e.target.value === "" ? 0 : parseInt(e.target.value, 10);
+                    const newPrice = isNaN(val) ? 50 : Math.max(0, val);
+                    setContent((prev) =>
+                      synchronizeContentPricing(
+                        {
+                          ...prev,
+                          membership: {
+                            ...prev.membership,
+                            priceInr: newPrice,
+                          },
+                        },
+                        newPrice
+                      )
+                    );
+                  }}
                   className="w-36 rounded-xl border border-amber-300 bg-white px-3.5 py-2 text-lg font-black text-amber-900 outline-none focus:border-[#0b73e6]"
                 />
                 <span className="ml-3 text-xs font-bold text-amber-800">
-                  Default: ₹50 one-time
+                  Current: ₹{content.membership?.priceInr ?? 50} (Default: ₹50 one-time)
                 </span>
               </div>
             </div>
@@ -766,15 +903,37 @@ export default function PublicSiteAdminPage() {
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={fetchSubmissions}
-                disabled={loadingSubmissions}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
-              >
-                <RefreshCw className={`h-3.5 w-3.5 ${loadingSubmissions ? "animate-spin" : ""}`} />
-                <span>Refresh</span>
-              </button>
+              <div className="flex items-center gap-2 flex-wrap">
+                {submissions.some((s) => s.status === "rejected") && (
+                  <button
+                    type="button"
+                    onClick={handleClearRejectedSubmissions}
+                    className="inline-flex items-center gap-1 rounded-xl border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-bold text-red-600 hover:bg-red-100 cursor-pointer transition-colors"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    <span>Clear All Rejected</span>
+                  </button>
+                )}
+                {submissions.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleClearAllSubmissions}
+                    className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-100 cursor-pointer transition-colors"
+                  >
+                    <Trash2 className="h-3.5 w-3.5 text-slate-500" />
+                    <span>Clear All</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={fetchSubmissions}
+                  disabled={loadingSubmissions}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50 cursor-pointer"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${loadingSubmissions ? "animate-spin" : ""}`} />
+                  <span>Refresh</span>
+                </button>
+              </div>
             </div>
 
             {submissions.length === 0 ? (
@@ -804,8 +963,8 @@ export default function PublicSiteAdminPage() {
                           {sub.utr}
                         </td>
                         <td className="py-3 px-3 font-bold text-slate-800">₹{sub.amount}</td>
-                        <td className="py-3 px-3 text-slate-400">
-                          {new Date(sub.submittedAt).toLocaleDateString()} {new Date(sub.submittedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        <td className="py-3 px-3 text-slate-500 font-medium">
+                          {formatSafeDateTime(sub.submittedAt || (sub as any).submitted_at)}
                         </td>
                         <td className="py-3 px-3">
                           <span
@@ -820,25 +979,36 @@ export default function PublicSiteAdminPage() {
                             {sub.status}
                           </span>
                         </td>
-                        <td className="py-3 px-3 text-right space-x-2">
-                          {sub.status === "pending" && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => handleUpdateSubmissionStatus(sub.id, "verified")}
-                                className="rounded-lg bg-green-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-green-700 shadow-sm"
-                              >
-                                Verify
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleUpdateSubmissionStatus(sub.id, "rejected")}
-                                className="rounded-lg bg-red-100 px-2.5 py-1 text-[11px] font-bold text-red-700 hover:bg-red-200"
-                              >
-                                Reject
-                              </button>
-                            </>
-                          )}
+                        <td className="py-3 px-3 text-right">
+                          <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                            {sub.status === "pending" && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateSubmissionStatus(sub.id, "verified")}
+                                  className="rounded-lg bg-green-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-green-700 shadow-sm cursor-pointer"
+                                >
+                                  Verify
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateSubmissionStatus(sub.id, "rejected")}
+                                  className="rounded-lg bg-amber-50 border border-amber-200 px-2.5 py-1 text-[11px] font-bold text-amber-800 hover:bg-amber-100 cursor-pointer"
+                                >
+                                  Reject
+                                </button>
+                              </>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteSubmission(sub.id)}
+                              title="Permanently delete this entry from database"
+                              className="rounded-lg bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 px-2 py-1 text-[11px] font-bold shadow-sm transition-colors inline-flex items-center gap-1 cursor-pointer"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              <span>Delete</span>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -971,17 +1141,28 @@ export default function PublicSiteAdminPage() {
                             </span>
                           </td>
                           <td className="py-3 px-3 text-right">
-                            <button
-                              type="button"
-                              onClick={() => handleToggleCoupon(c.code, c.isActive)}
-                              className={`rounded-lg px-2.5 py-1 text-[11px] font-bold shadow-sm transition-colors ${
-                                c.isActive
-                                  ? "bg-red-50 text-red-600 hover:bg-red-100 border border-red-200"
-                                  : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200"
-                              }`}
-                            >
-                              {c.isActive ? "Deactivate" : "Activate"}
-                            </button>
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleToggleCoupon(c.code, c.isActive)}
+                                className={`rounded-lg px-2.5 py-1 text-[11px] font-bold shadow-sm transition-colors ${
+                                  c.isActive
+                                    ? "bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200"
+                                    : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200"
+                                }`}
+                              >
+                                {c.isActive ? "Deactivate" : "Activate"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteCoupon(c.code)}
+                                title="Delete coupon"
+                                className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 px-2 py-1 text-[11px] font-bold text-red-600 transition-colors shadow-sm"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                <span>Delete</span>
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -993,9 +1174,21 @@ export default function PublicSiteAdminPage() {
 
             {/* Referral Redemptions Table */}
             <div className="rounded-3xl border border-slate-200 bg-white p-6 sm:p-8 shadow-sm space-y-4">
-              <div>
-                <h3 className="text-lg font-black text-[#071a3a]">Recent Referral Enrollments</h3>
-                <p className="text-xs text-slate-500">Students who registered using a 100% OFF referral coupon</p>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-black text-[#071a3a]">Recent Referral Enrollments</h3>
+                  <p className="text-xs text-slate-500">Students who registered using a 100% OFF referral coupon</p>
+                </div>
+                {referrals.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleClearAllReferrals}
+                    className="inline-flex items-center gap-1.5 self-start sm:self-auto rounded-xl border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-black text-red-600 hover:bg-red-100 transition-colors shadow-sm"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Clear All Enrollments</span>
+                  </button>
+                )}
               </div>
 
               {referrals.length === 0 ? (
@@ -1013,6 +1206,7 @@ export default function PublicSiteAdminPage() {
                         <th className="py-2.5 px-3">Agreement</th>
                         <th className="py-2.5 px-3">Enrolled At</th>
                         <th className="py-2.5 px-3">Status</th>
+                        <th className="py-2.5 px-3 text-right">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-medium">
@@ -1029,12 +1223,23 @@ export default function PublicSiteAdminPage() {
                             </span>
                           </td>
                           <td className="py-3 px-3 text-slate-400">
-                            {new Date(ref.submittedAt).toLocaleDateString()} {new Date(ref.submittedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                            {formatSafeDateTime(ref.submittedAt || (ref as any).submitted_at)}
                           </td>
                           <td className="py-3 px-3">
                             <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-black text-blue-700 border border-blue-200 uppercase">
                               {ref.status}
                             </span>
+                          </td>
+                          <td className="py-3 px-3 text-right">
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteReferral(ref.id)}
+                              title="Delete enrollment record"
+                              className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 px-2.5 py-1 text-[11px] font-bold text-red-600 transition-colors shadow-sm"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              <span>Delete</span>
+                            </button>
                           </td>
                         </tr>
                       ))}

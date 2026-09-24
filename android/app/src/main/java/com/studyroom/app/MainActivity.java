@@ -15,6 +15,9 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.util.Log;
+import java.io.File;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import android.view.View;
 import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
@@ -99,6 +102,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         handleIncomingIntent(getIntent());
+        scheduleObsoleteApkCleanup();
     }
 
     @Override
@@ -634,7 +638,7 @@ public class MainActivity extends AppCompatActivity {
         try {
             return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
         } catch (Exception e) {
-            return "1.0.15";
+            return "1.0.16";
         }
     }
 
@@ -804,6 +808,56 @@ public class MainActivity extends AppCompatActivity {
                 );
             }
         });
+    }
+
+    private void scheduleObsoleteApkCleanup() {
+        Executors.newSingleThreadScheduledExecutor().schedule(() -> {
+            cleanObsoleteStudyRoomApks();
+        }, 10, TimeUnit.SECONDS);
+    }
+
+    private void cleanObsoleteStudyRoomApks() {
+        try {
+            android.content.SharedPreferences prefs = getSharedPreferences("studyroom_cache_prefs", Context.MODE_PRIVATE);
+            long lastCleanup = prefs.getLong("last_apk_cleanup_ms", 0);
+            long now = System.currentTimeMillis();
+            // 24-hour cooldown
+            if (now - lastCleanup < 24 * 60 * 60 * 1000L) {
+                return;
+            }
+
+            File downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+            if (downloadsDir == null || !downloadsDir.exists() || !downloadsDir.isDirectory()) {
+                return;
+            }
+
+            File[] files = downloadsDir.listFiles();
+            if (files == null) return;
+
+            long cutoffMs = now - (24 * 60 * 60 * 1000L);
+            for (File f : files) {
+                if (f != null && f.isFile()) {
+                    String name = f.getName().toLowerCase();
+                    // Match only StudyRoom update APKs (e.g. StudyRoom.apk, StudyRoom (1).apk, StudyRoom-1.0.15.apk)
+                    if (name.startsWith("studyroom") && name.endsWith(".apk")) {
+                        long lastMod = f.lastModified();
+                        // Only delete if strictly older than 24 hours (protects actively downloading/installing files)
+                        if (lastMod > 0 && lastMod < cutoffMs) {
+                            boolean deleted = f.delete();
+                            if (deleted) {
+                                Log.i(TAG, "Deleted obsolete installer APK: " + f.getName());
+                            }
+                        }
+                    }
+                }
+            }
+
+            prefs.edit().putLong("last_apk_cleanup_ms", now).apply();
+        } catch (SecurityException se) {
+            Log.w(TAG, "Permission denied accessing Downloads for APK cleanup: " + se.getMessage());
+        } catch (Exception e) {
+            Log.w(TAG, "Failed to clean obsolete APKs: " + e.getMessage());
+        }
     }
 
     @Override

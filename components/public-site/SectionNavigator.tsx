@@ -9,27 +9,33 @@ interface SectionItem {
   label: string;
 }
 
-const SECTIONS: SectionItem[] = [
-  { id: "top", number: "00", label: "Overview" },
-  { id: "what-is", number: "01", label: "What is Study Room" },
-  { id: "why-us", number: "02", label: "Why Study Room" },
-  { id: "how-it-works", number: "03", label: "How It Works" },
-  { id: "features", number: "04", label: "Core Features" },
-  { id: "live-timer", number: "05", label: "Live Study Timer" },
-  { id: "realtime-sync", number: "06", label: "Realtime Architecture" },
-  { id: "goals-tracking", number: "07", label: "20-Hour Goals & Streaks" },
-  { id: "member-status", number: "08", label: "Member Status System" },
-  { id: "rivalry", number: "09", label: "Rivalry Arena" },
-  { id: "rules", number: "10", label: "Rules & Conditions" },
-  { id: "who-can-join", number: "11", label: "Who Can Join" },
-  { id: "membership", number: "12", label: "Membership & ₹50 Payment" },
-  { id: "faq", number: "13", label: "FAQ" },
-];
+interface SectionNavigatorProps {
+  priceInr?: number;
+}
 
-export function SectionNavigator() {
+export function SectionNavigator({ priceInr = 50 }: SectionNavigatorProps) {
   const [activeSection, setActiveSection] = useState("top");
   const [isOpen, setIsOpen] = useState(false);
   const [scrollProgress, setScrollProgress] = useState(0);
+
+  const price = typeof priceInr === "number" && !isNaN(priceInr) ? priceInr : 50;
+
+  const sections: SectionItem[] = [
+    { id: "top", number: "00", label: "Overview" },
+    { id: "what-is", number: "01", label: "What is Study Room" },
+    { id: "why-us", number: "02", label: "Why Study Room" },
+    { id: "how-it-works", number: "03", label: "How It Works" },
+    { id: "features", number: "04", label: "Core Features" },
+    { id: "live-timer", number: "05", label: "Live Study Timer" },
+    { id: "realtime-sync", number: "06", label: "Realtime Architecture" },
+    { id: "goals-tracking", number: "07", label: "20-Hour Goals & Streaks" },
+    { id: "member-status", number: "08", label: "Member Status System" },
+    { id: "rivalry", number: "09", label: "Rivalry Arena" },
+    { id: "rules", number: "10", label: "Rules & Conditions" },
+    { id: "who-can-join", number: "11", label: "Who Can Join" },
+    { id: "membership", number: "12", label: `Membership & ₹${price} Payment` },
+    { id: "faq", number: "13", label: "FAQ" },
+  ];
 
   useEffect(() => {
     const handleScroll = () => {
@@ -42,10 +48,10 @@ export function SectionNavigator() {
 
       // 2. Detect active section in viewport
       const scrollPosition = window.scrollY + 200;
-      for (let i = SECTIONS.length - 1; i >= 0; i--) {
-        const section = document.getElementById(SECTIONS[i].id);
+      for (let i = sections.length - 1; i >= 0; i--) {
+        const section = document.getElementById(sections[i].id);
         if (section && section.offsetTop <= scrollPosition) {
-          setActiveSection(SECTIONS[i].id);
+          setActiveSection(sections[i].id);
           break;
         }
       }
@@ -54,9 +60,9 @@ export function SectionNavigator() {
     window.addEventListener("scroll", handleScroll, { passive: true });
     handleScroll();
     return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
+  }, [sections]);
 
-  const currentItem = SECTIONS.find((s) => s.id === activeSection) || SECTIONS[0];
+  const currentItem = sections.find((s) => s.id === activeSection) || sections[0];
 
   return (
     <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-40">
@@ -72,7 +78,7 @@ export function SectionNavigator() {
           </div>
 
           <div className="mt-2 max-h-72 overflow-y-auto space-y-1 pr-1 text-xs">
-            {SECTIONS.map((sec) => {
+            {sections.map((sec) => {
               const isActive = sec.id === activeSection;
               return (
                 <a

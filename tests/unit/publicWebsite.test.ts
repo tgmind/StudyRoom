@@ -230,7 +230,7 @@ describe("Public Website - Referral Coupon Validation & Enrollment", () => {
 });
 
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { PaymentSection } from "@/components/public-site/PaymentSection";
 
 vi.mock("next/navigation", () => ({
@@ -323,4 +323,243 @@ describe("Public Website - Direct Link Sharing", () => {
     expect(screen.getAllByText(/Share With Friends/i).length).toBeGreaterThanOrEqual(1);
   });
 });
+
+import {
+  inMemorySubmissions,
+  deleteSubmission,
+  clearSubmissions,
+} from "@/lib/public-website/submissionStore";
+import {
+  deleteCoupon,
+  deleteReferralEnrollment,
+  clearAllReferralEnrollments,
+  inMemoryReferrals,
+} from "@/lib/public-website/couponStore";
+
+describe("Public Website - Admin Database & In-Memory Deletion Functions", () => {
+  it("deletes a single submission by ID from memory", async () => {
+    const testId = "test_sub_del_123";
+    inMemorySubmissions.push({
+      id: testId,
+      name: "Test Delete User",
+      contact: "del@test.com",
+      utr: "123456789012",
+      amount: 50,
+      submittedAt: new Date().toISOString(),
+      status: "pending",
+    });
+
+    expect(inMemorySubmissions.some((s) => s.id === testId)).toBe(true);
+
+    const result = await deleteSubmission(testId);
+    expect(result).toBe(true);
+    expect(inMemorySubmissions.some((s) => s.id === testId)).toBe(false);
+  });
+
+  it("clears rejected submissions without deleting pending or verified submissions", async () => {
+    inMemorySubmissions.push(
+      {
+        id: "sub_pending",
+        name: "Pending User",
+        contact: "pen@test.com",
+        utr: "111111111111",
+        amount: 50,
+        submittedAt: new Date().toISOString(),
+        status: "pending",
+      },
+      {
+        id: "sub_rejected_1",
+        name: "Rejected User 1",
+        contact: "rej1@test.com",
+        utr: "222222222222",
+        amount: 50,
+        submittedAt: new Date().toISOString(),
+        status: "rejected",
+      },
+      {
+        id: "sub_rejected_2",
+        name: "Rejected User 2",
+        contact: "rej2@test.com",
+        utr: "333333333333",
+        amount: 50,
+        submittedAt: new Date().toISOString(),
+        status: "rejected",
+      },
+      {
+        id: "sub_verified",
+        name: "Verified User",
+        contact: "ver@test.com",
+        utr: "444444444444",
+        amount: 50,
+        submittedAt: new Date().toISOString(),
+        status: "verified",
+      }
+    );
+
+    await clearSubmissions({ status: "rejected" });
+
+    expect(inMemorySubmissions.some((s) => s.id === "sub_rejected_1")).toBe(false);
+    expect(inMemorySubmissions.some((s) => s.id === "sub_rejected_2")).toBe(false);
+    expect(inMemorySubmissions.some((s) => s.id === "sub_pending")).toBe(true);
+    expect(inMemorySubmissions.some((s) => s.id === "sub_verified")).toBe(true);
+  });
+
+  it("clears all submissions when all flag is specified", async () => {
+    expect(inMemorySubmissions.length).toBeGreaterThan(0);
+    await clearSubmissions({ all: true });
+    expect(inMemorySubmissions.length).toBe(0);
+  });
+
+  it("permanently deletes a coupon by code", async () => {
+    await saveCoupon({
+      code: "DELME100",
+      discountPercent: 100,
+      isActive: true,
+      note: "Coupon to be deleted",
+    });
+
+    const validBefore = await validateCouponCode("DELME100");
+    expect(validBefore.valid).toBe(true);
+
+    const deleted = await deleteCoupon("DELME100");
+    expect(deleted).toBe(true);
+
+    const validAfter = await validateCouponCode("DELME100");
+    expect(validAfter.valid).toBe(false);
+  });
+
+  it("deletes a referral enrollment by ID", async () => {
+    await saveCoupon({ code: "ENROLLTEST", discountPercent: 100, isActive: true });
+    const enrollRes = await recordReferralEnrollment({
+      couponCode: "ENROLLTEST",
+      name: "Enrollment Delete Test",
+      referredBy: "Friend",
+      agreementAccepted: true,
+    });
+
+    expect(enrollRes.success).toBe(true);
+    const id = enrollRes.enrollmentId!;
+    expect(inMemoryReferrals.some((r) => r.id === id)).toBe(true);
+
+    const deleted = await deleteReferralEnrollment(id);
+    expect(deleted).toBe(true);
+    expect(inMemoryReferrals.some((r) => r.id === id)).toBe(false);
+  });
+
+  it("clears all referral enrollments", async () => {
+    await saveCoupon({ code: "BATCHTEST", discountPercent: 100, isActive: true });
+    await recordReferralEnrollment({
+      couponCode: "BATCHTEST",
+      name: "Student 1",
+      referredBy: "Friend 1",
+      agreementAccepted: true,
+    });
+    await recordReferralEnrollment({
+      couponCode: "BATCHTEST",
+      name: "Student 2",
+      referredBy: "Friend 2",
+      agreementAccepted: true,
+    });
+
+    expect(inMemoryReferrals.length).toBeGreaterThanOrEqual(2);
+    const cleared = await clearAllReferralEnrollments();
+    expect(cleared).toBe(true);
+    expect(inMemoryReferrals.length).toBe(0);
+  });
+});
+
+import { syncPriceInText, synchronizeContentPricing } from "@/lib/public-website/priceUtils";
+import { SectionNavigator } from "@/components/public-site/SectionNavigator";
+
+describe("Public Website - Dynamic Price Synchronization", () => {
+  it("syncPriceInText replaces legacy ₹50 references with new amount", () => {
+    expect(syncPriceInText("Join Study Room — ₹50", 20)).toBe("Join Study Room — ₹20");
+    expect(syncPriceInText("The ₹50 fee is one-time and non-refundable.", 20)).toBe(
+      "The ₹20 fee is one-time and non-refundable."
+    );
+    expect(syncPriceInText("Why is there a ₹50 fee?", 99)).toBe("Why is there a ₹99 fee?");
+  });
+
+  it("syncPriceInText preserves ₹0 free referral waiver indicators", () => {
+    expect(syncPriceInText("Free Access — ₹0", 20)).toBe("Free Access — ₹0");
+  });
+
+  it("synchronizeContentPricing synchronizes all content fields to new price", () => {
+    const customized = synchronizeContentPricing(DEFAULT_PUBLIC_CONTENT, 20);
+
+    expect(customized.membership.priceInr).toBe(20);
+    expect(customized.hero.ctaPrimaryText).toContain("₹20");
+    expect(customized.membership.badgeText).toContain("₹20");
+    expect(customized.membership.whyFeeTitle).toContain("₹20");
+    expect(customized.membership.steps[1].title).toBe("Pay ₹20");
+    expect(customized.membership.steps[1].description).toContain("₹20");
+    expect(customized.conditions.refundPolicy).toContain("₹20");
+    expect(customized.faqs[0].question).toContain("₹20");
+    expect(customized.faqs[0].answer).toContain("₹20");
+  });
+
+  it("Header dynamically renders custom price when priceInr is passed", () => {
+    const { container } = render(
+      React.createElement(Header, {
+        general: DEFAULT_PUBLIC_CONTENT.general,
+        branding: DEFAULT_PUBLIC_CONTENT.branding,
+        priceInr: 20,
+        onJoinClick: () => {},
+      })
+    );
+
+    expect(container.textContent).toContain("₹20 Access");
+    expect(container.textContent).toContain("Join for ₹20");
+    expect(container.textContent).not.toContain("₹50 Access");
+    expect(container.textContent).not.toContain("Join for ₹50");
+  });
+
+  it("SectionNavigator dynamically updates membership label to custom price", () => {
+    const { container } = render(
+      React.createElement(SectionNavigator, { priceInr: 20 })
+    );
+
+    const toggleBtn = container.querySelector('button[aria-label="Toggle section navigator"]');
+    if (toggleBtn) {
+      fireEvent.click(toggleBtn);
+    }
+
+    expect(container.textContent).toContain("Membership & ₹20 Payment");
+    expect(container.textContent).not.toContain("Membership & ₹50 Payment");
+  });
+
+  it("PaymentSection dynamically renders custom price throughout texts and QR card", () => {
+    const syncedContent = synchronizeContentPricing(DEFAULT_PUBLIC_CONTENT, 20);
+    const { container } = render(
+      React.createElement(PaymentSection, {
+        membership: syncedContent.membership,
+        branding: syncedContent.branding,
+        onOpenUtrModal: () => {},
+      })
+    );
+
+    expect(container.textContent).toContain("Join Study Room for ₹20");
+    expect(container.textContent).toContain("₹20");
+    expect(container.textContent).toContain("one-time enrollment");
+    expect(container.textContent).toContain("Pay ₹20");
+    expect(container.textContent).toContain("Why is there a ₹20 fee?");
+    expect(container.textContent).toContain("The ₹20 fee is one-time and non-refundable.");
+    expect(container.textContent).not.toContain("Join Study Room for ₹50");
+  });
+
+  it("PublicFooter dynamically renders custom price in quick links", () => {
+    const { container } = render(
+      React.createElement(PublicFooter, {
+        general: DEFAULT_PUBLIC_CONTENT.general,
+        branding: DEFAULT_PUBLIC_CONTENT.branding,
+        priceInr: 20,
+      })
+    );
+
+    expect(container.textContent).toContain("₹20 Membership");
+    expect(container.textContent).not.toContain("₹50 Membership");
+  });
+});
+
+
 

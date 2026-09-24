@@ -1,6 +1,9 @@
-// StudyRoom PWA Service Worker
-const CACHE_NAME = "studyroom-v10";
+// StudyRoom PWA Service Worker — Version 11 with Bounded Cache Eviction
+const CACHE_NAME = "studyroom-v11";
 const OFFLINE_URL = "/offline.html";
+
+// Maximum number of Next.js static asset chunks to retain in cache
+const MAX_STATIC_CHUNKS = 50;
 
 // Precache static public assets guaranteed to return 200 OK without authentication
 const PRECACHE_ASSETS = [
@@ -11,6 +14,37 @@ const PRECACHE_ASSETS = [
   "/icons/icon-512x512.png",
   "/icons/icon-maskable.png",
 ];
+
+/**
+ * Trims excess or obsolete Next.js static chunks to stay within budget.
+ * Inviolable rule: Never evicts precache assets, icons, fonts, or HTML navigation routes.
+ */
+async function trimStaticCache(cache) {
+  try {
+    const requests = await cache.keys();
+    const staticRequests = [];
+
+    for (const req of requests) {
+      const url = new URL(req.url);
+      // Target only Next.js static chunks and css
+      if (
+        url.pathname.startsWith("/_next/static/") &&
+        !PRECACHE_ASSETS.includes(url.pathname)
+      ) {
+        staticRequests.push(req);
+      }
+    }
+
+    // Evict oldest static chunks when exceeding budget (FIFO)
+    if (staticRequests.length > MAX_STATIC_CHUNKS) {
+      const excessCount = staticRequests.length - MAX_STATIC_CHUNKS;
+      const toEvict = staticRequests.slice(0, excessCount);
+      await Promise.all(toEvict.map((r) => cache.delete(r)));
+    }
+  } catch (err) {
+    // Non-blocking fail-safe
+  }
+}
 
 // Install Event: Precache Static App Shell & Offline Page
 self.addEventListener("install", (event) => {
@@ -24,23 +58,36 @@ self.addEventListener("install", (event) => {
   self.skipWaiting();
 });
 
-// Activate Event: Clean up legacy caches
+// Activate Event: Clean up legacy caches and enforce cache budget
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME) {
-            return caches.delete(cacheName);
-          }
-        })
-      );
-    })
+    caches
+      .keys()
+      .then((cacheNames) => {
+        return Promise.all(
+          cacheNames.map((cacheName) => {
+            if (cacheName !== CACHE_NAME) {
+              return caches.delete(cacheName);
+            }
+          })
+        );
+      })
+      .then(() => caches.open(CACHE_NAME))
+      .then((currentCache) => trimStaticCache(currentCache))
   );
   self.clients.claim();
 });
 
+// Message Event: Allow web client to trigger cache trimming during idle cleanup
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "TRIM_CACHE") {
+    event.waitUntil(caches.open(CACHE_NAME).then((cache) => trimStaticCache(cache)));
+  }
+});
+
 // Fetch Event: Serve cached static assets, SWR for app shell navigation, offline fallback for failures
+let chunkPutCounter = 0;
+
 self.addEventListener("fetch", (event) => {
   // Only handle GET requests
   if (event.request.method !== "GET") return;
@@ -69,7 +116,16 @@ self.addEventListener("fetch", (event) => {
         return fetch(event.request).then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200) {
             const responseToCache = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, responseToCache).then(() => {
+                // Periodically trim static cache after every 10 puts
+                chunkPutCounter++;
+                if (chunkPutCounter >= 10) {
+                  chunkPutCounter = 0;
+                  trimStaticCache(cache);
+                }
+              });
+            });
           }
           return networkResponse;
         });
@@ -106,3 +162,4 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 });
+

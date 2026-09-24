@@ -105,7 +105,7 @@ export function UtrModal({ isOpen, onClose, priceInr }: UtrModalProps) {
               Payment Verification
             </span>
             <h3 className="text-xl font-black text-[#071a3a]">
-              {submitted ? "Verification Submitted" : "Submit Your ₹50 UTR"}
+              {submitted ? "Verification Submitted" : `Submit Your ₹${priceInr} UTR`}
             </h3>
           </div>
           <button

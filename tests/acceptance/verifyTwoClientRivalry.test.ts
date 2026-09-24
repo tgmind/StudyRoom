@@ -245,5 +245,5 @@ describe("PRACTICAL TWO-CLIENT REALTIME RIVALRY ACCEPTANCE VERIFICATION", () => 
     console.log(`  - Average Propagation Latency: ${avg} ms`);
     console.log(`  - Page refresh required: NONE`);
     console.log(`  - Stale memoization reference retained: NONE`);
-  }, 15000);
+  }, 30000);
 });

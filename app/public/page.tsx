@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Header } from "@/components/public-site/Header";
 import { SectionNavigator } from "@/components/public-site/SectionNavigator";
 import { HeroSection } from "@/components/public-site/HeroSection";
@@ -20,6 +20,7 @@ import { PublicFooter } from "@/components/public-site/PublicFooter";
 import { UtrModal } from "@/components/public-site/UtrModal";
 import { DEFAULT_PUBLIC_CONTENT } from "@/lib/public-website/defaultContent";
 import { PublicWebsiteContent } from "@/lib/public-website/types";
+import { synchronizeContentPricing } from "@/lib/public-website/priceUtils";
 
 export default function PublicLandingPage() {
   const [content, setContent] = useState<PublicWebsiteContent>(DEFAULT_PUBLIC_CONTENT);
@@ -47,6 +48,16 @@ export default function PublicLandingPage() {
       });
   }, []);
 
+  const activePrice =
+    typeof content.membership?.priceInr === "number" && !isNaN(content.membership.priceInr)
+      ? content.membership.priceInr
+      : 50;
+
+  const synchronizedContent = useMemo(
+    () => synchronizeContentPricing(content, activePrice),
+    [content, activePrice]
+  );
+
   const handleOpenPayment = () => {
     const el = document.getElementById("membership");
     if (el) {
@@ -58,27 +69,32 @@ export default function PublicLandingPage() {
     <div className="relative flex flex-col min-h-screen bg-white text-slate-900 selection:bg-blue-100 selection:text-blue-900 antialiased">
       {/* 1. Sticky Navigation Header */}
       <Header
-        general={content.general}
-        branding={content.branding}
+        general={synchronizedContent.general}
+        branding={synchronizedContent.branding}
+        priceInr={activePrice}
         onJoinClick={handleOpenPayment}
       />
 
       {/* 2. Floating Section Navigator (00-13) */}
-      <SectionNavigator />
+      <SectionNavigator priceInr={activePrice} />
 
       {/* 3. Main Single Long-Scroll Body */}
       <main className="flex-1">
         {/* Hero Section */}
-        <HeroSection hero={content.hero} onJoinClick={handleOpenPayment} />
+        <HeroSection
+          hero={synchronizedContent.hero}
+          priceInr={activePrice}
+          onJoinClick={handleOpenPayment}
+        />
 
         {/* 01 & 02: What Is Study Room & Why Study Room */}
         <WhatIsSection />
 
         {/* 03: How It Works */}
-        <HowItWorksSection steps={content.howItWorks} />
+        <HowItWorksSection steps={synchronizedContent.howItWorks} />
 
         {/* 04: Real Platform Core Features */}
-        <FeaturesShowcase features={content.features} />
+        <FeaturesShowcase features={synchronizedContent.features} />
 
         {/* 05: Live Study Timer Demo */}
         <LiveTimerDemo />
@@ -96,30 +112,34 @@ export default function PublicLandingPage() {
         <RivalryArenaSection />
 
         {/* 10: Rules, Conditions, Refund & Privacy */}
-        <RulesConditionsSection conditions={content.conditions} />
+        <RulesConditionsSection conditions={synchronizedContent.conditions} />
 
         {/* 11: Who Can Join */}
         <WhoCanJoinSection />
 
         {/* 12: UPI QR Payment & Membership Access (At the end of page) */}
         <PaymentSection
-          membership={content.membership}
-          branding={content.branding}
+          membership={synchronizedContent.membership}
+          branding={synchronizedContent.branding}
           onOpenUtrModal={() => setUtrModalOpen(true)}
         />
 
         {/* 13: Frequently Asked Questions */}
-        <FaqSection faqs={content.faqs} />
+        <FaqSection faqs={synchronizedContent.faqs} priceInr={activePrice} />
       </main>
 
       {/* 4. Footer */}
-      <PublicFooter general={content.general} branding={content.branding} />
+      <PublicFooter
+        general={synchronizedContent.general}
+        branding={synchronizedContent.branding}
+        priceInr={activePrice}
+      />
 
       {/* 5. UTR Submission Modal */}
       <UtrModal
         isOpen={utrModalOpen}
         onClose={() => setUtrModalOpen(false)}
-        priceInr={content.membership.priceInr || 50}
+        priceInr={activePrice}
       />
     </div>
   );

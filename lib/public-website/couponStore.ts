@@ -303,3 +303,69 @@ export async function getAllReferralEnrollments(): Promise<ReferralEnrollment[]>
 
   return inMemoryReferrals;
 }
+
+/**
+ * Admin: Delete a coupon by code
+ */
+export async function deleteCoupon(code: string): Promise<boolean> {
+  const normalized = String(code || "").trim().toUpperCase();
+  if (!normalized) return false;
+
+  const idx = inMemoryCoupons.findIndex((c) => c.code.toUpperCase() === normalized);
+  if (idx !== -1) {
+    inMemoryCoupons.splice(idx, 1);
+  }
+
+  try {
+    const supabase = createAdminClient() || (await createClient());
+    await (supabase as any).from("public_coupons").delete().ilike("code", normalized);
+    return true;
+  } catch (err) {
+    if (process.env.NODE_ENV !== "test") {
+      console.warn("Could not delete coupon from DB:", err);
+    }
+  }
+  return true;
+}
+
+/**
+ * Admin: Delete a referral enrollment by ID
+ */
+export async function deleteReferralEnrollment(id: string): Promise<boolean> {
+  const cleanId = String(id || "").trim();
+  if (!cleanId) return false;
+
+  const idx = inMemoryReferrals.findIndex((r) => r.id === cleanId);
+  if (idx !== -1) {
+    inMemoryReferrals.splice(idx, 1);
+  }
+
+  try {
+    const supabase = createAdminClient() || (await createClient());
+    await (supabase as any).from("public_referral_enrollments").delete().eq("id", cleanId);
+    return true;
+  } catch (err) {
+    if (process.env.NODE_ENV !== "test") {
+      console.warn("Could not delete referral enrollment from DB:", err);
+    }
+  }
+  return true;
+}
+
+/**
+ * Admin: Clear all referral enrollments
+ */
+export async function clearAllReferralEnrollments(): Promise<boolean> {
+  inMemoryReferrals.length = 0;
+
+  try {
+    const supabase = createAdminClient() || (await createClient());
+    await (supabase as any).from("public_referral_enrollments").delete().neq("id", "");
+    return true;
+  } catch (err) {
+    if (process.env.NODE_ENV !== "test") {
+      console.warn("Could not clear all referral enrollments from DB:", err);
+    }
+  }
+  return true;
+}

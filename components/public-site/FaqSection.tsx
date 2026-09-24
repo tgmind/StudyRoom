@@ -6,17 +6,19 @@ import { HelpCircle, ChevronDown, Search, CreditCard, ShieldAlert, Laptop, Spark
 
 interface FaqSectionProps {
   faqs: PublicWebsiteFaqItem[];
+  priceInr?: number;
 }
 
-export function FaqSection({ faqs }: FaqSectionProps) {
+export function FaqSection({ faqs, priceInr = 50 }: FaqSectionProps) {
   const [selectedCategory, setSelectedCategory] = useState<"all" | "fee" | "community" | "platform">("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const price = typeof priceInr === "number" && !isNaN(priceInr) ? priceInr : 50;
 
   const categorize = (question: string): "fee" | "community" | "platform" => {
     const q = question.toLowerCase();
     if (
       q.includes("fee") ||
-      q.includes("₹50") ||
+      q.includes("₹") ||
       q.includes("refund") ||
       q.includes("maintenance") ||
       q.includes("subscription") ||
@@ -63,7 +65,7 @@ export function FaqSection({ faqs }: FaqSectionProps) {
             Everything You Need to <span className="text-[#0b73e6]">Know</span>
           </h2>
           <p className="mt-3.5 text-sm sm:text-base font-medium text-slate-600 max-w-2xl mx-auto leading-relaxed">
-            Transparent answers regarding the ₹50 enrollment fee, non-refundable terms, strict community policies, and platform features.
+            Transparent answers regarding the ₹{price} enrollment fee, non-refundable terms, strict community policies, and platform features.
           </p>
         </div>
 
@@ -92,7 +94,7 @@ export function FaqSection({ faqs }: FaqSectionProps) {
               }`}
             >
               <CreditCard className="w-3 h-3" />
-              <span>₹50 Fee &amp; Refunds</span>
+              <span>₹{price} Fee &amp; Refunds</span>
             </button>
             <button
               type="button"

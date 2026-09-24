@@ -7,13 +7,15 @@ import { sharePublicSite } from "@/lib/public-website/driveUtils";
 
 interface HeroSectionProps {
   hero: PublicWebsiteHero;
+  priceInr?: number;
   onJoinClick: () => void;
 }
 
-export function HeroSection({ hero, onJoinClick }: HeroSectionProps) {
+export function HeroSection({ hero, priceInr = 50, onJoinClick }: HeroSectionProps) {
   // Live ticking visual timer for the hero card demonstration
   const [seconds, setSeconds] = useState(6138); // 01:42:18 initial
   const [copiedShare, setCopiedShare] = useState(false);
+  const price = typeof priceInr === "number" && !isNaN(priceInr) ? priceInr : 50;
 
   const handleShare = async () => {
     const result = await sharePublicSite();
@@ -74,7 +76,11 @@ export function HeroSection({ hero, onJoinClick }: HeroSectionProps) {
                 onClick={onJoinClick}
                 className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#ef3340] to-[#cf1e38] px-5 sm:px-7 py-3.5 sm:py-4 text-sm font-black text-white shadow-xl shadow-red-500/25 transition-all hover:-translate-y-0.5 hover:shadow-2xl active:scale-95 cursor-pointer"
               >
-                <span>{hero.ctaPrimaryText ? hero.ctaPrimaryText.replace(/→/g, "").trim() : "Join Study Room — ₹50"}</span>
+                <span>
+                  {hero.ctaPrimaryText
+                    ? hero.ctaPrimaryText.replace(/→/g, "").replace(/₹\s*50\b/g, `₹${price}`).replace(/₹\s*\d+/g, `₹${price}`).trim()
+                    : `Join Study Room — ₹${price}`}
+                </span>
                 <ArrowRight className="h-4 w-4 shrink-0" />
               </button>
 
@@ -122,7 +128,7 @@ export function HeroSection({ hero, onJoinClick }: HeroSectionProps) {
             </div>
 
             <p className="mt-4 text-[11px] font-bold text-slate-400">
-              ⚡ Instant enrollment • Zero monthly subscription • ₹50 one-time lifetime access
+              ⚡ Instant enrollment • Zero monthly subscription • ₹{price} one-time lifetime access
             </p>
           </div>
 

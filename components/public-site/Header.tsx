@@ -9,12 +9,14 @@ import { sharePublicSite } from "@/lib/public-website/driveUtils";
 interface HeaderProps {
   general: PublicWebsiteGeneralInfo;
   branding: PublicWebsiteBranding;
+  priceInr?: number;
   onJoinClick: () => void;
 }
 
-export function Header({ general, branding, onJoinClick }: HeaderProps) {
+export function Header({ general, branding, priceInr = 50, onJoinClick }: HeaderProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [copiedShare, setCopiedShare] = useState(false);
+  const price = typeof priceInr === "number" && !isNaN(priceInr) ? priceInr : 50;
 
   const handleShare = async () => {
     const result = await sharePublicSite();
@@ -50,7 +52,7 @@ export function Header({ general, branding, onJoinClick }: HeaderProps) {
           <a href="#live-timer" className="whitespace-nowrap transition-colors hover:text-[#0b73e6]">Live Timer</a>
           <a href="#rivalry" className="whitespace-nowrap transition-colors hover:text-[#0b73e6]">Rivalry Arena</a>
           <a href="#rules" className="whitespace-nowrap transition-colors hover:text-[#0b73e6]">Rules</a>
-          <a href="#membership" className="whitespace-nowrap transition-colors hover:text-[#0b73e6] text-[#0b73e6]">₹50 Access</a>
+          <a href="#membership" className="whitespace-nowrap transition-colors hover:text-[#0b73e6] text-[#0b73e6]">₹{price} Access</a>
           <a href="#faq" className="whitespace-nowrap transition-colors hover:text-[#0b73e6]">FAQ</a>
         </nav>
 
@@ -82,7 +84,7 @@ export function Header({ general, branding, onJoinClick }: HeaderProps) {
             onClick={onJoinClick}
             className="inline-flex shrink-0 items-center gap-1 sm:gap-1.5 rounded-full bg-[#ef3340] hover:bg-[#d9222f] px-3 sm:px-4 py-1.5 sm:py-2 text-[10.5px] sm:text-xs font-black text-white shadow-sm hover:shadow transition-all active:scale-95 whitespace-nowrap cursor-pointer"
           >
-            <span>Join for ₹50</span>
+            <span>Join for ₹{price}</span>
             <ArrowRight className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
           </button>
 
@@ -184,7 +186,7 @@ export function Header({ general, branding, onJoinClick }: HeaderProps) {
               onClick={() => setMobileMenuOpen(false)}
               className="py-2 px-3 rounded-lg bg-red-50 text-[#ef3340] font-black"
             >
-              12 — Lifetime Access (₹50)
+              12 — Lifetime Access (₹{price})
             </a>
             <a
               href="#faq"
@@ -222,7 +224,7 @@ export function Header({ general, branding, onJoinClick }: HeaderProps) {
               }}
               className="w-full rounded-xl bg-gradient-to-r from-[#ef3340] to-[#cf1e38] py-3 text-center text-xs font-black text-white shadow-sm hover:shadow transition-all"
             >
-              Pay ₹50 &amp; Join
+              Pay ₹{price} &amp; Join
             </button>
           </div>
         </div>

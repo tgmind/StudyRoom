@@ -401,6 +401,7 @@ export function saveCachedUserProfile(profile: unknown): void {
   if (typeof window === "undefined" || !profile) return;
   try {
     localStorage.setItem(STORAGE_KEYS.CACHED_USER_PROFILE, JSON.stringify(profile));
+    localStorage.setItem(STORAGE_KEYS.CACHED_USER_PROFILE + "_ts", Date.now().toString());
   } catch {}
 }
 
@@ -460,12 +461,14 @@ export function saveCachedActiveGoal(goal: unknown): void {
   try {
     if (!goal) {
       localStorage.removeItem(STORAGE_KEYS.CACHED_ACTIVE_GOAL);
+      localStorage.removeItem(STORAGE_KEYS.CACHED_ACTIVE_GOAL + "_ts");
     } else {
       const copy = { ...(goal as any) };
       if (Array.isArray(copy.tasks)) {
         copy.tasks = sanitizeGoalTasksArray(copy.tasks);
       }
       localStorage.setItem(STORAGE_KEYS.CACHED_ACTIVE_GOAL, JSON.stringify(copy));
+      localStorage.setItem(STORAGE_KEYS.CACHED_ACTIVE_GOAL + "_ts", Date.now().toString());
     }
   } catch {}
 }
@@ -503,6 +506,7 @@ export function saveCachedSessions(sessions: unknown): void {
   if (typeof window === "undefined" || !sessions) return;
   try {
     localStorage.setItem(STORAGE_KEYS.CACHED_SESSIONS, JSON.stringify(sessions));
+    localStorage.setItem(STORAGE_KEYS.CACHED_SESSIONS + "_ts", Date.now().toString());
   } catch {}
 }
 
@@ -529,6 +533,7 @@ export function saveCachedRoomMembers(members: unknown): void {
   if (typeof window === "undefined" || !members || !Array.isArray(members)) return;
   try {
     localStorage.setItem(STORAGE_KEYS.CACHED_ROOM_MEMBERS, JSON.stringify(members));
+    localStorage.setItem(STORAGE_KEYS.CACHED_ROOM_MEMBERS + "_ts", Date.now().toString());
   } catch {}
 }
 
@@ -536,6 +541,7 @@ export function clearUserHistoryCache(userId?: string): void {
   if (typeof window === "undefined") return;
   try {
     localStorage.removeItem(STORAGE_KEYS.CACHED_SESSIONS);
+    localStorage.removeItem(STORAGE_KEYS.CACHED_SESSIONS + "_ts");
     if (userId) {
       const completed = getOfflineCompletedSessions();
       const remaining = completed.filter((s) => s.user_id !== userId);
@@ -557,11 +563,13 @@ export function clearAllUserStorageAndCache(userId?: string): void {
       const cachedProf = getCachedUserProfile<{ id?: string }>();
       if (cachedProf && cachedProf.id === userId) {
         localStorage.removeItem(STORAGE_KEYS.CACHED_USER_PROFILE);
+        localStorage.removeItem(STORAGE_KEYS.CACHED_USER_PROFILE + "_ts");
       }
 
       const cachedGoal = getCachedActiveGoal<{ user_id?: string }>();
       if (cachedGoal && cachedGoal.user_id === userId) {
         localStorage.removeItem(STORAGE_KEYS.CACHED_ACTIVE_GOAL);
+        localStorage.removeItem(STORAGE_KEYS.CACHED_ACTIVE_GOAL + "_ts");
       }
 
       const activeSess = getOfflineActiveSession();

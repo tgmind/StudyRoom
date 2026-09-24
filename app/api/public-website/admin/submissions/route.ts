@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { inMemorySubmissions } from "@/lib/public-website/submissionStore";
+import {
+  inMemorySubmissions,
+  deleteSubmission,
+  clearSubmissions,
+} from "@/lib/public-website/submissionStore";
 import { isAuthorizedAdmin } from "@/lib/public-website/authUtils";
 
 export async function GET(request: NextRequest) {
@@ -19,8 +23,20 @@ export async function GET(request: NextRequest) {
         .order("submitted_at", { ascending: false })
         .limit(100);
 
-      if (!error && Array.isArray(data) && data.length > 0) {
-        return NextResponse.json({ submissions: data });
+      if (!error && Array.isArray(data)) {
+        const mapped = data.map((d: any) => ({
+          id: d.id,
+          name: d.name,
+          contact: d.contact,
+          utr: d.utr,
+          amount: Number(d.amount) || 50,
+          submittedAt: d.submitted_at || d.submittedAt || d.created_at || new Date().toISOString(),
+          status: d.status || "pending",
+          verifiedAt: d.verified_at,
+          verifiedBy: d.verified_by,
+          notes: d.notes,
+        }));
+        return NextResponse.json({ submissions: mapped });
       }
     } catch {}
 
@@ -68,5 +84,36 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, message: `Submission marked as ${status}` });
   } catch (err: any) {
     return NextResponse.json({ error: err?.message || "Failed to update submission" }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const authorized = await isAuthorizedAdmin(request);
+    if (!authorized) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const { id, all, status } = body;
+
+    if (id) {
+      await deleteSubmission(id);
+      return NextResponse.json({ success: true, message: "Submission deleted successfully." });
+    }
+
+    if (all === true) {
+      await clearSubmissions({ all: true });
+      return NextResponse.json({ success: true, message: "All submissions deleted successfully." });
+    }
+
+    if (status) {
+      await clearSubmissions({ status });
+      return NextResponse.json({ success: true, message: `All ${status} submissions deleted successfully.` });
+    }
+
+    return NextResponse.json({ error: "Missing delete criteria (id, all, or status required)." }, { status: 400 });
+  } catch (err: any) {
+    return NextResponse.json({ error: err?.message || "Failed to delete submission" }, { status: 500 });
   }
 }

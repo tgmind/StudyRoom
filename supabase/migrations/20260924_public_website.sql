@@ -14,12 +14,14 @@ CREATE TABLE IF NOT EXISTS public.public_website_content (
 ALTER TABLE public.public_website_content ENABLE ROW LEVEL SECURITY;
 
 -- Public can read content
+DROP POLICY IF EXISTS "Public website content is publicly readable" ON public.public_website_content;
 CREATE POLICY "Public website content is publicly readable"
   ON public.public_website_content
   FOR SELECT
   USING (true);
 
 -- Only admins can update content
+DROP POLICY IF EXISTS "Only admins can modify public website content" ON public.public_website_content;
 CREATE POLICY "Only admins can modify public website content"
   ON public.public_website_content
   FOR ALL
@@ -49,12 +51,14 @@ CREATE TABLE IF NOT EXISTS public.public_payment_submissions (
 ALTER TABLE public.public_payment_submissions ENABLE ROW LEVEL SECURITY;
 
 -- Public can insert new payment submission
+DROP POLICY IF EXISTS "Public can insert payment submissions" ON public.public_payment_submissions;
 CREATE POLICY "Public can insert payment submissions"
   ON public.public_payment_submissions
   FOR INSERT
   WITH CHECK (true);
 
 -- Only admins can view or update submissions
+DROP POLICY IF EXISTS "Only admins can view and manage payment submissions" ON public.public_payment_submissions;
 CREATE POLICY "Only admins can view and manage payment submissions"
   ON public.public_payment_submissions
   FOR ALL

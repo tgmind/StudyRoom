@@ -18,12 +18,14 @@ CREATE TABLE IF NOT EXISTS public.public_coupons (
 ALTER TABLE public.public_coupons ENABLE ROW LEVEL SECURITY;
 
 -- Public can read coupons (server-side API validates authoritative eligibility)
+DROP POLICY IF EXISTS "Public can read active coupons" ON public.public_coupons;
 CREATE POLICY "Public can read active coupons"
   ON public.public_coupons
   FOR SELECT
   USING (true);
 
 -- Only admins can insert, update, or delete coupons
+DROP POLICY IF EXISTS "Only admins can manage coupons" ON public.public_coupons;
 CREATE POLICY "Only admins can manage coupons"
   ON public.public_coupons
   FOR ALL
@@ -49,12 +51,14 @@ CREATE TABLE IF NOT EXISTS public.public_referral_enrollments (
 ALTER TABLE public.public_referral_enrollments ENABLE ROW LEVEL SECURITY;
 
 -- Public can submit referral enrollments
+DROP POLICY IF EXISTS "Public can submit referral enrollments" ON public.public_referral_enrollments;
 CREATE POLICY "Public can submit referral enrollments"
   ON public.public_referral_enrollments
   FOR INSERT
   WITH CHECK (true);
 
 -- Only admins can view and manage referral enrollments
+DROP POLICY IF EXISTS "Only admins can view and manage referral enrollments" ON public.public_referral_enrollments;
 CREATE POLICY "Only admins can view and manage referral enrollments"
   ON public.public_referral_enrollments
   FOR ALL

@@ -7,10 +7,12 @@ import { Users, Shield, ArrowUp } from "lucide-react";
 interface PublicFooterProps {
   general: PublicWebsiteGeneralInfo;
   branding: PublicWebsiteBranding;
+  priceInr?: number;
 }
 
-export function PublicFooter({ general, branding }: PublicFooterProps) {
+export function PublicFooter({ general, branding, priceInr = 50 }: PublicFooterProps) {
   const currentYear = new Date().getFullYear();
+  const price = typeof priceInr === "number" && !isNaN(priceInr) ? priceInr : 50;
 
   return (
     <footer className="bg-[#071a3a] text-white">
@@ -57,7 +59,7 @@ export function PublicFooter({ general, branding }: PublicFooterProps) {
               <p className="font-black uppercase tracking-widest text-blue-300 mb-3 text-[11px] sm:text-xs">Community</p>
               <ul className="space-y-2.5">
                 <li><a href="#rules" className="hover:text-white transition-colors">Rules &amp; Conditions</a></li>
-                <li><a href="#membership" className="hover:text-white transition-colors">₹50 Membership</a></li>
+                <li><a href="#membership" className="hover:text-white transition-colors">₹{price} Membership</a></li>
                 <li><a href="#faq" className="hover:text-white transition-colors">FAQ</a></li>
               </ul>
             </div>

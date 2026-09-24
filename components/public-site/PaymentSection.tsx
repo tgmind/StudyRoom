@@ -26,6 +26,7 @@ interface PaymentSectionProps {
 
 export function PaymentSection({ membership, branding, onOpenUtrModal }: PaymentSectionProps) {
   const router = useRouter();
+  const price = typeof membership.priceInr === "number" && !isNaN(membership.priceInr) ? membership.priceInr : 50;
 
   // QR Code Image State
   const qrDriveLink = branding.qrCodeDriveUrl || "";
@@ -185,7 +186,7 @@ export function PaymentSection({ membership, branding, onOpenUtrModal }: Payment
               </>
             ) : (
               <>
-                Join Study Room for <span className="text-[#0b73e6]">₹50</span>
+                Join Study Room for <span className="text-[#0b73e6]">₹{price}</span>
               </>
             )}
           </h2>
@@ -233,7 +234,7 @@ export function PaymentSection({ membership, branding, onOpenUtrModal }: Payment
                   </div>
 
                   <div className="mt-4 flex items-baseline justify-center gap-2">
-                    <span className="text-sm font-bold text-slate-400 line-through">₹50</span>
+                    <span className="text-sm font-bold text-slate-400 line-through">₹{price}</span>
                     <span className="text-3xl sm:text-4xl font-black text-emerald-600">₹0</span>
                     <span className="text-xs font-bold text-emerald-700">Free Access</span>
                   </div>
@@ -248,7 +249,7 @@ export function PaymentSection({ membership, branding, onOpenUtrModal }: Payment
                   </button>
                 </div>
               ) : (
-                /* Normal ₹50 QR Code Display Card */
+                /* Normal QR Code Display Card */
                 <div className="mx-auto w-full max-w-sm rounded-3xl bg-white p-4 sm:p-5 text-center text-[#071a3a] shadow-xl border border-blue-200/80 min-w-0">
                   {/* Card Title & Payee */}
                   <div className="text-[10px] sm:text-[11px] font-black uppercase tracking-widest text-[#0b73e6]">
@@ -262,7 +263,7 @@ export function PaymentSection({ membership, branding, onOpenUtrModal }: Payment
                     {!imageError && currentSrc ? (
                       <img
                         src={currentSrc}
-                        alt="Study Room ₹50 UPI Payment QR Code"
+                        alt={`Study Room ₹${price} UPI Payment QR Code`}
                         onError={handleImageError}
                         onLoad={() => setImageLoaded(true)}
                         className={`mx-auto aspect-square w-full max-w-[190px] sm:max-w-[220px] rounded-xl object-contain transition-opacity duration-300 ${
@@ -275,7 +276,7 @@ export function PaymentSection({ membership, branding, onOpenUtrModal }: Payment
                         <div className="mx-auto flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-2xl bg-blue-100 text-[#0b73e6]">
                           <QrCode className="h-7 w-7 sm:h-8 sm:w-8" />
                         </div>
-                        <p className="mt-2.5 text-xs font-black text-[#071a3a]">₹50 UPI Payment</p>
+                        <p className="mt-2.5 text-xs font-black text-[#071a3a]">₹{price} UPI Payment</p>
                         <p className="mt-1 text-[11px] font-mono text-slate-500">Scan via UPI App</p>
                       </div>
                     )}
@@ -317,7 +318,7 @@ export function PaymentSection({ membership, branding, onOpenUtrModal }: Payment
                   {/* Related verification info directly below the button */}
                   <p className="mt-2 text-[10px] sm:text-[11px] font-semibold text-slate-500 leading-normal px-1">
                     {membership.securityNote ||
-                      "Scanning the QR and submitting your UTR initiates admin verification. The ₹50 fee is one-time and non-refundable."}
+                      `Scanning the QR and submitting your UTR initiates admin verification. The ₹${price} fee is one-time and non-refundable.`}
                   </p>
 
                   {/* Secondary Actions: Mobile Direct Pay & Download QR */}
@@ -459,7 +460,11 @@ export function PaymentSection({ membership, branding, onOpenUtrModal }: Payment
                 /* Normal Flow Context & Steps */
                 <div className="min-w-0 space-y-3.5">
                   <div className="inline-flex max-w-full flex-wrap items-center justify-center rounded-full bg-red-50 border border-red-200/80 px-3 py-1 text-[10px] sm:text-xs font-black text-red-600 text-center leading-tight">
-                    <span>{membership.badgeText || "ONE-TIME ₹50 ENROLLMENT FEE • LIFETIME ACCESS"}</span>
+                    <span>
+                      {membership.badgeText
+                        ? membership.badgeText.replace(/₹\s*50\b/g, `₹${price}`).replace(/₹\s*\d+/g, `₹${price}`)
+                        : `ONE-TIME ₹${price} ENROLLMENT FEE • LIFETIME ACCESS`}
+                    </span>
                   </div>
 
                   <h3 className="mt-2 text-xl sm:text-2xl md:text-3xl font-black text-[#071a3a] break-words">
@@ -467,7 +472,7 @@ export function PaymentSection({ membership, branding, onOpenUtrModal }: Payment
                   </h3>
 
                   <p className="mt-1.5 text-xs sm:text-sm font-medium leading-relaxed text-slate-600 break-words">
-                    The one-time <strong className="text-slate-800 font-bold">₹50 enrollment fee</strong> helps us maintain a focused and responsible study community. It is intended to encourage <strong className="text-slate-800 font-bold">serious aspirants</strong>, discourage inactive or casual participation, and create a sense of responsibility toward regular daily study.
+                    The one-time <strong className="text-slate-800 font-bold">₹{price} enrollment fee</strong> helps us maintain a focused and responsible study community. It is intended to encourage <strong className="text-slate-800 font-bold">serious aspirants</strong>, discourage inactive or casual participation, and create a sense of responsibility toward regular daily study.
                   </p>
 
                   {/* Optional Referral Coupon Code Input Box */}
@@ -506,12 +511,14 @@ export function PaymentSection({ membership, branding, onOpenUtrModal }: Payment
                     )}
                   </div>
 
-                  {/* Box 1: Why is there a ₹50 fee? */}
+                  {/* Box 1: Why is there a fee? */}
                   <div className="rounded-2xl bg-[#f8fcff] border border-blue-200/80 p-3.5 sm:p-4 min-w-0">
                     <div className="flex items-center gap-2 text-[#0b73e6] mb-2">
                       <Sparkles className="w-4 h-4 text-[#0b73e6] shrink-0" />
                       <h4 className="text-xs sm:text-sm font-black uppercase tracking-wider text-[#071a3a]">
-                        Why is there a ₹50 fee?
+                        {membership.whyFeeTitle
+                          ? membership.whyFeeTitle.replace(/₹\s*50\b/g, `₹${price}`).replace(/₹\s*\d+/g, `₹${price}`)
+                          : `Why is there a ₹${price} fee?`}
                       </h4>
                     </div>
                     <ul className="space-y-2 text-xs sm:text-[13px] text-slate-700 font-medium">
@@ -536,7 +543,7 @@ export function PaymentSection({ membership, branding, onOpenUtrModal }: Payment
                     </ul>
                     <div className="mt-2.5 pt-2 border-t border-blue-100 flex items-center gap-1.5 text-[10px] sm:text-xs font-black text-rose-700">
                       <span className="inline-block w-1.5 h-1.5 rounded-full bg-rose-600 shrink-0" />
-                      <span>Important: The ₹50 fee is one-time and non-refundable.</span>
+                      <span>Important: The ₹{price} fee is one-time and non-refundable.</span>
                     </div>
                   </div>
 
@@ -570,10 +577,14 @@ export function PaymentSection({ membership, branding, onOpenUtrModal }: Payment
                           </span>
                           <div className="min-w-0">
                             <b className="text-slate-800 text-[11px] sm:text-xs flex items-center gap-1 flex-wrap">
-                              <span>{st.title}</span>
+                              <span>
+                                {st.title ? st.title.replace(/₹\s*50\b/g, `₹${price}`).replace(/₹\s*\d+/g, `₹${price}`) : st.title}
+                              </span>
                               {st.number === 3 && <span className="text-[9px] text-[#0b73e6] font-black uppercase">● Submit</span>}
                             </b>
-                            <span className="text-slate-500 text-[10px] sm:text-[11px] leading-tight block mt-0.5 break-words">{st.description}</span>
+                            <span className="text-slate-500 text-[10px] sm:text-[11px] leading-tight block mt-0.5 break-words">
+                              {st.description ? st.description.replace(/₹\s*50\b/g, `₹${price}`).replace(/₹\s*\d+/g, `₹${price}`) : st.description}
+                            </span>
                           </div>
                         </li>
                       ))}
