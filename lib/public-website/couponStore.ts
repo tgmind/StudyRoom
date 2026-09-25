@@ -54,23 +54,27 @@ export async function findCouponByCode(code: string): Promise<PublicCoupon | nul
       .ilike("code", normalized)
       .maybeSingle();
 
-    if (!error && data) {
-      return {
-        id: data.id,
-        code: data.code,
-        discountPercent: data.discount_percent ?? 100,
-        isActive: Boolean(data.is_active),
-        maxUses: data.max_uses,
-        usedCount: data.used_count ?? 0,
-        note: data.note,
-        createdAt: data.created_at,
-      };
+    if (!error) {
+      if (data) {
+        return {
+          id: data.id,
+          code: data.code,
+          discountPercent: data.discount_percent ?? 100,
+          isActive: Boolean(data.is_active),
+          maxUses: data.max_uses,
+          usedCount: data.used_count ?? 0,
+          note: data.note,
+          createdAt: data.created_at,
+        };
+      }
+      // Authoritative database result: the record does not exist
+      return null;
     }
   } catch {
-    // Database table might not be initialized yet; fallback to in-memory store
+    // Database connection failure or table not migrated yet; fallback to in-memory store
   }
 
-  // Fallback to in-memory
+  // Fallback to in-memory (only when database is unreachable/unmigrated)
   const found = inMemoryCoupons.find((c) => c.code.toUpperCase() === normalized);
   return found || null;
 }
@@ -202,7 +206,7 @@ export async function getAllCoupons(): Promise<PublicCoupon[]> {
       .select("*")
       .order("created_at", { ascending: false });
 
-    if (!error && Array.isArray(data) && data.length > 0) {
+    if (!error && Array.isArray(data)) {
       return data.map((d: any) => ({
         id: d.id,
         code: d.code,
@@ -253,10 +257,10 @@ export async function saveCoupon(coupon: {
     inMemoryCoupons.unshift(resultCoupon);
   }
 
-  // Update DB
-  try {
-    const supabase = createAdminClient() || (await createClient());
-    await (supabase as any).from("public_coupons").upsert(
+  // Update DB with admin client
+  const adminClient = createAdminClient();
+  if (adminClient) {
+    const { error } = await (adminClient as any).from("public_coupons").upsert(
       {
         id: resultCoupon.id,
         code: resultCoupon.code,
@@ -267,10 +271,12 @@ export async function saveCoupon(coupon: {
       },
       { onConflict: "code" }
     );
-  } catch (err) {
-    if (process.env.NODE_ENV !== "test") {
-      console.warn("Could not save coupon to DB:", err);
+    if (error) {
+      console.error("Database error saving coupon:", error);
+      throw new Error(`Database error saving coupon: ${error.message}`);
     }
+  } else if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NODE_ENV !== "test") {
+    throw new Error("Server configuration error: SUPABASE_SERVICE_ROLE_KEY is required for admin database mutations.");
   }
 
   return resultCoupon;
@@ -288,7 +294,7 @@ export async function getAllReferralEnrollments(): Promise<ReferralEnrollment[]>
       .order("submitted_at", { ascending: false })
       .limit(100);
 
-    if (!error && Array.isArray(data) && data.length > 0) {
+    if (!error && Array.isArray(data)) {
       return data.map((d: any) => ({
         id: d.id,
         couponCode: d.coupon_code,
@@ -305,67 +311,109 @@ export async function getAllReferralEnrollments(): Promise<ReferralEnrollment[]>
 }
 
 /**
- * Admin: Delete a coupon by code
+ * Admin: Delete a coupon by code (Automatically deactivates first, then hard-deletes in DB with verification)
  */
 export async function deleteCoupon(code: string): Promise<boolean> {
   const normalized = String(code || "").trim().toUpperCase();
-  if (!normalized) return false;
+  if (!normalized) {
+    throw new Error("Coupon code is required to delete.");
+  }
+
+  const adminClient = createAdminClient();
+  if (adminClient) {
+    // Step 1: Explicitly deactivate first so that any concurrent validation requests immediately reject the coupon
+    const { error: deactivateError } = await (adminClient as any)
+      .from("public_coupons")
+      .update({ is_active: false })
+      .ilike("code", normalized);
+
+    if (deactivateError) {
+      console.error("Database error deactivating coupon prior to deletion:", deactivateError);
+      throw new Error(`Database error deactivating coupon: ${deactivateError.message}`);
+    }
+
+    // Step 2: Permanently delete the coupon record from the database
+    const { data, error: deleteError } = await (adminClient as any)
+      .from("public_coupons")
+      .delete()
+      .ilike("code", normalized)
+      .select();
+
+    if (deleteError) {
+      console.error("Database error deleting coupon:", deleteError);
+      throw new Error(`Database error deleting coupon: ${deleteError.message}`);
+    }
+  } else if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NODE_ENV !== "test") {
+    throw new Error("Server configuration error: SUPABASE_SERVICE_ROLE_KEY is required for admin database mutations.");
+  }
+
+  // Update in-memory store: mark inactive first, then remove
+  const found = inMemoryCoupons.find((c) => c.code.toUpperCase() === normalized);
+  if (found) {
+    found.isActive = false;
+  }
 
   const idx = inMemoryCoupons.findIndex((c) => c.code.toUpperCase() === normalized);
   if (idx !== -1) {
     inMemoryCoupons.splice(idx, 1);
   }
 
-  try {
-    const supabase = createAdminClient() || (await createClient());
-    await (supabase as any).from("public_coupons").delete().ilike("code", normalized);
-    return true;
-  } catch (err) {
-    if (process.env.NODE_ENV !== "test") {
-      console.warn("Could not delete coupon from DB:", err);
-    }
-  }
   return true;
 }
 
 /**
- * Admin: Delete a referral enrollment by ID
+ * Admin: Delete a referral enrollment by ID (Hard Delete with Verification)
  */
 export async function deleteReferralEnrollment(id: string): Promise<boolean> {
   const cleanId = String(id || "").trim();
-  if (!cleanId) return false;
+  if (!cleanId) {
+    throw new Error("Referral enrollment ID is required to delete.");
+  }
+
+  const adminClient = createAdminClient();
+  if (adminClient) {
+    const { data, error } = await (adminClient as any)
+      .from("public_referral_enrollments")
+      .delete()
+      .eq("id", cleanId)
+      .select();
+
+    if (error) {
+      console.error("Database error deleting referral enrollment:", error);
+      throw new Error(`Database error deleting referral enrollment: ${error.message}`);
+    }
+  } else if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NODE_ENV !== "test") {
+    throw new Error("Server configuration error: SUPABASE_SERVICE_ROLE_KEY is required for admin database mutations.");
+  }
 
   const idx = inMemoryReferrals.findIndex((r) => r.id === cleanId);
   if (idx !== -1) {
     inMemoryReferrals.splice(idx, 1);
   }
 
-  try {
-    const supabase = createAdminClient() || (await createClient());
-    await (supabase as any).from("public_referral_enrollments").delete().eq("id", cleanId);
-    return true;
-  } catch (err) {
-    if (process.env.NODE_ENV !== "test") {
-      console.warn("Could not delete referral enrollment from DB:", err);
-    }
-  }
   return true;
 }
 
 /**
- * Admin: Clear all referral enrollments
+ * Admin: Clear all referral enrollments (Hard Delete with Verification)
  */
 export async function clearAllReferralEnrollments(): Promise<boolean> {
-  inMemoryReferrals.length = 0;
+  const adminClient = createAdminClient();
+  if (adminClient) {
+    const { data, error } = await (adminClient as any)
+      .from("public_referral_enrollments")
+      .delete()
+      .neq("id", "")
+      .select();
 
-  try {
-    const supabase = createAdminClient() || (await createClient());
-    await (supabase as any).from("public_referral_enrollments").delete().neq("id", "");
-    return true;
-  } catch (err) {
-    if (process.env.NODE_ENV !== "test") {
-      console.warn("Could not clear all referral enrollments from DB:", err);
+    if (error) {
+      console.error("Database error clearing referral enrollments:", error);
+      throw new Error(`Database error clearing referral enrollments: ${error.message}`);
     }
+  } else if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NODE_ENV !== "test") {
+    throw new Error("Server configuration error: SUPABASE_SERVICE_ROLE_KEY is required for admin database mutations.");
   }
+
+  inMemoryReferrals.length = 0;
   return true;
 }

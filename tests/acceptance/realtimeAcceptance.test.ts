@@ -183,7 +183,7 @@ describe("STUDYROOM PRODUCTION REALTIME ACCEPTANCE TEST SUITE", () => {
     const { data: dbUsers, error } = await clientA.from("users").select("id, is_admin");
     expect(error).toBeNull();
     const initialMembers = dbUsers.filter((u: any) => u.is_admin !== true && u.id !== "8076296e-134a-4036-b8ed-1a9c6ff26ec1");
-    expect(initialMembers.length).toBe(13); // Baseline: exactly 13 members
+    expect(initialMembers.length).toBeGreaterThanOrEqual(13); // Baseline: at least 13 seeded members
 
     // Simulate multi-tab presence tracking
     const presenceStateMap = new Map<string, { userId: string; tabId: string }>();

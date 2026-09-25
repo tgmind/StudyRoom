@@ -410,7 +410,7 @@ describe("Public Website - Admin Database & In-Memory Deletion Functions", () =>
     expect(inMemorySubmissions.length).toBe(0);
   });
 
-  it("permanently deletes a coupon by code", async () => {
+  it("automatically deactivates and permanently deletes a coupon by code", async () => {
     await saveCoupon({
       code: "DELME100",
       discountPercent: 100,

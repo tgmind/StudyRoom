@@ -59,15 +59,19 @@ export async function POST(request: NextRequest) {
 
     memoryCachedContent = updated;
 
-    try {
-      const supabase = createAdminClient() || (await createClient());
-      await (supabase as any).from("public_website_content").upsert({
+    const adminClient = createAdminClient();
+    if (adminClient) {
+      const { error } = await (adminClient as any).from("public_website_content").upsert({
         id: "main",
         content: updated,
         updated_at: new Date().toISOString(),
       });
-    } catch (dbErr) {
-      console.warn("Could not persist to public_website_content table:", dbErr);
+      if (error) {
+        console.error("Could not persist to public_website_content table:", error);
+        return NextResponse.json({ error: `Database error saving content: ${error.message}` }, { status: 500 });
+      }
+    } else if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NODE_ENV !== "test") {
+      return NextResponse.json({ error: "Server configuration error: SUPABASE_SERVICE_ROLE_KEY is required." }, { status: 500 });
     }
 
     return NextResponse.json({

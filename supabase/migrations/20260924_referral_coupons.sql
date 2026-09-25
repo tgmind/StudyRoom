@@ -82,3 +82,41 @@ VALUES
   ('cpn_seed_study100', 'STUDY100', 100, true, 500, 0, 'Peer study group 100% scholarship code'),
   ('cpn_seed_vip100', 'VIP100', 100, true, NULL, 0, 'VIP community partner pass')
 ON CONFLICT (code) DO NOTHING;
+
+-- 3. Stored Functions for Two-Phase Safe Deletion (Deactivate first, then Delete)
+CREATE OR REPLACE FUNCTION public.deactivate_and_delete_coupon(target_code text)
+RETURNS boolean AS $$
+BEGIN
+  -- Phase 1: Immediately mark coupon inactive
+  UPDATE public.public_coupons
+  SET is_active = false
+  WHERE UPPER(code) = UPPER(TRIM(target_code));
+
+  -- Phase 2: Permanently remove row
+  DELETE FROM public.public_coupons
+  WHERE UPPER(code) = UPPER(TRIM(target_code));
+
+  RETURN true;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION public.deactivate_and_delete_all_coupons()
+RETURNS integer AS $$
+DECLARE
+  deleted_count integer;
+BEGIN
+  -- Phase 1: Deactivate all coupons first
+  UPDATE public.public_coupons
+  SET is_active = false;
+
+  -- Phase 2: Delete all rows
+  WITH deleted AS (
+    DELETE FROM public.public_coupons
+    RETURNING 1
+  )
+  SELECT count(*) INTO deleted_count FROM deleted;
+
+  RETURN deleted_count;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+

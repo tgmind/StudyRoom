@@ -69,9 +69,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Update database item if available
-    try {
-      const supabase = createAdminClient() || (await createClient());
-      await (supabase as any)
+    const adminClient = createAdminClient();
+    if (adminClient) {
+      const { error } = await (adminClient as any)
         .from("public_payment_submissions")
         .update({
           status,
@@ -79,7 +79,13 @@ export async function POST(request: NextRequest) {
           verified_at: status === "verified" ? new Date().toISOString() : null,
         })
         .eq("id", id);
-    } catch {}
+      if (error) {
+        console.error("Database error updating submission status:", error);
+        return NextResponse.json({ error: `Database error: ${error.message}` }, { status: 500 });
+      }
+    } else if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NODE_ENV !== "test") {
+      return NextResponse.json({ error: "Server configuration error: SUPABASE_SERVICE_ROLE_KEY is required." }, { status: 500 });
+    }
 
     return NextResponse.json({ success: true, message: `Submission marked as ${status}` });
   } catch (err: any) {

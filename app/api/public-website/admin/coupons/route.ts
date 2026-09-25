@@ -82,14 +82,14 @@ export async function DELETE(request: NextRequest) {
     const body = await request.json().catch(() => ({}));
     const { type, code, id } = body;
 
-    // 1. Delete Coupon
+    // 1. Delete Coupon (Automatically deactivates first, then deletes)
     if (type === "coupon" || code) {
       const couponCode = String(code || "").trim();
       if (!couponCode) {
         return NextResponse.json({ error: "Coupon code is required to delete." }, { status: 400 });
       }
       await deleteCoupon(couponCode);
-      return NextResponse.json({ success: true, message: `Coupon ${couponCode} deleted successfully.` });
+      return NextResponse.json({ success: true, message: `Coupon ${couponCode} was deactivated and permanently deleted.` });
     }
 
     // 2. Delete Single Referral Enrollment
