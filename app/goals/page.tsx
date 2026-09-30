@@ -46,16 +46,27 @@ export default function GoalsPage() {
       <main className="flex-1 w-full max-w-2xl sm:max-w-3xl px-3.5 sm:px-6 py-3.5 mx-auto space-y-3.5">
         {/* Sleek Compact Header Bar */}
         <div className="flex items-center justify-between gap-2 px-1">
-          <div className="flex-1 flex items-center space-x-2.5 min-w-0">
+          <div className="flex items-center space-x-2.5 min-w-0">
             <div className="p-2 rounded-xl bg-violet-500/10 border border-violet-500/25 text-violet-300 shrink-0 shadow-inner">
               <Target className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
-            <div className="min-w-0 overflow-hidden">
-              <h1 className="text-sm sm:text-base font-black text-zinc-100 tracking-tight leading-snug whitespace-nowrap">
-                Rolling 20-Hour Goals
-              </h1>
-              <p className="truncate text-[10px] sm:text-xs text-zinc-400 leading-snug">
-                Continuous 20h commitment (Append-only)
+            <div className="min-w-0">
+              <div className="flex items-center space-x-1.5">
+                <h1 className="text-[13px] min-[360px]:text-sm sm:text-base font-black text-zinc-100 tracking-tight leading-snug whitespace-nowrap">
+                  Rolling 20-Hour Goals
+                </h1>
+                <button
+                  type="button"
+                  onClick={() => setIsGuideModalOpen(true)}
+                  className="sm:hidden flex items-center justify-center p-1 rounded-lg text-violet-400 hover:text-violet-300 hover:bg-violet-500/10 transition-colors shrink-0"
+                  title="View Goals Guide"
+                  aria-label="View Goals Guide"
+                >
+                  <HelpCircle className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <p className="text-[10px] sm:text-xs text-zinc-400 leading-snug">
+                Continuous 20h commitment <span className="text-zinc-500 font-medium">(Append-only)</span>
               </p>
             </div>
           </div>
@@ -64,12 +75,12 @@ export default function GoalsPage() {
             <button
               type="button"
               onClick={() => setIsGuideModalOpen(true)}
-              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-violet-300 text-xs font-bold transition-all shrink-0 touch-manipulation shadow-sm"
+              className="hidden sm:flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-violet-300 text-xs font-bold transition-all shrink-0 touch-manipulation shadow-sm"
               title="View Goals Guide"
               aria-label="View Goals Guide"
             >
               <HelpCircle className="w-3.5 h-3.5 text-violet-400" />
-              <span className="hidden sm:inline">Guide</span>
+              <span>Guide</span>
             </button>
 
             {(!activeGoal || countdown.isExpired) ? (
@@ -77,7 +88,7 @@ export default function GoalsPage() {
                 size="sm"
                 variant="primary"
                 onClick={() => setIsCreateModalOpen(true)}
-                className="space-x-1 font-bold text-xs shrink-0 bg-violet-600 hover:bg-violet-500 text-white shadow-md shadow-violet-500/20 px-3.5 py-1.5 rounded-xl transition-all"
+                className="space-x-1 font-bold text-xs shrink-0 bg-violet-600 hover:bg-violet-500 text-white shadow-md shadow-violet-500/20 px-3 sm:px-3.5 py-1.5 rounded-xl transition-all"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>New Goals</span>
@@ -87,7 +98,7 @@ export default function GoalsPage() {
                 size="sm"
                 variant="secondary"
                 onClick={() => setIsAddModalOpen(true)}
-                className="space-x-1 bg-zinc-900 border-zinc-700 text-violet-200 hover:bg-zinc-800 hover:text-white text-xs font-bold shrink-0 px-3.5 py-1.5 rounded-xl transition-all"
+                className="space-x-1 bg-zinc-900 border-zinc-700 text-violet-200 hover:bg-zinc-800 hover:text-white text-xs font-bold shrink-0 px-3 sm:px-3.5 py-1.5 rounded-xl transition-all"
               >
                 <Plus className="w-3.5 h-3.5 text-violet-400" />
                 <span>Add Goal</span>
