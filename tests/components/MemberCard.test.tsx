@@ -422,11 +422,12 @@ describe("MemberCard Component", () => {
     expect(screen.getByText("Achiever")).toBeInTheDocument();
   });
 
-  it("renders decorative crossed swords in bottom corners when studying in global view", () => {
+  it("renders decorative crossed swords in bottom corners exclusively for Achiever when studying in global view", () => {
     render(
       <MemberCard
         member={{
           ...baseMember,
+          has_achiever_badge: true,
           current_status: "studying",
           session_start_time: new Date(Date.now() - 1500 * 1000).toISOString(),
           last_resumed_at: new Date(Date.now() - 1500 * 1000).toISOString(),
@@ -440,11 +441,31 @@ describe("MemberCard Component", () => {
     expect(screen.getByTestId("member-card-swords-right")).toBeInTheDocument();
   });
 
-  it("hides decorative crossed swords when card is added to rivalry (isInRivalry=true or compact=true)", () => {
+  it("never renders swords on non-Achiever member cards", () => {
+    render(
+      <MemberCard
+        member={{
+          ...baseMember,
+          has_achiever_badge: false,
+          current_status: "studying",
+          session_start_time: new Date(Date.now() - 1500 * 1000).toISOString(),
+          last_resumed_at: new Date(Date.now() - 1500 * 1000).toISOString(),
+        }}
+        isInRivalry={false}
+        compact={false}
+      />
+    );
+
+    expect(screen.queryByTestId("member-card-swords-left")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("member-card-swords-right")).not.toBeInTheDocument();
+  });
+
+  it("hides decorative crossed swords when Achiever card is added to rivalry (isInRivalry=true or compact=true)", () => {
     const { rerender } = render(
       <MemberCard
         member={{
           ...baseMember,
+          has_achiever_badge: true,
           current_status: "studying",
           session_start_time: new Date(Date.now() - 1500 * 1000).toISOString(),
           last_resumed_at: new Date(Date.now() - 1500 * 1000).toISOString(),
@@ -461,6 +482,7 @@ describe("MemberCard Component", () => {
       <MemberCard
         member={{
           ...baseMember,
+          has_achiever_badge: true,
           current_status: "studying",
           session_start_time: new Date(Date.now() - 1500 * 1000).toISOString(),
           last_resumed_at: new Date(Date.now() - 1500 * 1000).toISOString(),

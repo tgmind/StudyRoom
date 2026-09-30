@@ -334,8 +334,8 @@ export const MemberCard = memo(function MemberCard({
             </div>
             <div className={`${compact ? "h-2.5 mt-0.2" : "h-3.5 mt-0.5"}`} aria-hidden="true" />
 
-            {/* Decorative Crossed Swords in bottom left and right empty space below Live Timer Purple Pill */}
-            {!inRivalry && (
+            {/* Decorative Crossed Swords in bottom left and right empty space below Live Timer Purple Pill (Exclusively for Weekly Achiever) */}
+            {isAchiever && !inRivalry && (
               <>
                 <div
                   data-testid="member-card-swords-left"
@@ -344,11 +344,7 @@ export const MemberCard = memo(function MemberCard({
                   title="Study Combatant"
                 >
                   <Swords
-                    className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${
-                      isAchiever
-                        ? "text-amber-400/60 drop-shadow-[0_0_4px_rgba(245,158,11,0.4)]"
-                        : "text-zinc-600/50"
-                    }`}
+                    className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400/60 drop-shadow-[0_0_4px_rgba(245,158,11,0.4)]"
                   />
                 </div>
                 <div
@@ -358,11 +354,7 @@ export const MemberCard = memo(function MemberCard({
                   title="Study Combatant"
                 >
                   <Swords
-                    className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${
-                      isAchiever
-                        ? "text-amber-400/60 drop-shadow-[0_0_4px_rgba(245,158,11,0.4)]"
-                        : "text-zinc-600/50"
-                    }`}
+                    className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400/60 drop-shadow-[0_0_4px_rgba(245,158,11,0.4)]"
                   />
                 </div>
               </>
