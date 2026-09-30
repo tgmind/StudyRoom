@@ -11,6 +11,7 @@ import {
   History,
   Settings,
   ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { AuthContext } from "@/components/auth/AuthProvider";
 
@@ -123,15 +124,14 @@ export const BottomNav = memo(function BottomNav({ isStudying }: BottomNavProps 
           type="button"
           onClick={expandNav}
           aria-label="Open navigation panel"
-          className="fixed bottom-3 right-3 sm:bottom-4 sm:right-4 z-50 flex items-center justify-center p-2.5 rounded-full cursor-pointer group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 motion-reduce:transition-none"
+          className="fixed bottom-3 right-3 sm:bottom-4 sm:right-4 z-50 flex items-center justify-center p-2 rounded-full cursor-pointer group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 motion-reduce:transition-none"
           style={{
             bottom: "calc(0.75rem + env(safe-area-inset-bottom, 0px))",
           }}
         >
-          {/* Compact glowing beacon dot with minimal tight margin */}
-          <span className="relative flex items-center justify-center w-6 h-6 rounded-full bg-zinc-900/85 hover:bg-zinc-800 text-white border border-zinc-700/80 shadow-[0_4px_16px_rgba(0,0,0,0.6)] backdrop-blur-md transition-all duration-200 group-hover:scale-110 active:scale-95">
-            <span className="motion-safe:animate-ping absolute inline-flex h-2.5 w-2.5 rounded-full bg-white/40 opacity-75 duration-1000 motion-reduce:hidden" />
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-white shadow-[0_0_8px_rgba(255,255,255,0.9)]" />
+          {/* Up arrow in White Filled Circle */}
+          <span className="relative flex items-center justify-center w-7 h-7 rounded-full bg-white text-zinc-950 shadow-[0_4px_16px_rgba(0,0,0,0.6),_0_0_12px_rgba(255,255,255,0.4)] border border-white/90 backdrop-blur-md transition-all duration-200 group-hover:scale-110 group-hover:shadow-[0_4px_20px_rgba(255,255,255,0.6)] active:scale-95">
+            <ChevronUp className="w-4 h-4 text-zinc-950 stroke-[2.75]" aria-hidden="true" />
           </span>
         </button>
       )}

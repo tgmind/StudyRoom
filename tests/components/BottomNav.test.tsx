@@ -161,13 +161,21 @@ describe("BottomNav Component", () => {
     expect(screen.queryByRole("button", { name: /Open navigation panel/i })).not.toBeInTheDocument();
   });
 
-  // 9: Necessarily collapses into dot when in a study session
-  it("necessarily hides into collapsed dot when user is in a study session", () => {
+  // 9: Necessarily collapses into Up arrow in White Filled Circle when in a study session
+  it("necessarily hides into collapsed Up arrow in White Filled Circle when user is in a study session", () => {
     render(<BottomNav isStudying={true} />);
 
     const nav = screen.getByRole("navigation", { hidden: true });
     expect(nav).toHaveClass("translate-y-full");
-    expect(screen.getByRole("button", { name: /Open navigation panel/i })).toBeInTheDocument();
+    const trigger = screen.getByRole("button", { name: /Open navigation panel/i });
+    expect(trigger).toBeInTheDocument();
+
+    // Verify it renders the Up arrow in a White Filled Circle
+    const whiteCircle = trigger.querySelector(".bg-white");
+    expect(whiteCircle).toBeInTheDocument();
+    expect(whiteCircle).toHaveClass("rounded-full");
+    const upArrow = whiteCircle?.querySelector("svg");
+    expect(upArrow).toBeInTheDocument();
   });
 
   // 10: Smoothly transitions when study session starts and stops
