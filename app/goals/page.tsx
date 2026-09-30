@@ -51,10 +51,10 @@ export default function GoalsPage() {
               <Target className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
             <div className="min-w-0">
-              <h1 className="text-sm sm:text-base font-black text-zinc-100 tracking-tight leading-snug">
+              <h1 className="text-sm sm:text-base font-black text-zinc-100 tracking-tight leading-snug whitespace-nowrap">
                 Rolling 20-Hour Goals
               </h1>
-              <p className="text-[10px] sm:text-xs text-zinc-400 leading-snug">
+              <p className="text-[10px] sm:text-xs text-zinc-400 leading-snug whitespace-nowrap">
                 Continuous 20h commitment (Append-only)
               </p>
             </div>
