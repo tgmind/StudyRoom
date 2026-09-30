@@ -46,15 +46,15 @@ export default function GoalsPage() {
       <main className="flex-1 w-full max-w-2xl sm:max-w-3xl px-3.5 sm:px-6 py-3.5 mx-auto space-y-3.5">
         {/* Sleek Compact Header Bar */}
         <div className="flex items-center justify-between gap-2 px-1">
-          <div className="flex items-center space-x-2.5 min-w-0">
+          <div className="flex-1 flex items-center space-x-2.5 min-w-0">
             <div className="p-2 rounded-xl bg-violet-500/10 border border-violet-500/25 text-violet-300 shrink-0 shadow-inner">
               <Target className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 overflow-hidden">
               <h1 className="text-sm sm:text-base font-black text-zinc-100 tracking-tight leading-snug whitespace-nowrap">
                 Rolling 20-Hour Goals
               </h1>
-              <p className="text-[10px] sm:text-xs text-zinc-400 leading-snug whitespace-nowrap">
+              <p className="truncate text-[10px] sm:text-xs text-zinc-400 leading-snug">
                 Continuous 20h commitment (Append-only)
               </p>
             </div>
