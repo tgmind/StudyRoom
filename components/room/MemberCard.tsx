@@ -79,7 +79,7 @@ export const MemberCard = memo(function MemberCard({
         compact ? "p-2 sm:p-2.5 rounded-xl" : "p-3 sm:p-3.5 rounded-2xl"
       } border transition-all duration-200 select-none h-full w-full ${
         isAchiever
-          ? "bg-gradient-to-b from-[#1b1408] via-[#120f09] to-[#0a0807] border-amber-400/70 ring-1 ring-amber-400/30 shadow-[0_0_20px_rgba(245,158,11,0.18),_0_4px_16px_rgba(0,0,0,0.6)]"
+          ? "bg-gradient-to-b from-amber-950/40 via-[#141009] to-[#0a0807] border-amber-400/60 ring-1 ring-amber-400/25 shadow-[0_4px_20px_rgba(245,158,11,0.12),_0_2px_8px_rgba(0,0,0,0.6)]"
           : isStudying
           ? "bg-gradient-to-b from-zinc-900/90 to-zinc-950/95 border-fuchsia-500/40 ring-1 ring-fuchsia-500/20 shadow-[0_4px_20px_rgba(217,70,239,0.15)]"
           : isBreak
@@ -87,28 +87,11 @@ export const MemberCard = memo(function MemberCard({
           : "bg-zinc-950/60 border-zinc-900/80 opacity-60 grayscale hover:opacity-95 hover:grayscale-0"
       }`}
     >
-      {/* Top Tubelight Fixture & Radiant Lightning Glow for Achiever */}
+      {/* Subtle Warm Amber Ambient Tone for Achiever Card */}
       {isAchiever && (
         <>
-          {/* Tubelight Core: Horizontal glowing neon/LED tube centered on top margin */}
           <div
-            className={`absolute top-0 left-1/2 -translate-x-1/2 ${
-              compact ? "w-20 h-[2px]" : "w-28 sm:w-36 h-[2.5px]"
-            } rounded-full bg-gradient-to-r from-transparent via-amber-200 to-transparent shadow-[0_0_10px_rgba(251,191,36,1),_0_0_22px_rgba(245,158,11,0.9)] z-20 pointer-events-none`}
-            aria-hidden="true"
-          />
-
-          {/* Tubelight Downward Radiant Lighting Cone (illuminating crown and avatar from top) */}
-          <div
-            className={`absolute inset-x-0 top-0 ${
-              compact ? "h-20" : "h-28"
-            } bg-[radial-gradient(ellipse_65%_80%_at_50%_0%,_rgba(251,191,36,0.32)_0%,_rgba(245,158,11,0.12)_45%,_transparent_80%)] pointer-events-none rounded-t-2xl z-0`}
-            aria-hidden="true"
-          />
-
-          {/* Upper Rim Specular Light Line */}
-          <div
-            className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-amber-300/80 to-transparent rounded-t-2xl pointer-events-none z-10"
+            className="absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_0%,_rgba(245,158,11,0.12)_0%,_transparent_75%)] pointer-events-none rounded-2xl z-0"
             aria-hidden="true"
           />
 
