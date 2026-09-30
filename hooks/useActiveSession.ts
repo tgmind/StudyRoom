@@ -18,6 +18,7 @@ import {
 import {
   getServerNow,
   getServerTimeOffset,
+  calibrateWithServerTime,
 } from "@/lib/time/clockSync";
 import {
   with10sTimeout,
@@ -52,7 +53,7 @@ export interface TenMinuteWarningState {
   remainingSeconds: number;
 }
 
-export type SessionSyncStatus = "synced" | "syncing" | "reconnecting" | "no_network" | "error";
+export type SessionSyncStatus = "synced" | "syncing" | "reconciling" | "reconnecting" | "no_network" | "error";
 export type SessionMutationType = "start" | "pause" | "resume" | "stop" | null;
 
 export async function requestNotificationPermission(): Promise<NotificationPermission | null> {
@@ -326,6 +327,17 @@ export function useActiveSession(
     }
   }, [mutationPending, isAuthLoading, profile, isOnline, error, connectionState, isTimerCalibrating]);
 
+  // Safety watchdog: ensure mutationPending never remains stuck if an unhandled edge case occurs
+  useEffect(() => {
+    if (mutationPending === null) return;
+    const timeoutId = setTimeout(() => {
+      console.warn(`[useActiveSession] Mutation ${mutationPending} pending exceeded 12s safety window, resetting.`);
+      setMutationPending(null);
+      setActionLoading(false);
+    }, 12000);
+    return () => clearTimeout(timeoutId);
+  }, [mutationPending]);
+
   // Screen Wake Lock: keep screen active during live study mode
   useScreenWakeLock(effectiveStatus === "studying");
 
@@ -365,21 +377,33 @@ export function useActiveSession(
   useEffect(() => {
     if (!profile || isAuthLoading || mutationPendingRef.current !== null) return;
 
-    if (localStatusOverride) {
+    if (profile.current_status === "offline") {
+      if (localStatusOverride !== null) {
+        setLocalStatusOverride(null);
+      }
+      purgeStaleActiveSession();
+      clearOfflineActiveSession();
+      clearActiveStudyState();
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.removeItem("studyroom_active_break");
+          if ((window as any).AndroidBridge?.onSessionStateResolved) {
+            (window as any).AndroidBridge.onSessionStateResolved(false, 0, 0, false, 0, "");
+          }
+        } catch {}
+      }
+      if (blocksRef.current.length > 0) {
+        setBlocks([]);
+      }
+      if (elapsedStudySecondsRef.current > 0) {
+        setElapsedStudySeconds(0);
+      }
+      if (onStatusChangeRef.current) {
+        onStatusChangeRef.current("offline");
+      }
+    } else if (localStatusOverride) {
       if (profile.current_status === localStatusOverride) {
         setLocalStatusOverride(null);
-      } else if (profile.current_status === "offline") {
-        setLocalStatusOverride(null);
-        purgeStaleActiveSession();
-        clearOfflineActiveSession();
-        clearActiveStudyState();
-        if (typeof window !== "undefined") {
-          try {
-            localStorage.removeItem("studyroom_active_break");
-          } catch {}
-        }
-        setBlocks([]);
-        setElapsedStudySeconds(0);
       } else {
         setLocalStatusOverride(null);
       }
@@ -422,16 +446,23 @@ export function useActiveSession(
   // Clean up stale cache immediately when external device or server marks profile offline
   useEffect(() => {
     if (profile && profile.current_status === "offline" && mutationPendingRef.current === null) {
+      setLocalStatusOverride(null);
       purgeStaleActiveSession();
       clearOfflineActiveSession();
       clearActiveStudyState();
       if (typeof window !== "undefined") {
         try {
           localStorage.removeItem("studyroom_active_break");
+          if ((window as any).AndroidBridge?.onSessionStateResolved) {
+            (window as any).AndroidBridge.onSessionStateResolved(false, 0, 0, false, 0, "");
+          }
         } catch {}
       }
       setBlocks([]);
       setElapsedStudySeconds(0);
+      if (onStatusChangeRef.current) {
+        onStatusChangeRef.current("offline");
+      }
     }
   }, [profile?.current_status, profile]);
 
@@ -985,6 +1016,9 @@ export function useActiveSession(
             server_now?: string;
             error?: string;
           };
+          if (res.server_now) {
+            calibrateWithServerTime(res.server_now, Date.now() - now);
+          }
 
           if (res.already_finished) {
             // Session was already authoritatively terminated on server (e.g. by cron or another device)
@@ -1235,6 +1269,19 @@ export function useActiveSession(
     };
   }, [currentStatus, finishSession]);
 
+  // Expose global session finalization hook for Android native limit alarm & WebView bridge
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    (window as any).__studyRoomAutoFinishSession = () => {
+      if (effectiveStatus !== "offline") {
+        finishSession([], "session_limit");
+      }
+    };
+    return () => {
+      delete (window as any).__studyRoomAutoFinishSession;
+    };
+  }, [effectiveStatus, finishSession]);
+
   // -----------------------------------------------------------------------
   // LIVE TIMER TICK LOOP (1-Second Local Precision)
   // -----------------------------------------------------------------------
@@ -1361,6 +1408,9 @@ export function useActiveSession(
 
       if (!rpcErr && data) {
         const res = data as { success: boolean; session_id?: string; server_now?: string; error?: string };
+        if (res.server_now) {
+          calibrateWithServerTime(res.server_now, Date.now() - now);
+        }
         const confirmedDetails: Partial<UserProfile> = {
           current_status: "studying",
           session_start_time: res.server_now || nowIso,
@@ -1523,6 +1573,9 @@ export function useActiveSession(
 
       if (!rpcErr && data) {
         const res = data as { success: boolean; server_now?: string; error?: string };
+        if (res.server_now) {
+          calibrateWithServerTime(res.server_now, Date.now() - now);
+        }
         const confirmedDetails: Partial<UserProfile> = {
           current_status: "break",
           break_started_at: res.server_now || nowIso,
@@ -1670,6 +1723,9 @@ export function useActiveSession(
       if (!rpcErr && data) {
         removeActiveTransitionActions();
         const res = data as { success: boolean; server_now?: string; error?: string };
+        if (res.server_now) {
+          calibrateWithServerTime(res.server_now, Date.now() - now);
+        }
         if (!res.success && res.error === "break_expired") {
           const accruedSeconds = profileRef.current?.active_study_seconds_snapshot ?? elapsedStudySeconds;
           setSavedStudySecondsOnBreakExpiry(accruedSeconds);

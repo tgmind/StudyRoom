@@ -7,6 +7,7 @@ import {
   getServerTimeOffset,
   isServerTimeCalibrated,
   resetClockCalibration,
+  subscribeToClockCalibration,
 } from "@/lib/time/clockSync";
 
 describe("Server Clock Synchronization Engine", () => {
@@ -97,5 +98,48 @@ describe("Server Clock Synchronization Engine", () => {
 
     calibrateWithServerTime("not-a-date");
     expect(isServerTimeCalibrated()).toBe(false);
+  });
+
+  it("persists calibrated offset to localStorage and exposes window globals", () => {
+    calibrateWithServerTime("2026-09-03T10:00:00.000Z", 0);
+    expect(localStorage.getItem("studyroom_server_clock_offset")).toBeDefined();
+    expect((window as any).__studyRoomGetServerTime).toBeDefined();
+    expect((window as any).__studyRoomGetServerNow).toBeDefined();
+  });
+
+  it("notifies subscribers when clock offset changes significantly", () => {
+    const fixedClientTime = new Date("2026-09-03T10:00:00.000Z").getTime();
+    vi.spyOn(Date, "now").mockReturnValue(fixedClientTime);
+
+    const callback = vi.fn();
+    const unsubscribe = subscribeToClockCalibration(callback);
+
+    // Initial calibration
+    calibrateWithServerTime("2026-09-03T10:00:00.000Z", 0);
+    // Large shift (>500ms)
+    calibrateWithServerTime("2026-09-03T10:00:05.000Z", 0);
+
+    expect(callback).toHaveBeenCalled();
+    unsubscribe();
+    vi.restoreAllMocks();
+  });
+
+  it("eliminates +62s Android device clock skew once calibrated", () => {
+    // Android device clock is 62 seconds ahead of true UTC
+    const trueServerEpoch = 1788271200000;
+    const fastAndroidClock = trueServerEpoch + 62000;
+    vi.spyOn(Date, "now").mockReturnValue(fastAndroidClock);
+
+    // Before calibration, client is 62s ahead
+    expect(Date.now() - trueServerEpoch).toBe(62000);
+
+    // Calibrate with server timestamp
+    calibrateWithServerTime(trueServerEpoch, 100);
+
+    // After calibration, getServerTime() evaluates exactly to true server time
+    const serverNowMs = getServerTime();
+    expect(Math.abs(serverNowMs - (trueServerEpoch + 50))).toBeLessThanOrEqual(5);
+
+    vi.restoreAllMocks();
   });
 });

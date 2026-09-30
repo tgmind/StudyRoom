@@ -27,6 +27,7 @@ import {
 } from "@/lib/time/format";
 import { getEffectiveMemberStatus } from "@/lib/time/break";
 import { getServerNow } from "@/lib/time/clockSync";
+import { SessionSyncStatus } from "@/hooks/useActiveSession";
 
 const useIsomorphicLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
@@ -37,7 +38,7 @@ interface MemberListProps {
   isLoading?: boolean;
   isRealtimeConnected?: boolean;
   connectionState?: "connecting" | "connected" | "reconnecting" | "offline";
-  syncStatus?: "synced" | "syncing" | "reconnecting" | "no_network" | "error";
+  syncStatus?: SessionSyncStatus;
   winEvents?: RivalryWinEvent[] | null;
   winEvent?: RivalryWinEvent | null;
   onRivalryWin?: (event: RivalryWinEvent) => void;

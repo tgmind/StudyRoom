@@ -55,8 +55,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.error("Error fetching profile:", error);
       }
       if (data) {
-        setProfile(data as UserProfile);
-        saveCachedUserProfile(data);
+        setProfile((prev) => {
+          const incoming = data as UserProfile;
+          const prevVersion = prev?.state_version ?? 0;
+          const incomingVersion = incoming.state_version ?? 0;
+          if (incomingVersion > 0 && prevVersion > 0 && incomingVersion < prevVersion) {
+            return prev;
+          }
+          const isIncomingOffline = incoming.current_status === "offline";
+          const updated: UserProfile = {
+            ...(prev || {}),
+            ...incoming,
+            session_start_time: isIncomingOffline ? null : (incoming.session_start_time ?? null),
+            last_resumed_at: isIncomingOffline ? null : (incoming.last_resumed_at ?? null),
+            break_started_at: isIncomingOffline ? null : (incoming.break_started_at ?? null),
+            active_study_seconds_snapshot: isIncomingOffline ? 0 : (incoming.active_study_seconds_snapshot ?? 0),
+          };
+          saveCachedUserProfile(updated);
+          return updated;
+        });
       }
     } catch (err) {
       console.warn("Profile fetch error (using cached profile):", err);
@@ -165,7 +182,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         (payload: { new: Record<string, unknown> }) => {
           setProfile((prev) => {
             if (!prev) return payload.new as unknown as UserProfile;
-            const updated = { ...prev, ...(payload.new as Partial<UserProfile>) };
+            const incoming = payload.new as Partial<UserProfile>;
+            const prevVersion = prev.state_version ?? 0;
+            const incomingVersion = (incoming.state_version as number) ?? 0;
+            if (incomingVersion > 0 && prevVersion > 0 && incomingVersion < prevVersion) {
+              return prev;
+            }
+
+            const isPrevActive = prev.current_status === "studying" || prev.current_status === "break";
+            const isIncomingOffline = incoming.current_status === "offline";
+
+            if (isPrevActive && isIncomingOffline) {
+              // Causal ordering: drop offline packet ONLY if current active session started strictly AFTER this offline event
+              const prevStartMs = prev.session_start_time ? new Date(prev.session_start_time).getTime() : 0;
+              const incomingOfflineMs = incoming.last_offline_at ? new Date(incoming.last_offline_at).getTime() : 0;
+              if (prevStartMs > 0 && incomingOfflineMs > 0 && prevStartMs > incomingOfflineMs) {
+                // Obsolete offline packet from a previous session that ended before the current active session started
+                return prev;
+              }
+            }
+
+            if (!isPrevActive && !isIncomingOffline) {
+              // User was offline, incoming is active: drop active packet ONLY if its start_time is older than offline timestamp
+              const prevOfflineMs = prev.last_offline_at ? new Date(prev.last_offline_at).getTime() : 0;
+              const incomingStartMs = incoming.session_start_time ? new Date(incoming.session_start_time).getTime() : 0;
+              if (prevOfflineMs > 0 && incomingStartMs > 0 && incomingStartMs < prevOfflineMs) {
+                return prev;
+              }
+            }
+
+            const updated: UserProfile = {
+              ...prev,
+              ...incoming,
+              session_start_time: isIncomingOffline ? null : (incoming.session_start_time ?? prev.session_start_time),
+              last_resumed_at: isIncomingOffline ? null : (incoming.last_resumed_at ?? prev.last_resumed_at),
+              break_started_at: isIncomingOffline ? null : (incoming.break_started_at ?? prev.break_started_at),
+              active_study_seconds_snapshot: isIncomingOffline ? 0 : (incoming.active_study_seconds_snapshot ?? prev.active_study_seconds_snapshot ?? 0),
+            };
             saveCachedUserProfile(updated);
             return updated;
           });

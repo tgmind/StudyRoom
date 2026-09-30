@@ -116,14 +116,19 @@ export function getMemberMutationEpoch(p: Partial<UserProfile>): number {
 export type RealtimeConnectionState = "connecting" | "connected" | "reconnecting" | "offline";
 export type ChannelLifecycleState = "idle" | "creating" | "subscribed" | "reconnecting" | "closing" | "disposed";
 
-export function isChannelHealthy(channel: any): boolean {
+export function isChannelHealthy(channel: any, supabaseClient?: any): boolean {
   if (!channel) return false;
   if (channel._isDisposed || channel._isClosed) return false;
   const state = channel.state || channel.channelAdapter?.state;
-  if (state !== undefined) {
-    return state === "joined";
+  if (state !== undefined && state !== "joined") {
+    return false;
   }
-  return true;
+  if (supabaseClient && typeof supabaseClient.realtime?.isConnected === "function") {
+    if (!supabaseClient.realtime.isConnected()) {
+      return false;
+    }
+  }
+  return state === "joined";
 }
 
 export function markChannelClosed(channel: any) {
@@ -263,7 +268,7 @@ export function useLiveRoom(currentUserId?: string) {
           const restEpoch = getMemberMutationEpoch(u);
 
           const isCurrentUser = Boolean(currentUserIdRef.current && u.id === currentUserIdRef.current);
-          const isLocalActive = Boolean(existing && (existing.current_status === "studying" || existing.current_status === "break"));
+          const isLocalActive = Boolean(existing && (existing.current_status === "studying" || existing.current_status === "break") && isCurrentUser);
 
           // MONOTONIC VERSIONING / REST RACE PROTECTION:
           // 1. Current user active session in local memory is ALWAYS authoritative over stale REST responses.
@@ -272,9 +277,9 @@ export function useLiveRoom(currentUserId?: string) {
           //    Stale local cache (e.g. from localStorage on initial render) has no in-memory version/epoch and
           //    will never override authoritative server state.
           let isLocalNewer = false;
-          if (isCurrentUser) {
-            isLocalNewer = isLocalActive && (restVersion === 0 || lastVersion >= restVersion);
-          } else if (existing) {
+          if (existing && isLocalActive) {
+            isLocalNewer = restVersion === 0 || lastVersion >= restVersion;
+          } else if (existing && (lastVersion > 0 || lastEpoch > 0)) {
             if (lastVersion > 0 && restVersion > 0) {
               isLocalNewer = lastVersion > restVersion;
             } else if (lastEpoch > 0 && restEpoch > 0) {
@@ -293,10 +298,10 @@ export function useLiveRoom(currentUserId?: string) {
               break_started_at: existing.break_started_at,
               active_study_seconds_snapshot: existing.active_study_seconds_snapshot,
               last_offline_at: existing.last_offline_at ?? u.last_offline_at ?? u.created_at,
-              past_24h_study_seconds: existing.past_24h_study_seconds ?? 0,
-              weekly_study_seconds: existing.weekly_study_seconds ?? 0,
-              total_sessions_count: existing.total_sessions_count ?? 0,
-              weekly_sessions_count: existing.weekly_sessions_count ?? 0,
+              past_24h_study_seconds: existing.past_24h_study_seconds ?? u.past_24h_study_seconds ?? 0,
+              weekly_study_seconds: existing.weekly_study_seconds ?? u.weekly_study_seconds ?? 0,
+              total_sessions_count: existing.total_sessions_count ?? u.total_sessions_count ?? 0,
+              weekly_sessions_count: existing.weekly_sessions_count ?? u.weekly_sessions_count ?? 0,
               leaderboard_score: existing.leaderboard_score ?? u.leaderboard_score,
               leaderboard_rank: existing.leaderboard_rank ?? u.leaderboard_rank,
               is_present: isPresent,
@@ -326,10 +331,10 @@ export function useLiveRoom(currentUserId?: string) {
             active_study_seconds_snapshot: u.current_status === "offline" ? 0 : (u.active_study_seconds_snapshot ?? 0),
             current_focus: u.current_status === "offline" ? null : u.current_focus,
             last_offline_at: u.last_offline_at ?? u.created_at,
-            past_24h_study_seconds: existing?.past_24h_study_seconds ?? 0,
-            weekly_study_seconds: existing?.weekly_study_seconds ?? 0,
-            total_sessions_count: existing?.total_sessions_count ?? 0,
-            weekly_sessions_count: existing?.weekly_sessions_count ?? 0,
+            past_24h_study_seconds: existing?.past_24h_study_seconds ?? u.past_24h_study_seconds ?? 0,
+            weekly_study_seconds: existing?.weekly_study_seconds ?? u.weekly_study_seconds ?? 0,
+            total_sessions_count: existing?.total_sessions_count ?? u.total_sessions_count ?? 0,
+            weekly_sessions_count: existing?.weekly_sessions_count ?? u.weekly_sessions_count ?? 0,
             leaderboard_score: existing?.leaderboard_score ?? u.leaderboard_score,
             leaderboard_rank: existing?.leaderboard_rank ?? u.leaderboard_rank,
             is_present: isPresent,
@@ -339,7 +344,6 @@ export function useLiveRoom(currentUserId?: string) {
 
         const liveSorted = sortMembers(filterAdmin(liveMembers), currentUserIdRef.current);
         setMembers(liveSorted);
-        saveCachedRoomMembers(liveSorted);
         setLoading(false);
         recordDiagEvent("critical_live_snapshot_rendered", { count: liveSorted.length }, Date.now() - fetchStartMs);
       }
@@ -353,8 +357,9 @@ export function useLiveRoom(currentUserId?: string) {
       const serverNow = getServerNow();
       const cutoffTime = serverNow.getTime() - 24 * 60 * 60 * 1000;
       const weekStartTime = getWeekStartTimestamp(serverNow);
+      const maxSessionDurationMs = 4 * 3600 * 1000; // 4h safety buffer for max session duration crossing week boundary
       const oldestRequiredTime = new Date(
-        Math.min(cutoffTime, weekStartTime, serverNow.getTime() - 4 * 86400000)
+        Math.min(cutoffTime, weekStartTime - maxSessionDurationMs, serverNow.getTime() - 4 * 86400000)
       ).toISOString();
 
       let rpcPromise: PromiseLike<{ data: unknown; error: { message: string } | null }> | null = null;
@@ -439,6 +444,10 @@ export function useLiveRoom(currentUserId?: string) {
         const peakHours = calculateExpectedPeakTraffic(rawSessions, serverNow);
         setExpectedPeakHours(peakHours);
 
+        const sessionQuerySucceeded = sessionDataResult.status === "fulfilled";
+        const hasSessionData = sessionQuerySucceeded && Array.isArray(sessionDataResult.value?.data);
+        const hasAnySessions = hasSessionData && (sessionDataResult.value.data as any[]).length > 0;
+
         // Patch secondary stats into members list
         setMembers((prevMembers) => {
           const enriched = prevMembers.map((m) => {
@@ -450,12 +459,12 @@ export function useLiveRoom(currentUserId?: string) {
 
             return {
               ...m,
-              past_24h_study_seconds: stat?.past24hSeconds ?? m.past_24h_study_seconds ?? 0,
-              weekly_study_seconds: stat?.weeklySeconds ?? m.weekly_study_seconds ?? 0,
-              total_sessions_count: stat?.weeklySessions ?? m.total_sessions_count ?? 0,
-              weekly_sessions_count: stat?.weeklySessions ?? m.weekly_sessions_count ?? 0,
-              leaderboard_score: lb ? lb.score : m.leaderboard_score,
-              leaderboard_rank: lb ? lb.rank : m.leaderboard_rank,
+              past_24h_study_seconds: stat?.past24hSeconds ?? (hasAnySessions ? 0 : (m.past_24h_study_seconds ?? 0)),
+              weekly_study_seconds: stat?.weeklySeconds ?? (hasAnySessions ? 0 : (m.weekly_study_seconds ?? 0)),
+              total_sessions_count: stat?.weeklySessions ?? (hasAnySessions ? 0 : (m.total_sessions_count ?? 0)),
+              weekly_sessions_count: stat?.weeklySessions ?? (hasAnySessions ? 0 : (m.weekly_sessions_count ?? 0)),
+              leaderboard_score: lb ? lb.score : (hasAnySessions ? 0 : m.leaderboard_score),
+              leaderboard_rank: lb ? lb.rank : (hasAnySessions ? undefined : m.leaderboard_rank),
               last_offline_at: m.current_status === "offline" && bestOfflineMs > 0
                 ? new Date(bestOfflineMs).toISOString()
                 : m.last_offline_at,
@@ -531,8 +540,15 @@ export function useLiveRoom(currentUserId?: string) {
             const lastAttempt = recentlyStoppedBreakUserIdsRef.current.get(expired.id) || 0;
             if (nowMs - lastAttempt > 15000) {
               recentlyStoppedBreakUserIdsRef.current.set(expired.id, nowMs);
+              const expectedStartTime =
+                expired.current_status === "break"
+                  ? (expired.break_started_at || expired.session_start_time)
+                  : expired.session_start_time;
               Promise.resolve(
-                (supabase as unknown as RpcCaller).rpc("rpc_stop_user_session", { p_user_id: expired.id })
+                (supabase as unknown as RpcCaller).rpc("rpc_stop_user_session", {
+                  p_user_id: expired.id,
+                  p_expected_start_time: expectedStartTime,
+                })
               ).catch(() => {});
             }
           });
@@ -734,7 +750,7 @@ export function useLiveRoom(currentUserId?: string) {
     applyProfileUpdate(enrichedPayload);
 
     // 3. Broadcast to all peers & re-track presence
-    if (channelRef.current && isChannelHealthy(channelRef.current)) {
+    if (channelRef.current && isChannelHealthy(channelRef.current, supabase)) {
       try {
         await channelRef.current.send({
           type: "broadcast",
@@ -1112,7 +1128,7 @@ export function useLiveRoom(currentUserId?: string) {
     }
 
     const currentChannel = channelRef.current;
-    const isHealthy = currentChannel && isChannelHealthy(currentChannel) && lifecycleRef.current === "subscribed";
+    const isHealthy = currentChannel && isChannelHealthy(currentChannel, supabase) && lifecycleRef.current === "subscribed";
 
     if (!forceRecreate && isHealthy && currentChannel) {
       setIsRealtimeConnected(true);
@@ -1191,7 +1207,7 @@ export function useLiveRoom(currentUserId?: string) {
               (supabase.realtime as any)?.setAuth(session.access_token);
             } catch {}
           }
-          if (!channelRef.current || !isChannelHealthy(channelRef.current)) {
+          if (!channelRef.current || !isChannelHealthy(channelRef.current, supabase)) {
             ensureRoomChannelRef.current(true);
           }
         }
@@ -1199,7 +1215,39 @@ export function useLiveRoom(currentUserId?: string) {
       authSubscription = authListener?.subscription ?? null;
     } catch {}
 
+    // 5. Periodic Connection Health Watchdog & Week Boundary Monitor (every 20s)
+    let lastObservedWeekStart = getWeekStartTimestamp(getServerNow());
+    const watchdogInterval = setInterval(() => {
+      if (lifecycleRef.current === "disposed") return;
+
+      const isOnline = typeof navigator === "undefined" || navigator.onLine;
+      if (!isOnline) {
+        setConnectionState("offline");
+        setIsRealtimeConnected(false);
+        return;
+      }
+
+      // Check Realtime socket and channel health
+      const channel = channelRef.current;
+      const isHealthy = isChannelHealthy(channel, supabase);
+      if (!isHealthy && lifecycleRef.current === "subscribed") {
+        console.warn("[Realtime Watchdog] Channel unhealthy or socket disconnected, scheduling reconnection...");
+        setConnectionState("reconnecting");
+        setIsRealtimeConnected(false);
+        ensureRoomChannelRef.current(true);
+      }
+
+      // Automatic Week Rollover while app is open (Sunday 23:59:59 -> Monday 00:00:00 IST)
+      const currentWeekStart = getWeekStartTimestamp(getServerNow());
+      if (currentWeekStart !== lastObservedWeekStart) {
+        console.info("[Room Week Rollover] New week detected. Auto-refreshing room stats...");
+        lastObservedWeekStart = currentWeekStart;
+        fetchMembersRef.current();
+      }
+    }, 20000);
+
     return () => {
+      clearInterval(watchdogInterval);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", handleWindowFocus);
       window.removeEventListener("online", handleOnline);

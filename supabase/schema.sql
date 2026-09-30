@@ -329,7 +329,7 @@ BEGIN
         'rpc_cleanup_expired_breaks'
       )
   ) LOOP
-    EXECUTE 'DROP FUNCTION IF EXISTS ' || f.func_signature || ' CASCADE;';
+    EXECUTE 'DROP FUNCTION IF EXISTS ' || f.func_signature || ' RESTRICT;';
   END LOOP;
 END;
 $$;
@@ -1175,13 +1175,8 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- 9. LEADERBOARD & ACHIEVER BADGE RPCs
 -- ------------------------------------------------------------
 
--- Drop prior function overloads to prevent PostgREST PGRST203 candidate ambiguity and signature changes
-DROP FUNCTION IF EXISTS public.rpc_get_leaderboard(TIMESTAMPTZ, TEXT) CASCADE;
-DROP FUNCTION IF EXISTS public.rpc_get_leaderboard(TIMESTAMPTZ) CASCADE;
-DROP FUNCTION IF EXISTS public.rpc_get_leaderboard() CASCADE;
-
 -- Function to get leaderboard entries for a given week with timezone support (Default Asia/Kolkata)
--- Implements Dual-Pillar Goal Index + Realtime Live Study Sync
+-- Implements Dual-Pillar Goal Index + Realtime Live Study Sync (Safe in-place replacement)
 CREATE OR REPLACE FUNCTION public.rpc_get_leaderboard(
   p_week_start TIMESTAMPTZ DEFAULT NULL,
   p_timezone TEXT DEFAULT 'Asia/Kolkata'
@@ -1200,120 +1195,51 @@ RETURNS TABLE (
   total_tasks INTEGER
 ) AS $$
 DECLARE
-  v_tz TEXT := COALESCE(NULLIF(p_timezone, ''), 'Asia/Kolkata');
   v_week_start TIMESTAMPTZ;
   v_week_end TIMESTAMPTZ;
-  v_max_study_minutes INTEGER := 1;
-  v_target_completed_tasks INTEGER := 3;
+  v_tz TEXT := COALESCE(p_timezone, 'Asia/Kolkata');
 BEGIN
+  -- Determine canonical week start in local timezone (Monday 00:00:00)
   IF p_week_start IS NULL THEN
-    -- Default to current week's Monday 00:00:00 in specified timezone
-    v_week_start := (DATE_TRUNC('week', NOW() AT TIME ZONE v_tz) AT TIME ZONE v_tz);
+    v_week_start := DATE_TRUNC('week', NOW() AT TIME ZONE v_tz) AT TIME ZONE v_tz;
   ELSE
-    v_week_start := (DATE_TRUNC('week', p_week_start AT TIME ZONE v_tz) AT TIME ZONE v_tz);
+    v_week_start := p_week_start;
   END IF;
   v_week_end := v_week_start + INTERVAL '7 days';
 
-  -- Create temporary table of aggregate weekly statistics per user
-  DROP TABLE IF EXISTS temp_user_stats;
-  CREATE TEMP TABLE temp_user_stats ON COMMIT DROP AS
-  WITH completed_study AS (
-    SELECT s.user_id, COALESCE(SUM(s.duration_minutes), 0)::INTEGER AS study_mins
-    FROM public.study_sessions s
-    WHERE s.start_time >= v_week_start AND s.start_time < v_week_end
-    GROUP BY s.user_id
-    UNION ALL
-    -- Account for unclosed blocks from past-week evaluations (BUG-03)
-    SELECT b.user_id, COALESCE(SUM(EXTRACT(EPOCH FROM (LEAST(COALESCE(b.end_time, NOW()), v_week_end) - b.start_time))), 0)::INTEGER / 60 AS study_mins
-    FROM public.session_blocks b
-    WHERE b.session_id IS NULL
-      AND b.block_type = 'study'
-      AND b.start_time >= v_week_start
-      AND b.start_time < v_week_end
-      AND NOW() >= v_week_end
-    GROUP BY b.user_id
-  ),
-  live_study AS (
-    -- Compute in-progress active study minutes for users currently studying or on valid break
+  RETURN QUERY
+  WITH weekly_study AS (
     SELECT
       u.id AS user_id,
-      FLOOR(
-        GREATEST(
-          0,
+      COALESCE(SUM(s.duration_minutes), 0)::INTEGER +
+      CASE
+        WHEN u.current_status = 'studying' AND u.session_start_time IS NOT NULL THEN
           LEAST(
-            180 * 60, -- Max session limit: 3 hours (10800 seconds)
-            COALESCE(
-              -- Method A: Exact sum of active study blocks within current week
-              (
-                SELECT SUM(
-                  EXTRACT(EPOCH FROM (
-                    LEAST(COALESCE(b.end_time, NOW()), v_week_end) - 
-                    GREATEST(b.start_time, v_week_start)
-                  ))
-                )
-                FROM public.session_blocks b
-                WHERE b.user_id = u.id 
-                  AND b.session_id IS NULL 
-                  AND b.block_type = 'study'
-                  AND b.start_time < v_week_end
-                  AND COALESCE(b.end_time, NOW()) > v_week_start
-              ),
-              -- Method B: Fallback to user status fields bounded strictly by v_week_start (BUG-02)
-              CASE 
-                WHEN NOW() >= v_week_start AND NOW() < v_week_end THEN
-                  LEAST(
-                    GREATEST(
-                      0,
-                      CASE
-                        WHEN u.current_status = 'studying' THEN
-                          CASE
-                            WHEN COALESCE(u.last_resumed_at, u.session_start_time, NOW()) >= v_week_start THEN
-                              COALESCE(u.active_study_seconds_snapshot, 0) + 
-                              EXTRACT(EPOCH FROM (NOW() - COALESCE(u.last_resumed_at, u.session_start_time, NOW())))
-                            ELSE
-                              EXTRACT(EPOCH FROM (NOW() - v_week_start))
-                          END
-                        WHEN u.current_status = 'break' AND (NOW() - u.break_started_at) < INTERVAL '1 hour' THEN
-                          CASE
-                            WHEN u.break_started_at >= v_week_start THEN
-                              COALESCE(u.active_study_seconds_snapshot, 0)
-                            ELSE 0
-                          END
-                        ELSE 0
-                      END
-                    ),
-                    EXTRACT(EPOCH FROM (NOW() - v_week_start))
-                  )
-                ELSE 0
-              END
+            180,
+            GREATEST(
+              0,
+              FLOOR(
+                (
+                  COALESCE(u.active_study_seconds_snapshot, 0) +
+                  EXTRACT(EPOCH FROM (NOW() - GREATEST(v_week_start, COALESCE(u.last_resumed_at, u.session_start_time))))
+                ) / 60
+              )::INTEGER
             )
           )
-        ) / 60
-      )::INTEGER AS live_mins
+        WHEN u.current_status = 'break' AND u.active_study_seconds_snapshot IS NOT NULL THEN
+          LEAST(180, GREATEST(0, FLOOR(u.active_study_seconds_snapshot / 60)::INTEGER))
+        ELSE 0
+      END AS study_mins
     FROM public.users u
-    WHERE NOW() >= v_week_start AND NOW() < v_week_end
-      AND u.current_status IN ('studying', 'break')
-      AND (
-        (u.current_status = 'studying' AND (u.session_start_time IS NULL OR NOW() - u.session_start_time < INTERVAL '4 hours'))
-        OR (u.current_status = 'break' AND u.break_started_at IS NOT NULL AND (NOW() - u.break_started_at) < INTERVAL '1 hour')
-      )
-  ),
-  weekly_study AS (
-    SELECT
-      u.id AS user_id,
-      (COALESCE(cs.study_mins, 0) + COALESCE(ls.live_mins, 0))::INTEGER AS study_mins
-    FROM public.users u
-    LEFT JOIN (
-      SELECT cs.user_id, SUM(cs.study_mins)::INTEGER AS study_mins
-      FROM completed_study cs
-      GROUP BY cs.user_id
-    ) cs ON u.id = cs.user_id
-    LEFT JOIN live_study ls ON u.id = ls.user_id
+    LEFT JOIN public.study_sessions s ON u.id = s.user_id
+      AND s.start_time >= v_week_start
+      AND s.start_time < v_week_end
+      AND s.duration_minutes > 0
+    GROUP BY u.id, u.current_status, u.session_start_time, u.last_resumed_at, u.active_study_seconds_snapshot
   ),
   completed_tasks_per_user AS (
     SELECT combined_tasks.user_id, COUNT(DISTINCT combined_tasks.task_id)::INTEGER AS completed_tasks_count
     FROM (
-      -- Tasks marked completed in daily_goals created in this week (BUG-05)
       SELECT g.user_id, t->>'id' AS task_id
       FROM public.daily_goals g,
            jsonb_array_elements(COALESCE(g.tasks, '[]'::JSONB)) t
@@ -1321,8 +1247,6 @@ BEGIN
         AND (t->>'completed')::boolean = true
         AND t->>'id' IS NOT NULL
       UNION
-      -- Tasks recorded in study_sessions belonging to this week (BUG-07)
-      -- Excludes Part 2 of a Sunday->Monday midnight split to prevent cross-week double attribution
       SELECT s.user_id, t->>'id' AS task_id
       FROM public.study_sessions s,
            jsonb_array_elements(COALESCE(s.completed_tasks, '[]'::JSONB)) t
@@ -1338,97 +1262,81 @@ BEGIN
     WHERE g.created_at >= v_week_start AND g.created_at < v_week_end
     GROUP BY g.user_id
   ),
-  weekly_goals AS (
+  weekly_streaks AS (
+    SELECT s.user_id, COUNT(DISTINCT DATE(s.start_time AT TIME ZONE v_tz))::INTEGER AS streak_days
+    FROM public.study_sessions s
+    WHERE s.start_time >= v_week_start AND s.start_time < v_week_end
+      AND s.duration_minutes > 0
+    GROUP BY s.user_id
+  ),
+  user_stats AS (
     SELECT
       u.id AS user_id,
-      COALESCE(ct.completed_tasks_count, 0) AS completed_tasks_count,
-      GREATEST(COALESCE(ct.completed_tasks_count, 0), COALESCE(tt.total_tasks_count, 0)) AS total_tasks_count,
-      COALESCE(
-        ROUND(
-          (COALESCE(ct.completed_tasks_count, 0)::NUMERIC /
-           NULLIF(GREATEST(COALESCE(ct.completed_tasks_count, 0), COALESCE(tt.total_tasks_count, 0)), 0)::NUMERIC) * 100, 1
-        ), 0
-      ) AS completion_pct
+      COALESCE(u.display_name, 'Anonymous') AS display_name,
+      u.avatar_url,
+      COALESCE(u.has_achiever_badge, false) AS has_achiever_badge,
+      COALESCE(u.current_status, 'offline') AS current_status,
+      COALESCE(ws.study_mins, 0)::INTEGER AS total_study_minutes,
+      CASE
+        WHEN COALESCE(tt.total_tasks_count, 0) > 0 THEN
+          ROUND((COALESCE(ct.completed_tasks_count, 0)::NUMERIC / tt.total_tasks_count::NUMERIC) * 100, 1)
+        ELSE 0.0
+      END AS goal_completion_pct,
+      COALESCE(wstr.streak_days, 0)::INTEGER AS streak_days,
+      COALESCE(ct.completed_tasks_count, 0)::INTEGER AS completed_tasks,
+      COALESCE(tt.total_tasks_count, 0)::INTEGER AS total_tasks
     FROM public.users u
+    LEFT JOIN weekly_study ws ON u.id = ws.user_id
     LEFT JOIN completed_tasks_per_user ct ON u.id = ct.user_id
     LEFT JOIN total_tasks_per_user tt ON u.id = tt.user_id
+    LEFT JOIN weekly_streaks wstr ON u.id = wstr.user_id
+    WHERE COALESCE(u.is_admin, FALSE) = FALSE
   ),
-  qualifying_days AS (
+  normalizers AS (
     SELECT
-      u.id AS user_id,
-      d.study_day
-    FROM public.users u
-    CROSS JOIN LATERAL (
-      SELECT
-        DATE_TRUNC('day', s.start_time AT TIME ZONE v_tz) AS study_day,
-        SUM(s.duration_minutes) AS day_mins
-      FROM public.study_sessions s
-      WHERE s.user_id = u.id 
-        AND s.start_time >= v_week_start 
-        AND s.start_time < v_week_end
-      GROUP BY DATE_TRUNC('day', s.start_time AT TIME ZONE v_tz)
-      UNION ALL
-      SELECT
-        DATE_TRUNC('day', NOW() AT TIME ZONE v_tz) AS study_day,
-        COALESCE(ls.live_mins, 0) AS day_mins
-      FROM live_study ls
-      WHERE ls.user_id = u.id AND ls.live_mins > 0
-        AND NOW() >= v_week_start AND NOW() < v_week_end
-    ) d
-    GROUP BY u.id, d.study_day
-    HAVING SUM(d.day_mins) >= 30
+      GREATEST(1, COALESCE(MAX(us.total_study_minutes), 1))::NUMERIC AS max_study_minutes,
+      GREATEST(3, COALESCE(MAX(us.completed_tasks), 3))::NUMERIC AS target_completed_tasks
+    FROM user_stats us
   ),
-  user_streaks AS (
-    -- Days with >= 30 mins active study in local calendar days within current week
-    SELECT qd.user_id, COUNT(DISTINCT qd.study_day)::INTEGER AS streak
-    FROM qualifying_days qd
-    GROUP BY qd.user_id
+  scored_users AS (
+    SELECT
+      us.user_id,
+      us.display_name,
+      us.avatar_url,
+      us.has_achiever_badge,
+      us.current_status,
+      us.total_study_minutes,
+      us.goal_completion_pct,
+      us.streak_days,
+      ROUND(
+        (
+          (0.6 * (us.total_study_minutes::NUMERIC / norm.max_study_minutes) * 100) +
+          (0.4 * (LEAST(us.completed_tasks::NUMERIC / norm.target_completed_tasks, 1.0)) * 100)
+        ), 1
+      )::NUMERIC AS calculated_score,
+      us.completed_tasks,
+      us.total_tasks
+    FROM user_stats us
+    CROSS JOIN normalizers norm
   )
   SELECT
-    u.id AS user_id,
-    u.display_name,
-    u.avatar_url,
-    u.has_achiever_badge,
-    u.current_status,
-    COALESCE(ws.study_mins, 0) AS total_study_minutes,
-    COALESCE(wg.completed_tasks_count, 0) AS completed_tasks,
-    COALESCE(wg.total_tasks_count, 0) AS total_tasks,
-    COALESCE(wg.completion_pct, 0) AS goal_completion_pct,
-    COALESCE(st.streak, 0) AS streak_days
-  FROM public.users u
-  LEFT JOIN weekly_study ws ON u.id = ws.user_id
-  LEFT JOIN weekly_goals wg ON u.id = wg.user_id
-  LEFT JOIN user_streaks st ON u.id = st.user_id
-  WHERE COALESCE(u.is_admin, FALSE) = FALSE;
-
-  SELECT GREATEST(1, MAX(temp_user_stats.total_study_minutes)) INTO v_max_study_minutes FROM temp_user_stats;
-  SELECT GREATEST(3, LEAST(COALESCE(MAX(temp_user_stats.completed_tasks), 0), 15)) INTO v_target_completed_tasks FROM temp_user_stats;
-
-  RETURN QUERY
-  SELECT
-    ts.user_id,
-    ts.display_name,
-    ts.avatar_url,
-    ts.has_achiever_badge,
-    ts.current_status,
-    ts.total_study_minutes,
-    ts.goal_completion_pct,
-    ts.streak_days,
-    ROUND(
-      (0.50 * (ts.total_study_minutes::NUMERIC / v_max_study_minutes::NUMERIC * 100.0)) +
-      (0.30 * (
-        (0.60 * LEAST(100.0, (ts.completed_tasks::NUMERIC / v_target_completed_tasks::NUMERIC) * 100.0)) +
-        (0.40 * CASE WHEN ts.total_tasks > 0 THEN LEAST(100.0, (ts.completed_tasks::NUMERIC / GREATEST(3, ts.total_tasks)::NUMERIC) * 100.0) ELSE 0.0 END)
-      )) +
-      (0.20 * LEAST((ts.streak_days::NUMERIC / 7.0) * 100.0, 100.0)),
-      1
-    ) AS score,
-    ts.completed_tasks,
-    ts.total_tasks
-  FROM temp_user_stats ts
-  ORDER BY score DESC, ts.total_study_minutes DESC, ts.display_name ASC;
+    su.user_id,
+    su.display_name,
+    su.avatar_url,
+    su.has_achiever_badge,
+    su.current_status,
+    su.total_study_minutes,
+    su.goal_completion_pct,
+    su.streak_days,
+    su.calculated_score AS score,
+    su.completed_tasks,
+    su.total_tasks
+  FROM scored_users su
+  ORDER BY su.calculated_score DESC, su.total_study_minutes DESC, su.completed_tasks DESC;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION public.rpc_get_leaderboard(TIMESTAMPTZ, TEXT) TO authenticated, anon, service_role;
 
 -- Function to calculate and award Weekly Achiever Badge (Run every Monday)
 CREATE OR REPLACE FUNCTION public.rpc_calculate_weekly_achiever(p_timezone TEXT DEFAULT 'Asia/Kolkata')
@@ -1908,11 +1816,20 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- ------------------------------------------------------------
 
 -- RPC to stop a user's session upon 1-hour break expiry or peer timeout detection
-CREATE OR REPLACE FUNCTION public.rpc_stop_user_session(p_user_id UUID)
+-- Dependency-safe overload cleanup using RESTRICT (strictly NO CASCADE)
+DROP FUNCTION IF EXISTS public.rpc_stop_user_session(UUID, TEXT) RESTRICT;
+DROP FUNCTION IF EXISTS public.rpc_stop_user_session(UUID) RESTRICT;
+DROP FUNCTION IF EXISTS public.rpc_stop_user_session(UUID, TIMESTAMPTZ) RESTRICT;
+
+CREATE OR REPLACE FUNCTION public.rpc_stop_user_session(
+  p_user_id UUID,
+  p_expected_start_time TIMESTAMPTZ DEFAULT NULL
+)
 RETURNS JSONB AS $$
 DECLARE
   v_status TEXT;
   v_session_start TIMESTAMPTZ;
+  v_break_start TIMESTAMPTZ;
   v_focus TEXT;
   v_now TIMESTAMPTZ := NOW();
   v_total_study_seconds NUMERIC := 0;
@@ -1922,10 +1839,16 @@ DECLARE
   v_session_id UUID;
   v_last_study_end TIMESTAMPTZ;
   v_session_actual_end TIMESTAMPTZ;
-  v_version BIGINT;
+  v_version BIGINT := 1;
+  v_caller_uid UUID := auth.uid();
+  v_is_system BOOLEAN;
+  v_is_owner BOOLEAN;
 BEGIN
-  SELECT current_status, session_start_time, current_focus, state_version
-  INTO v_status, v_session_start, v_focus, v_version
+  v_is_system := (current_setting('role', true) IN ('postgres', 'service_role')) OR public.check_is_admin();
+  v_is_owner := (v_caller_uid IS NOT NULL AND v_caller_uid = p_user_id);
+
+  SELECT current_status, session_start_time, break_started_at, current_focus, COALESCE(state_version, 1)
+  INTO v_status, v_session_start, v_break_start, v_focus, v_version
   FROM public.users
   WHERE id = p_user_id
   FOR UPDATE;
@@ -1939,20 +1862,84 @@ BEGIN
     );
   END IF;
 
-  UPDATE public.session_blocks
-  SET end_time = v_now
-  WHERE user_id = p_user_id AND end_time IS NULL;
+  -- Security Guard for Third-Party Observers (auth.uid() != p_user_id and non-system):
+  IF NOT v_is_owner AND NOT v_is_system THEN
+    -- A. Observer must supply the expected start time of the session they observed
+    IF p_expected_start_time IS NULL THEN
+      RETURN jsonb_build_object(
+        'success', false,
+        'rejected', true,
+        'reason', 'Observer must provide p_expected_start_time',
+        'current_status', v_status
+      );
+    END IF;
 
+    -- B. Session Identity Verification:
+    -- In studying status: session_start_time must match p_expected_start_time.
+    -- In break status: either session_start_time matches p_expected_start_time OR break_started_at matches p_expected_start_time.
+    IF (v_status = 'studying' AND (v_session_start IS NULL OR v_session_start <> p_expected_start_time))
+       OR (v_status = 'break' AND (v_session_start IS NULL OR v_session_start <> p_expected_start_time)
+                              AND (v_break_start IS NULL OR v_break_start <> p_expected_start_time)) THEN
+      RETURN jsonb_build_object(
+        'success', false,
+        'rejected', true,
+        'reason', 'Session identity mismatch: user has a newer or different session',
+        'current_status', v_status
+      );
+    END IF;
+
+    -- C. Server-Side Duration Expiry:
+    IF v_status = 'break' THEN
+      IF v_break_start IS NULL OR (v_now - v_break_start) < INTERVAL '1 hour' THEN
+        RETURN jsonb_build_object(
+          'success', false,
+          'rejected', true,
+          'reason', 'Break has not exceeded 1 hour limit',
+          'current_status', v_status
+        );
+      END IF;
+    ELSIF v_status = 'studying' THEN
+      SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(end_time, v_now) - start_time))), 0)
+      INTO v_total_study_seconds
+      FROM public.session_blocks
+      WHERE user_id = p_user_id AND block_type = 'study' AND session_id IS NULL;
+
+      -- Strict 3 hours (10,800 seconds) of actual accumulated study time (no wall-clock shortcut)
+      IF v_total_study_seconds < 10800 THEN
+        RETURN jsonb_build_object(
+          'success', false,
+          'rejected', true,
+          'reason', 'Study session has not exceeded 3 hour limit',
+          'current_status', v_status
+        );
+      END IF;
+    END IF;
+  END IF;
+
+  -- Fallback anchor if session_start_time was unset
   IF v_session_start IS NULL THEN
     v_session_start := v_now;
   END IF;
 
+  -- Proceed with authoritative finalization
+  -- Close ONLY active open blocks belonging to this authoritative session
+  UPDATE public.session_blocks
+  SET end_time = v_now
+  WHERE user_id = p_user_id
+    AND session_id IS NULL
+    AND start_time >= v_session_start
+    AND start_time <= v_now
+    AND end_time IS NULL;
+
+  -- Determine actual end time of study
   SELECT COALESCE(MAX(end_time), v_session_start)
   INTO v_last_study_end
   FROM public.session_blocks
   WHERE user_id = p_user_id
-    AND block_type = 'study'
-    AND session_id IS NULL;
+    AND session_id IS NULL
+    AND start_time >= v_session_start
+    AND start_time <= v_now
+    AND block_type = 'study';
 
   IF v_status = 'break' THEN
     v_session_actual_end := v_last_study_end;
@@ -1960,36 +1947,43 @@ BEGIN
     v_session_actual_end := v_now;
   END IF;
 
-  -- 3-Hour cap
-  IF v_session_actual_end > (v_session_start + INTERVAL '3 hours') THEN
-    v_session_actual_end := v_session_start + INTERVAL '3 hours';
-  END IF;
-
+  -- Compute study seconds strictly from session blocks belonging to this session
   SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(end_time, v_now) - start_time))), 0)
   INTO v_total_study_seconds
   FROM public.session_blocks
   WHERE user_id = p_user_id
-    AND block_type = 'study'
-    AND session_id IS NULL;
+    AND session_id IS NULL
+    AND start_time >= v_session_start
+    AND start_time <= v_now
+    AND block_type = 'study';
 
+  -- Enforce strict 180-minute cap on stored study duration
   v_duration_minutes := LEAST(180, GREATEST(0, FLOOR(v_total_study_seconds / 60)::INTEGER));
 
+  -- Compute break seconds strictly from session blocks belonging to this session
   SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(end_time, v_now) - start_time))), 0)
   INTO v_total_break_seconds
   FROM public.session_blocks
   WHERE user_id = p_user_id
-    AND block_type = 'break'
-    AND session_id IS NULL;
+    AND session_id IS NULL
+    AND start_time >= v_session_start
+    AND start_time <= v_now
+    AND block_type = 'break';
 
   v_break_minutes := GREATEST(0, FLOOR(v_total_break_seconds / 60)::INTEGER);
 
+  -- Insert finalized study session
   INSERT INTO public.study_sessions (user_id, start_time, end_time, duration_minutes, break_minutes, completed_tasks)
   VALUES (p_user_id, v_session_start, v_session_actual_end, v_duration_minutes, v_break_minutes, '[]'::JSONB)
   RETURNING id INTO v_session_id;
 
+  -- Associate ONLY blocks from this session with the new session_id
   UPDATE public.session_blocks
   SET session_id = v_session_id
-  WHERE user_id = p_user_id AND session_id IS NULL;
+  WHERE user_id = p_user_id
+    AND session_id IS NULL
+    AND start_time >= v_session_start
+    AND start_time <= v_now;
 
   UPDATE public.users
   SET current_status = 'offline',
@@ -2002,7 +1996,8 @@ BEGIN
       pending_goal_session_id = v_session_id,
       pending_goal_seconds = (v_duration_minutes * 60),
       pending_goal_reason = CASE WHEN v_status = 'break' THEN 'break_expired' ELSE 'session_limit' END,
-      last_offline_at = v_now
+      last_offline_at = v_now,
+      state_version = COALESCE(state_version, 1) + 1
   WHERE id = p_user_id
   RETURNING state_version INTO v_version;
 
@@ -2019,6 +2014,8 @@ BEGIN
   );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION public.rpc_stop_user_session(UUID, TIMESTAMPTZ) TO authenticated, service_role;
 
 -- RPC: Complete Session Goals (Authoritative Cross-Device Goal Completion RPC)
 DROP FUNCTION IF EXISTS public.rpc_complete_session_goals(UUID, TEXT[]) CASCADE;

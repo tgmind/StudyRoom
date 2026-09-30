@@ -105,7 +105,7 @@ export function isMemberStudyExpired(
   graceSeconds: number = 0
 ): boolean {
   if (member.current_status !== "studying") return false;
-  return calculateMemberElapsedStudySeconds(member as Partial<UserProfile>, now) >= (MAX_SESSION_STUDY_SECONDS + graceSeconds);
+  return calculateMemberElapsedStudySeconds(member as Partial<UserProfile>, now, false) >= (MAX_SESSION_STUDY_SECONDS + graceSeconds);
 }
 
 /**

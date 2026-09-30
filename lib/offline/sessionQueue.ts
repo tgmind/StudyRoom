@@ -8,6 +8,7 @@ import {
   OfflineSessionBlock,
 } from "./storageKeys";
 import { getDateInTimezone, getTimeUntilMidnight } from "../scoring/streak";
+import { getWeekStartTimestamp } from "../time/format";
 
 export type {
   OfflineActiveSession,
@@ -520,6 +521,37 @@ export function getCachedRoomMembers<T = unknown>(): T[] | null {
       localStorage.removeItem(STORAGE_KEYS.CACHED_ROOM_MEMBERS);
       return null;
     }
+
+    const currentWeekStart = getWeekStartTimestamp();
+    const savedWeekStartStr = localStorage.getItem(STORAGE_KEYS.CACHED_ROOM_MEMBERS + "_week_start");
+    const savedTsStr = localStorage.getItem(STORAGE_KEYS.CACHED_ROOM_MEMBERS + "_ts");
+    const savedWeekStart = savedWeekStartStr ? parseInt(savedWeekStartStr, 10) : 0;
+    const savedTs = savedTsStr ? parseInt(savedTsStr, 10) : 0;
+
+    // Check if the cache was saved in a different week or is missing week_start
+    const isDifferentWeek =
+      !savedWeekStartStr ||
+      savedWeekStart !== currentWeekStart ||
+      (savedTs > 0 && savedTs < currentWeekStart);
+
+    if (isDifferentWeek) {
+      // Cleanly sanitize weekly metrics for the brand-new week
+      const sanitized = (parsed as any[]).map((m) => ({
+        ...m,
+        weekly_study_seconds: 0,
+        weekly_sessions_count: 0,
+        total_sessions_count: 0,
+        leaderboard_score: 0,
+        leaderboard_rank: undefined,
+      }));
+      try {
+        localStorage.setItem(STORAGE_KEYS.CACHED_ROOM_MEMBERS, JSON.stringify(sanitized));
+        localStorage.setItem(STORAGE_KEYS.CACHED_ROOM_MEMBERS + "_week_start", currentWeekStart.toString());
+        localStorage.setItem(STORAGE_KEYS.CACHED_ROOM_MEMBERS + "_ts", Date.now().toString());
+      } catch {}
+      return sanitized as T[];
+    }
+
     return parsed as T[];
   } catch {
     try {
@@ -532,8 +564,10 @@ export function getCachedRoomMembers<T = unknown>(): T[] | null {
 export function saveCachedRoomMembers(members: unknown): void {
   if (typeof window === "undefined" || !members || !Array.isArray(members)) return;
   try {
+    const currentWeekStart = getWeekStartTimestamp();
     localStorage.setItem(STORAGE_KEYS.CACHED_ROOM_MEMBERS, JSON.stringify(members));
     localStorage.setItem(STORAGE_KEYS.CACHED_ROOM_MEMBERS + "_ts", Date.now().toString());
+    localStorage.setItem(STORAGE_KEYS.CACHED_ROOM_MEMBERS + "_week_start", currentWeekStart.toString());
   } catch {}
 }
 

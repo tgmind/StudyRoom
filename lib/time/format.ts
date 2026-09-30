@@ -73,7 +73,8 @@ export function calculateActiveStudySeconds(
  */
 export function calculateMemberElapsedStudySeconds(
   member: Partial<UserProfile> | UserProfile,
-  now: Date = getServerNow()
+  now: Date = getServerNow(),
+  clamp: boolean = true
 ): number {
   if (member.current_status === "offline") return 0;
 
@@ -118,7 +119,8 @@ export function calculateMemberElapsedStudySeconds(
     }
   }
 
-  return Math.min(MAX_SESSION_STUDY_SECONDS, Math.max(0, rawSeconds));
+  const validRaw = Math.max(0, rawSeconds);
+  return clamp ? Math.min(MAX_SESSION_STUDY_SECONDS, validRaw) : validRaw;
 }
 
 /**

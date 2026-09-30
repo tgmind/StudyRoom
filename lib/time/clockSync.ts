@@ -14,10 +14,43 @@ let anchorServerTimeMs = 0;
 let anchorPerfTimeMs = 0;
 let anchorWallTimeMs = 0;
 
-// Attempt to load persisted offset from session/local storage for instant calibration on reload
+type ClockCalibrationListener = (offsetMs: number) => void;
+const listeners = new Set<ClockCalibrationListener>();
+
+export function subscribeToClockCalibration(listener: ClockCalibrationListener): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+function notifyCalibrationListeners(offsetMs: number): void {
+  listeners.forEach((fn) => {
+    try {
+      fn(offsetMs);
+    } catch (err) {
+      console.warn("Error in clock calibration listener:", err);
+    }
+  });
+}
+
+function setupGlobalWindowExports(): void {
+  if (typeof window !== "undefined") {
+    try {
+      (window as any).__studyRoomGetServerTime = getServerTime;
+      (window as any).__studyRoomGetServerNow = getServerNow;
+      (window as any).__studyRoomServerOffset = () => serverTimeOffsetMs;
+    } catch {}
+  }
+}
+
+// Attempt to load persisted offset from localStorage (with sessionStorage fallback) for instant calibration on reload
 if (typeof window !== "undefined") {
   try {
-    const cached = sessionStorage.getItem("studyroom_server_clock_offset");
+    let cached = localStorage.getItem("studyroom_server_clock_offset");
+    if (cached === null) {
+      cached = sessionStorage.getItem("studyroom_server_clock_offset");
+    }
     if (cached !== null) {
       const parsed = parseInt(cached, 10);
       // Sanity check: plausible device clock skew within +/- 2 hours
@@ -28,12 +61,15 @@ if (typeof window !== "undefined") {
         anchorPerfTimeMs = typeof performance !== "undefined" ? performance.now() : 0;
         isCalibrated = true;
       } else {
+        localStorage.removeItem("studyroom_server_clock_offset");
+        localStorage.removeItem("studyroom_server_clock_offset_ts");
         sessionStorage.removeItem("studyroom_server_clock_offset");
       }
     }
   } catch {
     // Storage access restricted or disabled
   }
+  setupGlobalWindowExports();
 }
 
 /**
@@ -69,15 +105,24 @@ export function calibrateWithServerTime(
   // Discard absurd offsets greater than 2 hours (e.g. stale goal created_at timestamps)
   if (Math.abs(measuredOffset) > 7200000) return;
 
+  const prevOffset = serverTimeOffsetMs;
+
   if (!isCalibrated) {
-    serverTimeOffsetMs = measuredOffset;
+    serverTimeOffsetMs = Math.abs(measuredOffset) >= 500 ? measuredOffset : 0;
     anchorServerTimeMs = estimatedServerNow;
     anchorPerfTimeMs = perfNow;
     anchorWallTimeMs = clientNow;
     isCalibrated = true;
   } else {
-    // Smooth adjustment (exponential moving average) to prevent sudden jumps
-    serverTimeOffsetMs = Math.round(serverTimeOffsetMs * 0.7 + measuredOffset * 0.3);
+    // If measured offset deviates by more than 1000ms with low RTT (<1000ms), snap immediately
+    if (Math.abs(measuredOffset - serverTimeOffsetMs) > 1000 && roundTripTimeMs < 1000) {
+      serverTimeOffsetMs = measuredOffset;
+    } else if (Math.abs(measuredOffset) < 500 && Math.abs(serverTimeOffsetMs) < 500) {
+      serverTimeOffsetMs = 0;
+    } else {
+      // Smooth adjustment (exponential moving average) to prevent sudden jumps
+      serverTimeOffsetMs = Math.round(serverTimeOffsetMs * 0.7 + measuredOffset * 0.3);
+    }
     anchorServerTimeMs = clientNow + serverTimeOffsetMs;
     anchorPerfTimeMs = perfNow;
     anchorWallTimeMs = clientNow;
@@ -85,10 +130,17 @@ export function calibrateWithServerTime(
 
   if (typeof window !== "undefined") {
     try {
+      localStorage.setItem("studyroom_server_clock_offset", String(serverTimeOffsetMs));
+      localStorage.setItem("studyroom_server_clock_offset_ts", String(Date.now()));
       sessionStorage.setItem("studyroom_server_clock_offset", String(serverTimeOffsetMs));
     } catch {
       // Storage unavailable
     }
+    setupGlobalWindowExports();
+  }
+
+  if (Math.abs(serverTimeOffsetMs - prevOffset) >= 500) {
+    notifyCalibrationListeners(serverTimeOffsetMs);
   }
 }
 
@@ -155,10 +207,14 @@ export function resetClockCalibration(): void {
   anchorPerfTimeMs = 0;
   anchorWallTimeMs = 0;
   isCalibrated = false;
+  listeners.clear();
   if (typeof window !== "undefined") {
     try {
+      localStorage.removeItem("studyroom_server_clock_offset");
+      localStorage.removeItem("studyroom_server_clock_offset_ts");
       sessionStorage.removeItem("studyroom_server_clock_offset");
     } catch {}
+    setupGlobalWindowExports();
   }
 }
 

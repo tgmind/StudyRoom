@@ -19,9 +19,78 @@ public class SessionWarningReceiver extends BroadcastReceiver {
 
     @Override
     public void onReceive(Context context, Intent intent) {
-        if (context == null) return;
+        if (context == null || intent == null) return;
 
+        String action = intent.getAction();
         android.content.SharedPreferences prefs = context.getSharedPreferences("studyroom_session_alarm_prefs", Context.MODE_PRIVATE);
+
+        if (SessionAlarmManager.ACTION_SESSION_LIMIT.equals(action)) {
+            boolean isScheduled = prefs.getBoolean("limit_alarm_scheduled", false);
+            if (!isScheduled) return;
+
+            long triggerAtMs = prefs.getLong("limit_trigger_at_ms", 0);
+            long now = System.currentTimeMillis();
+            if (triggerAtMs > 0 && now < (triggerAtMs - 30000L)) return;
+
+            ensureAlertNotificationChannel(context);
+            SessionAlarmManager.markLimitDelivered(context, true);
+
+            // Dismiss any earlier 10-minute warning notification
+            NotificationManager notificationManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (notificationManager != null) {
+                notificationManager.cancel(SessionAlarmManager.NOTIFICATION_ID_SESSION_WARNING);
+            }
+
+            // Intent to open app and trigger auto-finalization
+            Intent openAppIntent = new Intent(context, MainActivity.class);
+            openAppIntent.setAction(MainActivity.ACTION_TRIGGER_SESSION_LIMIT);
+            openAppIntent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            PendingIntent openPendingIntent = PendingIntent.getActivity(
+                    context,
+                    1,
+                    openAppIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0)
+            );
+
+            String title = "🏁 Study Session Complete";
+            String shortText = "Your 3-hour study session reached the maximum limit and has been automatically saved.";
+            String bigText = "Your 3-hour study session reached the maximum limit. Your study progress and streak have been safely saved to your history.";
+            String summaryText = "3-Hour Limit • Auto-Saved";
+
+            int brandGreen = Color.parseColor("#10B981");
+
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(context, StudySessionService.CHANNEL_ID_ALERTS)
+                    .setSmallIcon(R.drawable.ic_stat_timer)
+                    .setColor(brandGreen)
+                    .setContentTitle(title)
+                    .setContentText(shortText)
+                    .setSubText(summaryText)
+                    .setStyle(new NotificationCompat.BigTextStyle()
+                            .setBigContentTitle(title)
+                            .bigText(bigText)
+                            .setSummaryText(summaryText))
+                    .setContentIntent(openPendingIntent)
+                    .setAutoCancel(true)
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setCategory(NotificationCompat.CATEGORY_ALARM)
+                    .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                    .setVibrate(new long[]{0, 300, 200, 300})
+                    .addAction(R.drawable.ic_stat_timer, "↗ " + context.getString(R.string.open_room), openPendingIntent);
+
+            if (notificationManager != null) {
+                notificationManager.notify(SessionAlarmManager.NOTIFICATION_ID_SESSION_LIMIT, builder.build());
+            }
+
+            // Also forward intent to MainActivity to trigger instant JavaScript auto-finalization if activity is alive
+            try {
+                Intent forwardIntent = new Intent(MainActivity.ACTION_TRIGGER_SESSION_LIMIT);
+                forwardIntent.setPackage(context.getPackageName());
+                context.sendBroadcast(forwardIntent);
+            } catch (Exception ignored) {}
+            return;
+        }
+
+        // Default: ACTION_SESSION_WARNING (10-minute warning)
         boolean isScheduled = prefs.getBoolean("alarm_scheduled", false);
         if (!isScheduled) {
             // Alarm was cancelled (e.g. user paused, took a break, or stopped session). Discard stale alert.

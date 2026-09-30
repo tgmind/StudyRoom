@@ -98,9 +98,15 @@ export function ActiveTimer({
                 </span>
               )}
               {syncStatus === "syncing" && (
-                <span className="text-amber-400 flex items-center space-x-1" title="Mutation or reconciliation in flight">
+                <span className="text-amber-400 flex items-center space-x-1" title="Mutation in flight">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
                   <span>Syncing...</span>
+                </span>
+              )}
+              {syncStatus === "reconciling" && (
+                <span className="text-amber-400 flex items-center space-x-1" title="Reconciling with authoritative server session">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                  <span>Reconciling...</span>
                 </span>
               )}
               {syncStatus === "reconnecting" && (

@@ -96,12 +96,31 @@ export default function LeaderboardPage() {
           weeklyStreaksByUser.set(user.id, streak);
         }
 
+        // Pre-compute user live study minutes if studying to match MemberCard
+        const userLiveWeeklySeconds =
+          user?.id && profile?.current_status === "studying"
+            ? calculateMemberLiveWeeklyStudySeconds(profile, serverNow, undefined, timezone)
+            : 0;
+        const userLiveWeeklyMinutes = Math.floor(userLiveWeeklySeconds / 60);
+
         // Identify weekly benchmarks across active group competitors
-        const maxGroupStudyMinutes = Math.max(1, ...filtered.map((e) => e.total_study_minutes || 0));
+        const maxGroupStudyMinutes = Math.max(
+          1,
+          ...filtered.map((e) =>
+            e.user_id === user?.id && userLiveWeeklyMinutes > 0
+              ? Math.max(e.total_study_minutes || 0, userLiveWeeklyMinutes)
+              : (e.total_study_minutes || 0)
+          )
+        );
         const maxGroupCompletedTasks = Math.max(1, ...filtered.map((e) => e.completed_tasks || 0));
 
         // Authoritatively recalculate scores using the Dual-Pillar Goal Index engine
         const recalculatedEntries: LeaderboardEntry[] = filtered.map((entry) => {
+          const isCurrentStudying = entry.user_id === user?.id && userLiveWeeklyMinutes > 0;
+          const totalStudyMinutes = isCurrentStudying
+            ? Math.max(entry.total_study_minutes || 0, userLiveWeeklyMinutes)
+            : (entry.total_study_minutes || 0);
+
           const completed = entry.completed_tasks ?? (entry.goal_completion_pct > 0 ? 1 : 0);
           const total = entry.total_tasks ?? (entry.goal_completion_pct > 0 ? 1 : 0);
 
@@ -114,7 +133,7 @@ export default function LeaderboardPage() {
             : rpcStreak;
 
           const { composite_score } = calculateLeaderboardScore(
-            entry.total_study_minutes || 0,
+            totalStudyMinutes,
             maxGroupStudyMinutes,
             completed,
             total,
@@ -124,6 +143,7 @@ export default function LeaderboardPage() {
 
           return {
             ...entry,
+            total_study_minutes: totalStudyMinutes,
             streak_days: weeklyStreak,
             score: composite_score,
           };
@@ -138,10 +158,20 @@ export default function LeaderboardPage() {
 
         cachedLeaderboardEntries = recalculatedEntries;
         setEntries(recalculatedEntries);
-      } catch (err) {
-        console.error("Failed to fetch leaderboard:", err);
+      } catch (err: any) {
+        const errorMsg =
+          err?.message ||
+          (typeof err === "object" && err ? JSON.stringify(err) : String(err)) ||
+          "Failed to load leaderboard";
+        console.error("Failed to fetch leaderboard:", {
+          message: err?.message,
+          code: err?.code,
+          details: err?.details,
+          hint: err?.hint,
+          raw: err,
+        });
         if (!isBackground) {
-          setError(err instanceof Error ? err.message : "Failed to load leaderboard");
+          setError(errorMsg);
         }
       } finally {
         if (!isBackground) {

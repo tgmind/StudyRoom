@@ -103,9 +103,12 @@ describe("useLiveRoom Hook", () => {
     expect(result.current.members[0].id).toBe("user-active");
     expect(result.current.members[1].id).toBe("user-expired-break");
     // Verify RPC was triggered for the expired break user
-    expect(mockRpc).toHaveBeenCalledWith("rpc_stop_user_session", {
-      p_user_id: "user-expired-break",
-    });
+    expect(mockRpc).toHaveBeenCalledWith(
+      "rpc_stop_user_session",
+      expect.objectContaining({
+        p_user_id: "user-expired-break",
+      })
+    );
   });
 
   it("handles RPC errors gracefully without failing member loading", async () => {
@@ -299,7 +302,8 @@ describe("useLiveRoom Hook", () => {
     const { result } = renderHook(() => useLiveRoom());
 
     await waitFor(() => {
-      expect(result.current.loading).toBe(false);
+      const a = result.current.members.find((m) => m.id === "user-alpha");
+      expect(a?.leaderboard_score).toBe(82.0);
     });
 
     const alpha = result.current.members.find((m) => m.id === "user-alpha");
@@ -414,7 +418,8 @@ describe("useLiveRoom Hook", () => {
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
-    });
+      expect(result.current.members.find((m) => m.id === "peer-1")?.current_status).toBe("offline");
+    }, { timeout: 4000 });
 
     const peerInState = result.current.members.find((m) => m.id === "peer-1");
     expect(peerInState).toBeDefined();

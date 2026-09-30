@@ -2,8 +2,10 @@ package com.studyroom.app;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
 import android.net.Network;
@@ -60,12 +62,23 @@ public class MainActivity extends AppCompatActivity {
     private ConnectivityManager.NetworkCallback networkCallback;
 
     public static final String ACTION_TRIGGER_BREAK = "com.studyroom.app.ACTION_TRIGGER_BREAK";
+    public static final String ACTION_TRIGGER_SESSION_LIMIT = "com.studyroom.app.ACTION_TRIGGER_SESSION_LIMIT";
 
     private String baseUrl;
     private long lastBackPressedTime = 0;
     private boolean isActivityVisible = false;
     private boolean isResumePending = false;
     private boolean isBreakPending = false;
+
+    private final BroadcastReceiver sessionLimitReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (intent != null && ACTION_TRIGGER_SESSION_LIMIT.equals(intent.getAction())) {
+                dispatchFinishSessionWithRetry();
+            }
+        }
+    };
+    private boolean isSessionLimitReceiverRegistered = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -101,6 +114,16 @@ public class MainActivity extends AppCompatActivity {
             webView.restoreState(savedInstanceState);
         }
 
+        try {
+            IntentFilter filter = new IntentFilter(ACTION_TRIGGER_SESSION_LIMIT);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(sessionLimitReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+            } else {
+                registerReceiver(sessionLimitReceiver, filter);
+            }
+            isSessionLimitReceiverRegistered = true;
+        } catch (Exception ignored) {}
+
         handleIncomingIntent(getIntent());
         scheduleObsoleteApkCleanup();
     }
@@ -132,6 +155,14 @@ public class MainActivity extends AppCompatActivity {
                     webView.loadUrl(baseUrl + "/room");
                 }
                 dispatchTakeBreakWithRetry();
+            }
+        } else if (ACTION_TRIGGER_SESSION_LIMIT.equals(intent.getAction())) {
+            if (webView != null) {
+                String currentUrl = webView.getUrl();
+                if (currentUrl == null || !currentUrl.contains("/room")) {
+                    webView.loadUrl(baseUrl + "/room");
+                }
+                dispatchFinishSessionWithRetry();
             }
         } else if (Intent.ACTION_VIEW.equals(intent.getAction())) {
             // Deep link: open the specific path inside the WebView
@@ -210,6 +241,39 @@ public class MainActivity extends AppCompatActivity {
                 "      for (var i = 0; i < btns.length; i++) {" +
                 "        var txt = (btns[i].innerText || btns[i].textContent || '').trim();" +
                 "        if (txt === 'Pause' || txt.includes('Pause')) {" +
+                "          btns[i].click();" +
+                "          clearInterval(poller);" +
+                "          return;" +
+                "        }" +
+                "      }" +
+                "    } catch (e) {}" +
+                "    if (attempts >= maxAttempts) {" +
+                "      clearInterval(poller);" +
+                "    }" +
+                "  }, 200);" +
+                "})();",
+                null
+        );
+    }
+
+    private void dispatchFinishSessionWithRetry() {
+        if (webView == null) return;
+        webView.evaluateJavascript(
+                "(function() {" +
+                "  var attempts = 0;" +
+                "  var maxAttempts = 35;" + // 35 * 200ms = 7 seconds
+                "  var poller = setInterval(function() {" +
+                "    attempts++;" +
+                "    try {" +
+                "      if (window.__studyRoomAutoFinishSession && typeof window.__studyRoomAutoFinishSession === 'function') {" +
+                "        window.__studyRoomAutoFinishSession();" +
+                "        clearInterval(poller);" +
+                "        return;" +
+                "      }" +
+                "      var btns = document.querySelectorAll('button');" +
+                "      for (var i = 0; i < btns.length; i++) {" +
+                "        var txt = (btns[i].innerText || btns[i].textContent || '').trim();" +
+                "        if (txt === 'End Session' || txt.includes('End Session') || txt === 'Stop' || txt.includes('Stop')) {" +
                 "          btns[i].click();" +
                 "          clearInterval(poller);" +
                 "          return;" +
@@ -500,8 +564,8 @@ public class MainActivity extends AppCompatActivity {
                 "          var st = new Date(rawTime).getTime();" +
                 "          if (!isNaN(st) && st > 0) studyStartMs = st;" +
                 "        }" +
-                "        var snapSec = (typeof studyObj.snapshotSeconds === 'number') ? studyObj.snapshotSeconds : ((typeof studyObj.accruedSeconds === 'number') ? studyObj.accruedSeconds : 0);" +
-                "        var elapsedSinceResume = (studyStartMs > 0) ? Math.max(0, Math.floor((Date.now() - studyStartMs) / 1000)) : 0;" +
+                "        var clientNow = (window.__studyRoomGetServerTime ? window.__studyRoomGetServerTime() : Date.now());" +
+                "        var elapsedSinceResume = (studyStartMs > 0) ? Math.max(0, Math.floor((clientNow - studyStartMs) / 1000)) : 0;" +
                 "        studyAccruedSec = snapSec + elapsedSinceResume;" +
                 "      }" +
                 "      var accruedSec = 0;" +
@@ -638,7 +702,7 @@ public class MainActivity extends AppCompatActivity {
         try {
             return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
         } catch (Exception e) {
-            return "1.0.16";
+            return "1.0.17";
         }
     }
 
@@ -913,6 +977,12 @@ public class MainActivity extends AppCompatActivity {
             try {
                 connectivityManager.unregisterNetworkCallback(networkCallback);
             } catch (Exception ignored) {}
+        }
+        if (isSessionLimitReceiverRegistered && sessionLimitReceiver != null) {
+            try {
+                unregisterReceiver(sessionLimitReceiver);
+            } catch (Exception ignored) {}
+            isSessionLimitReceiverRegistered = false;
         }
         CookieManager.getInstance().flush();
         if (webView != null) {

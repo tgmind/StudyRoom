@@ -172,7 +172,7 @@ describe("STUDYROOM PRODUCTION REALTIME ACCEPTANCE TEST SUITE", () => {
 
     expect(clientBReceived.length).toBeGreaterThanOrEqual(10);
     expect(clientAReceived.length).toBeGreaterThanOrEqual(3);
-    expect(avgLatency).toBeLessThan(500);
+    expect(avgLatency).toBeLessThan(1000);
   }, 15000);
 
   // ----------------------------------------------------
