@@ -129,6 +129,7 @@ export const RivalryArena = memo(function RivalryArena({
                   }
                   currentTimestamp={currentTimestamp}
                   compact={true}
+                  isInRivalry={true}
                 />
               </div>
             </div>

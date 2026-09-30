@@ -403,6 +403,75 @@ describe("MemberCard Component", () => {
     expect(screen.getByLabelText("Weekly Achiever")).toBeInTheDocument();
     expect(screen.getByText("Achiever")).toBeInTheDocument();
   });
+
+  it("renders enlarged Achiever title pill with crown icon and correct classes", () => {
+    render(
+      <MemberCard
+        member={{
+          ...baseMember,
+          display_name: "Subodh",
+          has_achiever_badge: true,
+        }}
+      />
+    );
+
+    const achieverPill = screen.getByLabelText("Weekly Achiever");
+    expect(achieverPill).toBeInTheDocument();
+    expect(achieverPill.className).toContain("text-[10px]");
+    expect(achieverPill.className).toContain("font-black");
+    expect(screen.getByText("Achiever")).toBeInTheDocument();
+  });
+
+  it("renders decorative crossed swords in bottom corners when studying in global view", () => {
+    render(
+      <MemberCard
+        member={{
+          ...baseMember,
+          current_status: "studying",
+          session_start_time: new Date(Date.now() - 1500 * 1000).toISOString(),
+          last_resumed_at: new Date(Date.now() - 1500 * 1000).toISOString(),
+        }}
+        isInRivalry={false}
+        compact={false}
+      />
+    );
+
+    expect(screen.getByTestId("member-card-swords-left")).toBeInTheDocument();
+    expect(screen.getByTestId("member-card-swords-right")).toBeInTheDocument();
+  });
+
+  it("hides decorative crossed swords when card is added to rivalry (isInRivalry=true or compact=true)", () => {
+    const { rerender } = render(
+      <MemberCard
+        member={{
+          ...baseMember,
+          current_status: "studying",
+          session_start_time: new Date(Date.now() - 1500 * 1000).toISOString(),
+          last_resumed_at: new Date(Date.now() - 1500 * 1000).toISOString(),
+        }}
+        isInRivalry={true}
+      />
+    );
+
+    expect(screen.queryByTestId("member-card-swords-left")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("member-card-swords-right")).not.toBeInTheDocument();
+
+    // Also verify compact={true} hides them
+    rerender(
+      <MemberCard
+        member={{
+          ...baseMember,
+          current_status: "studying",
+          session_start_time: new Date(Date.now() - 1500 * 1000).toISOString(),
+          last_resumed_at: new Date(Date.now() - 1500 * 1000).toISOString(),
+        }}
+        compact={true}
+      />
+    );
+
+    expect(screen.queryByTestId("member-card-swords-left")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("member-card-swords-right")).not.toBeInTheDocument();
+  });
 });
 
 

@@ -14,7 +14,7 @@ import {
   isMemberTimerCalibrating,
 } from "@/lib/time/format";
 import { getServerNow } from "@/lib/time/clockSync";
-import { Crown, Star, Coffee, Clock, BookOpen } from "lucide-react";
+import { Crown, Star, Coffee, Clock, BookOpen, Swords } from "lucide-react";
 
 import { getEffectiveMemberStatus } from "@/lib/time/break";
 
@@ -24,6 +24,7 @@ interface MemberCardProps {
   customElapsedSeconds?: number;
   currentTimestamp?: Date;
   compact?: boolean;
+  isInRivalry?: boolean;
 }
 
 export const MemberCard = memo(function MemberCard({
@@ -32,7 +33,9 @@ export const MemberCard = memo(function MemberCard({
   customElapsedSeconds,
   currentTimestamp = getServerNow(),
   compact = false,
+  isInRivalry = false,
 }: MemberCardProps) {
+  const inRivalry = Boolean(isInRivalry || compact);
   const effectiveStatus = getEffectiveMemberStatus(member, currentTimestamp);
   const isStudying = effectiveStatus === "studying";
   const isBreak = effectiveStatus === "break";
@@ -79,7 +82,7 @@ export const MemberCard = memo(function MemberCard({
         compact ? "p-2 sm:p-2.5 rounded-xl" : "p-3 sm:p-3.5 rounded-2xl"
       } border transition-all duration-200 select-none h-full w-full ${
         isAchiever
-          ? "bg-gradient-to-b from-amber-950/40 via-[#141009] to-[#0a0807] border-amber-400/60 ring-1 ring-amber-400/25 shadow-[0_4px_20px_rgba(245,158,11,0.12),_0_2px_8px_rgba(0,0,0,0.6)]"
+          ? "bg-gradient-to-b from-amber-950/55 via-[#181109] to-[#0a0807] border-amber-400/70 ring-1 ring-amber-400/30 shadow-[0_4px_22px_rgba(245,158,11,0.16),_0_2px_8px_rgba(0,0,0,0.6)]"
           : isStudying
           ? "bg-gradient-to-b from-zinc-900/90 to-zinc-950/95 border-fuchsia-500/40 ring-1 ring-fuchsia-500/20 shadow-[0_4px_20px_rgba(217,70,239,0.15)]"
           : isBreak
@@ -87,11 +90,11 @@ export const MemberCard = memo(function MemberCard({
           : "bg-zinc-950/60 border-zinc-900/80 opacity-60 grayscale hover:opacity-95 hover:grayscale-0"
       }`}
     >
-      {/* Subtle Warm Amber Ambient Tone for Achiever Card */}
+      {/* Subtle Warm Amber Ambient Tone for Achiever Card (10% stronger) */}
       {isAchiever && (
         <>
           <div
-            className="absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_0%,_rgba(245,158,11,0.12)_0%,_transparent_75%)] pointer-events-none rounded-2xl z-0"
+            className="absolute inset-0 bg-[radial-gradient(ellipse_80%_65%_at_50%_0%,_rgba(245,158,11,0.22)_0%,_rgba(245,158,11,0.06)_50%,_transparent_80%)] pointer-events-none rounded-2xl z-0"
             aria-hidden="true"
           />
 
@@ -215,15 +218,15 @@ export const MemberCard = memo(function MemberCard({
 
         {/* Achiever Crest Pill: Centered, overlapping lower rim of avatar, guaranteed never to clip */}
         {isAchiever && (
-          <div className={`relative z-20 ${compact ? "-mt-1.5" : "-mt-2"} max-w-[calc(100%-0.5rem)] flex justify-center`}>
+          <div className={`relative z-20 ${compact ? "-mt-2" : "-mt-2.5 sm:-mt-3"} max-w-[calc(100%-0.5rem)] flex justify-center`}>
             <span
-              className={`inline-flex items-center space-x-1 rounded-full bg-gradient-to-r from-amber-500 via-amber-300 to-amber-500 text-zinc-950 font-black tracking-wider uppercase shadow-[0_2px_6px_rgba(245,158,11,0.4)] border border-amber-200 select-none ${
-                compact ? "text-[7.5px] px-1.5 py-0.2" : "text-[8px] sm:text-[8.5px] px-2 py-0.5"
+              className={`inline-flex items-center space-x-1.5 rounded-full bg-gradient-to-r from-amber-500 via-amber-300 to-amber-500 text-zinc-950 font-black tracking-wider uppercase shadow-[0_2px_8px_rgba(245,158,11,0.5)] border border-amber-200 select-none ${
+                compact ? "text-[8px] px-2 py-0.5" : "text-[10px] sm:text-[10.5px] px-2.5 sm:px-3 py-0.5 sm:py-1"
               }`}
               aria-label="Weekly Achiever"
               title="Weekly Achiever"
             >
-              <Crown className={`${compact ? "w-2 h-2" : "w-2.5 h-2.5"} fill-zinc-950 shrink-0`} />
+              <Crown className={`${compact ? "w-2.5 h-2.5" : "w-3 h-3 sm:w-3.5 sm:h-3.5"} fill-zinc-950 shrink-0`} />
               <span className="truncate">Achiever</span>
             </span>
           </div>
@@ -315,7 +318,7 @@ export const MemberCard = memo(function MemberCard({
       <div
         className={`w-full ${
           compact ? "mt-1 pt-1 min-h-[38px]" : "mt-2 pt-2 min-h-[50px]"
-        } border-t ${isAchiever ? "border-amber-500/20" : "border-zinc-800/60"} flex flex-col justify-center items-center`}
+        } border-t ${isAchiever ? "border-amber-500/20" : "border-zinc-800/60"} flex flex-col justify-center items-center relative`}
       >
         {isStudying ? (
           <>
@@ -330,6 +333,40 @@ export const MemberCard = memo(function MemberCard({
               <span>{isCalibrating ? "Syncing..." : formatDurationSeconds(elapsedSeconds)}</span>
             </div>
             <div className={`${compact ? "h-2.5 mt-0.2" : "h-3.5 mt-0.5"}`} aria-hidden="true" />
+
+            {/* Decorative Crossed Swords in bottom left and right empty space below Live Timer Purple Pill */}
+            {!inRivalry && (
+              <>
+                <div
+                  data-testid="member-card-swords-left"
+                  className="absolute bottom-0.5 left-1.5 sm:bottom-1 sm:left-2 pointer-events-none select-none transition-opacity duration-200"
+                  aria-hidden="true"
+                  title="Study Combatant"
+                >
+                  <Swords
+                    className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${
+                      isAchiever
+                        ? "text-amber-400/60 drop-shadow-[0_0_4px_rgba(245,158,11,0.4)]"
+                        : "text-zinc-600/50"
+                    }`}
+                  />
+                </div>
+                <div
+                  data-testid="member-card-swords-right"
+                  className="absolute bottom-0.5 right-1.5 sm:bottom-1 sm:right-2 pointer-events-none select-none transition-opacity duration-200 -scale-x-100"
+                  aria-hidden="true"
+                  title="Study Combatant"
+                >
+                  <Swords
+                    className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${
+                      isAchiever
+                        ? "text-amber-400/60 drop-shadow-[0_0_4px_rgba(245,158,11,0.4)]"
+                        : "text-zinc-600/50"
+                    }`}
+                  />
+                </div>
+              </>
+            )}
           </>
         ) : isBreak ? (
           <>
@@ -382,6 +419,7 @@ export const MemberCard = memo(function MemberCard({
 function areMemberCardsEqual(prev: MemberCardProps, next: MemberCardProps): boolean {
   if (prev.isCurrentUser !== next.isCurrentUser) return false;
   if (prev.compact !== next.compact) return false;
+  if (prev.isInRivalry !== next.isInRivalry) return false;
   if (prev.customElapsedSeconds !== next.customElapsedSeconds) return false;
 
   const mA = prev.member;
