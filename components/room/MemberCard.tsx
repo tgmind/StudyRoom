@@ -153,36 +153,39 @@ export const MemberCard = memo(function MemberCard({
           <span className="inline-block" aria-hidden="true" />
         )}
 
-        {/* Right: Current User "YOU" Badge */}
-        {isCurrentUser ? (
-          <span
-            className={`inline-flex items-center uppercase font-black tracking-wider rounded-full bg-zinc-800 text-zinc-200 border border-zinc-700 ${
-              compact ? "text-[7.5px] px-1 py-0.2" : "text-[8px] sm:text-[8.5px] px-1.5 py-0.5"
-            } shadow-sm select-none`}
-          >
-            You
-          </span>
-        ) : (
-          <span className="inline-block" aria-hidden="true" />
-        )}
-      </div>
+        {/* Right: Achiever Crown & Current User "YOU" Badge */}
+        <div className="flex items-center space-x-1 sm:space-x-1.5 shrink-0">
+          {isCurrentUser && (
+            <span
+              className={`inline-flex items-center uppercase font-black tracking-wider rounded-full bg-zinc-800 text-zinc-200 border border-zinc-700 ${
+                compact ? "text-[7.5px] px-1 py-0.2" : "text-[8px] sm:text-[8.5px] px-1.5 py-0.5"
+              } shadow-sm select-none`}
+            >
+              You
+            </span>
+          )}
 
-      {/* Avatar & Achievement Stage (Positioned below top status row with reserved crown headroom) */}
-      <div className={`relative flex flex-col items-center shrink-0 ${compact ? "pt-1.5" : "pt-2 sm:pt-2.5"}`}>
-        {/* Crown for Weekly Achiever: Positioned right above avatar in reserved headroom */}
-        {isAchiever && (
-          <div
-            className={`absolute ${compact ? "top-0" : "top-0.5 sm:top-1"} left-1/2 -translate-x-1/2 z-20 pointer-events-none`}
-            aria-hidden="true"
-          >
-            <div className="relative flex items-center justify-center">
-              <div className="absolute inset-0 bg-amber-400/30 blur-sm rounded-full" />
+          {isAchiever ? (
+            <div
+              className="relative flex items-center justify-center select-none"
+              title="Weekly Achiever"
+              aria-label="Weekly Achiever Crown"
+            >
+              <div className="absolute inset-0 bg-amber-400/30 blur-xs rounded-full pointer-events-none" />
               <Crown
-                className={`${compact ? "w-3.5 h-3.5" : "w-4.5 h-4.5"} text-amber-300 fill-amber-400 filter drop-shadow-[0_1px_6px_rgba(245,158,11,0.85)]`}
+                className={`${
+                  compact ? "w-3.5 h-3.5" : "w-4 h-4 sm:w-4.5 sm:h-4.5"
+                } text-amber-300 fill-amber-400 filter drop-shadow-[0_1px_6px_rgba(245,158,11,0.9)] shrink-0`}
               />
             </div>
-          </div>
-        )}
+          ) : !isCurrentUser ? (
+            <span className="inline-block" aria-hidden="true" />
+          ) : null}
+        </div>
+      </div>
+
+      {/* Avatar & Achievement Stage (Unobstructed avatar profile photo) */}
+      <div className={`relative flex flex-col items-center shrink-0 ${compact ? "mt-0.5" : "mt-1 sm:mt-1.5"}`}>
 
         {/* Avatar DP Container */}
         <div
