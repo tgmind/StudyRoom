@@ -191,6 +191,7 @@ export default function RoomPage() {
         connectionState={connectionState}
         profile={effectiveProfile}
         expectedPeakHours={expectedPeakHours}
+        isStudying={status === "studying" || status === "break"}
       />
 
       <main className="flex-1 w-full max-w-2xl sm:max-w-3xl px-3.5 sm:px-6 py-4 mx-auto space-y-4 sm:space-y-6">
@@ -320,7 +321,7 @@ export default function RoomPage() {
         isLoading={goalActionLoading || actionLoading}
       />
 
-      <BottomNav />
+      <BottomNav isStudying={status === "studying" || status === "break"} />
     </div>
   );
 }

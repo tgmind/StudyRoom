@@ -184,4 +184,225 @@ describe("MemberCard Component", () => {
     expect(screen.queryByText(/Offline/i)).not.toBeInTheDocument();
     expect(screen.getAllByTitle("Present in room (Online)")).toHaveLength(2);
   });
+
+  it("renders Achiever card with Achiever crest and crown icon", () => {
+    const { container } = render(
+      <MemberCard
+        member={{
+          ...baseMember,
+          display_name: "Aditya",
+          has_achiever_badge: true,
+        }}
+      />
+    );
+
+    expect(screen.getByLabelText("Weekly Achiever")).toBeInTheDocument();
+    expect(screen.getByText("Achiever")).toBeInTheDocument();
+    expect(screen.getByText("Aditya")).toBeInTheDocument();
+    // Crown icons present (crest crown + top crown)
+    const svgs = container.querySelectorAll("svg");
+    expect(svgs.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("simultaneously renders Achiever crest, crown, Studying status, and timer when studying", () => {
+    render(
+      <MemberCard
+        member={{
+          ...baseMember,
+          display_name: "Aditya",
+          has_achiever_badge: true,
+          current_status: "studying",
+        }}
+        isCurrentUser={true}
+        customElapsedSeconds={1245} // 20:45
+      />
+    );
+
+    expect(screen.getByLabelText("Weekly Achiever")).toBeInTheDocument();
+    expect(screen.getByText("Achiever")).toBeInTheDocument();
+    expect(screen.getByText("Studying")).toBeInTheDocument();
+    expect(screen.getByText("20:45")).toBeInTheDocument();
+  });
+
+  it("simultaneously renders Achiever crest, crown, On Break status, and break timer when on break", () => {
+    const now = new Date("2026-09-03T10:10:00Z");
+    const breakStart = new Date("2026-09-03T10:06:00Z").toISOString(); // 4m break
+
+    render(
+      <MemberCard
+        member={{
+          ...baseMember,
+          display_name: "Aditya",
+          has_achiever_badge: true,
+          current_status: "break",
+          break_started_at: breakStart,
+          active_study_seconds_snapshot: 3600,
+        }}
+        currentTimestamp={now}
+      />
+    );
+
+    expect(screen.getByLabelText("Weekly Achiever")).toBeInTheDocument();
+    expect(screen.getByText("Achiever")).toBeInTheDocument();
+    expect(screen.getByText("On Break")).toBeInTheDocument();
+    expect(screen.getByText("Break 04:00")).toBeInTheDocument();
+    expect(screen.getByText("01:00:00")).toBeInTheDocument(); // 1h study snapshot
+  });
+
+  it("renders both Achiever treatment and YOU badge when current user", () => {
+    render(
+      <MemberCard
+        member={{
+          ...baseMember,
+          display_name: "Aditya",
+          has_achiever_badge: true,
+        }}
+        isCurrentUser={true}
+      />
+    );
+
+    expect(screen.getByLabelText("Weekly Achiever")).toBeInTheDocument();
+    expect(screen.getByText("You")).toBeInTheDocument();
+    expect(screen.getByText("Aditya")).toBeInTheDocument();
+  });
+
+  it("simultaneously renders Achiever + Studying + YOU correctly without overlap", () => {
+    render(
+      <MemberCard
+        member={{
+          ...baseMember,
+          display_name: "Aditya",
+          has_achiever_badge: true,
+          current_status: "studying",
+        }}
+        isCurrentUser={true}
+        customElapsedSeconds={900}
+      />
+    );
+
+    expect(screen.getByLabelText("Weekly Achiever")).toBeInTheDocument();
+    expect(screen.getByText("Studying")).toBeInTheDocument();
+    expect(screen.getByText("You")).toBeInTheDocument();
+    expect(screen.getByText("15:00")).toBeInTheDocument();
+  });
+
+  it("simultaneously renders Achiever + On Break + YOU correctly without overlap", () => {
+    const now = new Date("2026-09-03T10:10:00Z");
+    const breakStart = new Date("2026-09-03T10:05:00Z").toISOString();
+
+    render(
+      <MemberCard
+        member={{
+          ...baseMember,
+          display_name: "Aditya",
+          has_achiever_badge: true,
+          current_status: "break",
+          break_started_at: breakStart,
+          active_study_seconds_snapshot: 1800,
+        }}
+        isCurrentUser={true}
+        customElapsedSeconds={1800}
+        currentTimestamp={now}
+      />
+    );
+
+    expect(screen.getByLabelText("Weekly Achiever")).toBeInTheDocument();
+    expect(screen.getByText("On Break")).toBeInTheDocument();
+    expect(screen.getByText("You")).toBeInTheDocument();
+    expect(screen.getByText("Break 05:00")).toBeInTheDocument();
+  });
+
+  it("renders Compact Achiever mode cleanly", () => {
+    render(
+      <MemberCard
+        member={{
+          ...baseMember,
+          display_name: "Aditya",
+          has_achiever_badge: true,
+        }}
+        compact={true}
+      />
+    );
+
+    expect(screen.getByLabelText("Weekly Achiever")).toBeInTheDocument();
+    expect(screen.getByText("Aditya")).toBeInTheDocument();
+  });
+
+  it("handles long member names gracefully without throwing or creating invalid DOM structure", () => {
+    const longName = "Alexander Bartholomew Christopher Montgomery III";
+    render(
+      <MemberCard
+        member={{
+          ...baseMember,
+          display_name: longName,
+          has_achiever_badge: true,
+        }}
+      />
+    );
+
+    const heading = screen.getByRole("heading", { level: 3 });
+    expect(heading).toHaveTextContent(longName);
+    expect(heading).toHaveAttribute("title", longName);
+    expect(heading.className).toContain("truncate");
+  });
+
+  it("renders Achiever treatment properly with avatar fallback initials when avatar_url is null", () => {
+    render(
+      <MemberCard
+        member={{
+          ...baseMember,
+          display_name: "Aditya Roy",
+          avatar_url: null,
+          has_achiever_badge: true,
+        }}
+      />
+    );
+
+    expect(screen.getByText("AD")).toBeInTheDocument();
+    expect(screen.getByLabelText("Weekly Achiever")).toBeInTheDocument();
+  });
+
+  it("renders non-Achiever cards without Achiever crest or crown watermark", () => {
+    render(
+      <MemberCard
+        member={{
+          ...baseMember,
+          display_name: "Subodh",
+          has_achiever_badge: false,
+        }}
+      />
+    );
+
+    expect(screen.queryByLabelText("Weekly Achiever")).not.toBeInTheDocument();
+    expect(screen.queryByText("Achiever")).not.toBeInTheDocument();
+  });
+
+  it("re-renders when has_achiever_badge transitions from false to true", () => {
+    const { rerender } = render(
+      <MemberCard
+        member={{
+          ...baseMember,
+          display_name: "Subodh",
+          has_achiever_badge: false,
+        }}
+      />
+    );
+
+    expect(screen.queryByLabelText("Weekly Achiever")).not.toBeInTheDocument();
+
+    rerender(
+      <MemberCard
+        member={{
+          ...baseMember,
+          display_name: "Subodh",
+          has_achiever_badge: true,
+        }}
+      />
+    );
+
+    expect(screen.getByLabelText("Weekly Achiever")).toBeInTheDocument();
+    expect(screen.getByText("Achiever")).toBeInTheDocument();
+  });
 });
+
+

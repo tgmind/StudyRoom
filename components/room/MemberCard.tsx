@@ -76,10 +76,10 @@ export const MemberCard = memo(function MemberCard({
   return (
     <div
       className={`relative isolate flex flex-col items-center justify-between ${
-        compact ? "p-2 sm:p-2.5 rounded-xl" : "p-3.5 sm:p-4 rounded-2xl"
+        compact ? "p-2 sm:p-2.5 rounded-xl" : "p-3 sm:p-3.5 rounded-2xl"
       } border transition-all duration-200 select-none h-full w-full ${
         isAchiever
-          ? "bg-gradient-to-b from-amber-950/40 via-zinc-900/95 to-zinc-950 border-amber-400/60 ring-1 ring-amber-400/30 shadow-[0_4px_25px_rgba(251,191,36,0.18)]"
+          ? "bg-gradient-to-b from-[#1b1408] via-[#120f09] to-[#0a0807] border-amber-400/70 ring-1 ring-amber-400/30 shadow-[0_0_20px_rgba(245,158,11,0.18),_0_4px_16px_rgba(0,0,0,0.6)]"
           : isStudying
           ? "bg-gradient-to-b from-zinc-900/90 to-zinc-950/95 border-fuchsia-500/40 ring-1 ring-fuchsia-500/20 shadow-[0_4px_20px_rgba(217,70,239,0.15)]"
           : isBreak
@@ -87,50 +87,104 @@ export const MemberCard = memo(function MemberCard({
           : "bg-zinc-950/60 border-zinc-900/80 opacity-60 grayscale hover:opacity-95 hover:grayscale-0"
       }`}
     >
-      {/* Floating Status Badge (Top-Left) */}
-      {isAchiever ? (
-        <span
-          className={`absolute ${compact ? "top-1.5 left-1.5 text-[8px] px-1.5 py-0.2" : "top-2.5 left-2.5 text-[9px] px-2 py-0.5"} flex items-center space-x-1 rounded-full bg-gradient-to-r from-amber-400 via-amber-300 to-amber-500 text-zinc-950 font-black uppercase tracking-wider shadow-md`}
-          title="Weekly Achiever"
-        >
-          <Crown className={`${compact ? "w-2 h-2" : "w-2.5 h-2.5"} fill-zinc-950`} />
-          <span>Achiever</span>
-        </span>
-      ) : isBreak ? (
-        <span
-          className={`absolute ${compact ? "top-1.5 left-1.5 text-[8px] px-1.5 py-0.2" : "top-2.5 left-2.5 text-[9px] px-2 py-0.5"} flex items-center space-x-1 rounded-full bg-amber-950/90 border border-amber-500/60 text-amber-300 font-extrabold uppercase tracking-wider shadow-sm`}
-          title="Member is currently on break"
-        >
-          <Coffee className={`${compact ? "w-2 h-2" : "w-2.5 h-2.5"}`} />
-          <span>On Break</span>
-        </span>
-      ) : isStudying ? (
-        <span
-          className={`absolute ${compact ? "top-1.5 left-1.5 text-[8px] px-1.5 py-0.2" : "top-2.5 left-2.5 text-[9px] px-2 py-0.5"} flex items-center space-x-1 rounded-full bg-fuchsia-950/80 border border-fuchsia-500/40 text-fuchsia-300 font-extrabold uppercase tracking-wider shadow-sm`}
-          title="Member is studying"
-        >
-          <span className="w-1.5 h-1.5 rounded-full bg-fuchsia-400 shadow-[0_0_6px_rgba(217,70,239,0.8)]" />
-          <span>Studying</span>
-        </span>
-      ) : null}
+      {/* Top Tubelight Fixture & Radiant Lightning Glow for Achiever */}
+      {isAchiever && (
+        <>
+          {/* Tubelight Core: Horizontal glowing neon/LED tube centered on top margin */}
+          <div
+            className={`absolute top-0 left-1/2 -translate-x-1/2 ${
+              compact ? "w-20 h-[2px]" : "w-28 sm:w-36 h-[2.5px]"
+            } rounded-full bg-gradient-to-r from-transparent via-amber-200 to-transparent shadow-[0_0_10px_rgba(251,191,36,1),_0_0_22px_rgba(245,158,11,0.9)] z-20 pointer-events-none`}
+            aria-hidden="true"
+          />
 
-      {/* Floating "YOU" badge (Top-Right) */}
-      {isCurrentUser && (
-        <span className={`absolute ${compact ? "top-1.5 right-1.5 text-[8px] px-1 py-0.2" : "top-2.5 right-2.5 text-[9px] px-1.5 py-0.5"} uppercase font-black tracking-wider rounded-full bg-zinc-800 text-zinc-200 border border-zinc-700 shadow-sm`}>
-          You
-        </span>
+          {/* Tubelight Downward Radiant Lighting Cone (illuminating crown and avatar from top) */}
+          <div
+            className={`absolute inset-x-0 top-0 ${
+              compact ? "h-20" : "h-28"
+            } bg-[radial-gradient(ellipse_65%_80%_at_50%_0%,_rgba(251,191,36,0.32)_0%,_rgba(245,158,11,0.12)_45%,_transparent_80%)] pointer-events-none rounded-t-2xl z-0`}
+            aria-hidden="true"
+          />
+
+          {/* Upper Rim Specular Light Line */}
+          <div
+            className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-amber-300/80 to-transparent rounded-t-2xl pointer-events-none z-10"
+            aria-hidden="true"
+          />
+
+          {/* Faint Crown Watermark in background */}
+          {!compact && (
+            <Crown
+              className="absolute -top-3 -right-3 w-20 h-20 text-amber-400/[0.04] pointer-events-none rotate-12 select-none"
+              aria-hidden="true"
+            />
+          )}
+        </>
       )}
 
-      {/* Top: Avatar DP Container with Strict Geometric Constraints */}
-      <div className={`relative flex flex-col items-center ${isAchiever || isBreak || isStudying ? (compact ? "mt-1.5" : "mt-3") : (compact ? "mt-0.5" : "mt-1")}`}>
-        {/* Crown for Weekly Achiever */}
+      {/* Top Utility Header Row (In document flow: strictly above avatar to guarantee 0 collision on all screens) */}
+      <div
+        className={`w-full flex items-center justify-between ${
+          compact ? "h-4 mb-0.5" : "h-4.5 sm:h-5 mb-0.5"
+        } z-20 shrink-0`}
+      >
+        {/* Left: Live Status Pill */}
+        {isStudying ? (
+          <span
+            className={`inline-flex items-center space-x-1 rounded-full bg-fuchsia-950/80 border border-fuchsia-500/40 text-fuchsia-300 font-extrabold uppercase tracking-wider ${
+              compact ? "text-[7.5px] px-1.5 py-0.2" : "text-[8px] sm:text-[8.5px] px-2 py-0.5"
+            } shadow-sm select-none`}
+            title="Member is studying"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-fuchsia-400 shadow-[0_0_6px_rgba(217,70,239,0.8)] shrink-0" />
+            <span className="whitespace-nowrap">Studying</span>
+          </span>
+        ) : isBreak ? (
+          <span
+            className={`inline-flex items-center space-x-1 rounded-full bg-amber-950/90 border border-amber-500/60 text-amber-300 font-extrabold uppercase tracking-wider ${
+              compact ? "text-[7.5px] px-1.5 py-0.2" : "text-[8px] sm:text-[8.5px] px-2 py-0.5"
+            } shadow-sm select-none`}
+            title="Member is currently on break"
+          >
+            <Coffee className={`${compact ? "w-2 h-2" : "w-2.5 h-2.5"} shrink-0`} />
+            <span className="whitespace-nowrap">On Break</span>
+          </span>
+        ) : (
+          <span className="inline-block" aria-hidden="true" />
+        )}
+
+        {/* Right: Current User "YOU" Badge */}
+        {isCurrentUser ? (
+          <span
+            className={`inline-flex items-center uppercase font-black tracking-wider rounded-full bg-zinc-800 text-zinc-200 border border-zinc-700 ${
+              compact ? "text-[7.5px] px-1 py-0.2" : "text-[8px] sm:text-[8.5px] px-1.5 py-0.5"
+            } shadow-sm select-none`}
+          >
+            You
+          </span>
+        ) : (
+          <span className="inline-block" aria-hidden="true" />
+        )}
+      </div>
+
+      {/* Avatar & Achievement Stage (Positioned below top status row with reserved crown headroom) */}
+      <div className={`relative flex flex-col items-center shrink-0 ${compact ? "pt-1.5" : "pt-2 sm:pt-2.5"}`}>
+        {/* Crown for Weekly Achiever: Positioned right above avatar in reserved headroom */}
         {isAchiever && (
-          <div className={`absolute ${compact ? "-top-2.5" : "-top-3"} animate-bounce`}>
-            <Crown className={`${compact ? "w-4 h-4" : "w-5 h-5"} text-amber-400 fill-amber-400 filter drop-shadow-[0_0_8px_rgba(245,158,11,0.9)]`} />
+          <div
+            className={`absolute ${compact ? "top-0" : "top-0.5 sm:top-1"} left-1/2 -translate-x-1/2 z-20 pointer-events-none`}
+            aria-hidden="true"
+          >
+            <div className="relative flex items-center justify-center">
+              <div className="absolute inset-0 bg-amber-400/30 blur-sm rounded-full" />
+              <Crown
+                className={`${compact ? "w-3.5 h-3.5" : "w-4.5 h-4.5"} text-amber-300 fill-amber-400 filter drop-shadow-[0_1px_6px_rgba(245,158,11,0.85)]`}
+              />
+            </div>
           </div>
         )}
 
-        {/* Avatar DP */}
+        {/* Avatar DP Container */}
         <div
           className={`relative rounded-full bg-zinc-800 border-2 overflow-hidden shrink-0 aspect-square flex items-center justify-center font-extrabold text-zinc-100 shadow-md ${
             compact
@@ -138,7 +192,7 @@ export const MemberCard = memo(function MemberCard({
               : "w-14 h-14 min-w-[3.5rem] min-h-[3.5rem] max-w-[3.5rem] max-h-[3.5rem] text-sm"
           } ${
             isAchiever
-              ? "border-amber-400 ring-2 ring-amber-400/50 shadow-[0_0_15px_rgba(251,191,36,0.3)]"
+              ? "border-amber-300 ring-2 ring-amber-400/60 shadow-[0_0_14px_rgba(245,158,11,0.35)]"
               : isStudying
               ? "border-fuchsia-500 ring-2 ring-fuchsia-500/40 shadow-[0_0_15px_rgba(217,70,239,0.25)]"
               : isBreak
@@ -172,21 +226,42 @@ export const MemberCard = memo(function MemberCard({
             />
           ) : null}
         </div>
+
+        {/* Achiever Crest Pill: Centered, overlapping lower rim of avatar, guaranteed never to clip */}
+        {isAchiever && (
+          <div className={`relative z-20 ${compact ? "-mt-1.5" : "-mt-2"} max-w-[calc(100%-0.5rem)] flex justify-center`}>
+            <span
+              className={`inline-flex items-center space-x-1 rounded-full bg-gradient-to-r from-amber-500 via-amber-300 to-amber-500 text-zinc-950 font-black tracking-wider uppercase shadow-[0_2px_6px_rgba(245,158,11,0.4)] border border-amber-200 select-none ${
+                compact ? "text-[7.5px] px-1.5 py-0.2" : "text-[8px] sm:text-[8.5px] px-2 py-0.5"
+              }`}
+              aria-label="Weekly Achiever"
+              title="Weekly Achiever"
+            >
+              <Crown className={`${compact ? "w-2 h-2" : "w-2.5 h-2.5"} fill-zinc-950 shrink-0`} />
+              <span className="truncate">Achiever</span>
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Middle: User Name & Time of Day Badges */}
-      <div className={`w-full text-center ${compact ? "mt-1.5 space-y-0" : "mt-2.5 space-y-0.5"} min-w-0`}>
+      <div className={`w-full text-center ${compact ? "mt-0.5 space-y-0" : isAchiever ? "mt-1 space-y-0" : "mt-1.5 space-y-0.5"} min-w-0`}>
         <div className="flex items-center justify-center space-x-1 min-w-0 px-1">
           <h3
             className={`${compact ? "text-xs" : "text-xs sm:text-sm"} font-extrabold truncate ${
-              isAchiever ? "text-amber-200 drop-shadow-sm font-black" : "text-zinc-100"
+              isAchiever
+                ? "text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-yellow-100 to-amber-300 font-black drop-shadow-sm"
+                : "text-zinc-100"
             }`}
             title={member.display_name}
           >
             {member.display_name}
           </h3>
           {isAchiever && (
-            <Star className={`${compact ? "w-3 h-3" : "w-3.5 h-3.5"} text-amber-400 fill-amber-400 shrink-0`} />
+            <Star
+              className={`${compact ? "w-3 h-3" : "w-3.5 h-3.5"} text-amber-400 fill-amber-400 shrink-0 motion-safe:animate-pulse`}
+              aria-hidden="true"
+            />
           )}
         </div>
 
@@ -197,28 +272,50 @@ export const MemberCard = memo(function MemberCard({
         </div>
       </div>
 
-      {/* Middle Stats Row: Realtime Live Weekly Total Study Duration + Sessions Count */}
-      <div className={`w-full flex items-center justify-center gap-1 sm:gap-1.5 text-zinc-400 ${compact ? "mt-1 py-0.5 text-[9px]" : "mt-2 py-1 text-[10px] sm:text-[11px]"} border-t border-zinc-800/40 min-w-0 select-none`}>
+      {/* 4. Weekly Statistics: Realtime Live Weekly Total Study Duration + Sessions Count */}
+      <div
+        className={`w-full flex items-center justify-center gap-1 sm:gap-1.5 ${
+          compact ? "mt-1 py-0.5 text-[9px]" : "mt-2 py-1 text-[10px] sm:text-[11px]"
+        } border-t ${
+          isAchiever ? "border-amber-500/20 bg-amber-500/[0.03]" : "border-zinc-800/40 text-zinc-400"
+        } min-w-0 select-none`}
+      >
         <div
           className="flex items-center gap-1 min-w-0 shrink-0"
           title={`Total weekly study duration: ${formatSecondsToHuman(totalWeeklyStudySeconds)} this week`}
         >
-          <Clock className={`${compact ? "w-2 h-2" : "w-2.5 h-2.5"} text-fuchsia-400/90 shrink-0`} />
-          <span className="font-bold text-zinc-200 tabular-nums whitespace-nowrap shrink-0 text-[10px] sm:text-[11px]">
+          <Clock
+            className={`${compact ? "w-2 h-2" : "w-2.5 h-2.5"} ${
+              isAchiever ? "text-amber-400" : "text-fuchsia-400/90"
+            } shrink-0`}
+          />
+          <span
+            className={`font-bold tabular-nums whitespace-nowrap shrink-0 text-[10px] sm:text-[11px] ${
+              isAchiever ? "text-amber-200 font-black" : "text-zinc-200"
+            }`}
+          >
             {formatSecondsToHuman(totalWeeklyStudySeconds)}
           </span>
-          <span className="text-[8px] sm:text-[8.5px] text-zinc-500 font-medium whitespace-nowrap shrink-0">
+          <span
+            className={`text-[8px] sm:text-[8.5px] font-medium whitespace-nowrap shrink-0 ${
+              isAchiever ? "text-amber-400/80" : "text-zinc-500"
+            }`}
+          >
             /wk
           </span>
         </div>
 
-        <span className="text-zinc-700 font-bold select-none shrink-0">•</span>
+        <span className={`${isAchiever ? "text-amber-500/40" : "text-zinc-700"} font-bold select-none shrink-0`}>•</span>
 
         <div
           className="flex items-center gap-1 min-w-0 shrink-0"
           title={`${sessionsCount} session${sessionsCount === 1 ? "" : "s"} this week (${isCurrentSessionActive ? "current session in progress" : "completed"})`}
         >
-          <BookOpen className={`${compact ? "w-2 h-2" : "w-2.5 h-2.5"} text-violet-400/90 shrink-0`} />
+          <BookOpen
+            className={`${compact ? "w-2 h-2" : "w-2.5 h-2.5"} ${
+              isAchiever ? "text-zinc-400" : "text-violet-400/90"
+            } shrink-0`}
+          />
           <span className="font-bold text-zinc-200 tabular-nums text-[10px] sm:text-[10.5px] whitespace-nowrap shrink-0">
             {sessionsCount}
           </span>
@@ -228,12 +325,22 @@ export const MemberCard = memo(function MemberCard({
         </div>
       </div>
 
-      {/* Bottom: Live Digital Timer Readout Pill (Uniform Symmetrical Height Across All Cards) */}
-      <div className={`w-full ${compact ? "mt-1 pt-1 min-h-[38px]" : "mt-2 pt-2 min-h-[50px]"} border-t border-zinc-800/60 flex flex-col justify-center items-center`}>
+      {/* 5. Live Digital Timer Readout Pill (Uniform Symmetrical Height Across All Cards) */}
+      <div
+        className={`w-full ${
+          compact ? "mt-1 pt-1 min-h-[38px]" : "mt-2 pt-2 min-h-[50px]"
+        } border-t ${isAchiever ? "border-amber-500/20" : "border-zinc-800/60"} flex flex-col justify-center items-center`}
+      >
         {isStudying ? (
           <>
-            <div className={`font-mono ${compact ? "text-[11px] px-2.5 py-0.5" : "text-xs px-3 py-1"} font-black tracking-tight rounded-full border shadow-inner flex items-center space-x-1.5 bg-fuchsia-950/40 text-fuchsia-300 border-fuchsia-500/30 tabular-nums`}>
-              <span className="w-1.5 h-1.5 rounded-full bg-fuchsia-400 shadow-[0_0_6px_rgba(217,70,239,0.8)]" />
+            <div
+              className={`font-mono ${compact ? "text-[11px] px-2.5 py-0.5" : "text-xs px-3 py-1"} font-black tracking-tight rounded-full border shadow-inner flex items-center space-x-1.5 ${
+                isAchiever
+                  ? "bg-fuchsia-950/50 text-fuchsia-200 border-amber-400/40 shadow-[0_0_10px_rgba(245,158,11,0.15)]"
+                  : "bg-fuchsia-950/40 text-fuchsia-300 border-fuchsia-500/30"
+              } tabular-nums`}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-fuchsia-400 shadow-[0_0_6px_rgba(217,70,239,0.8)] shrink-0" />
               <span>{isCalibrating ? "Syncing..." : formatDurationSeconds(elapsedSeconds)}</span>
             </div>
             <div className={`${compact ? "h-2.5 mt-0.2" : "h-3.5 mt-0.5"}`} aria-hidden="true" />
@@ -269,7 +376,11 @@ export const MemberCard = memo(function MemberCard({
         ) : (
           <>
             <span
-              className={`${compact ? "text-[9px] px-2.5 py-0.5" : "text-[10px] px-3 py-1"} text-zinc-500 font-bold uppercase tracking-wider rounded-full bg-zinc-900/60 border border-zinc-800/80 tabular-nums select-none transition-colors`}
+              className={`${compact ? "text-[9px] px-2.5 py-0.5" : "text-[10px] px-3 py-1"} ${
+                isAchiever
+                  ? "text-amber-300/80 font-bold uppercase tracking-wider rounded-full bg-amber-950/30 border border-amber-500/30"
+                  : "text-zinc-500 font-bold uppercase tracking-wider rounded-full bg-zinc-900/60 border border-zinc-800/80"
+              } tabular-nums select-none transition-colors`}
               title={offlineDetailedText}
             >
               {offlinePillText}
