@@ -1,5 +1,13 @@
 import nodemailer, { type Transporter } from "nodemailer";
-import { generateAlertEmail, AlertType, getAppUrl } from "./templates";
+import {
+  generateAlertEmail,
+  generateAdminPaymentNotificationEmail,
+  generateUserPaymentPendingEmail,
+  generateUserPaymentVerifiedEmail,
+  generateUserPaymentRejectedEmail,
+  AlertType,
+  getAppUrl,
+} from "./templates";
 
 export interface SendAlertParams {
   to: string;
@@ -25,6 +33,16 @@ export interface MailerConfigStatus {
   hasGmail?: boolean;
   dailyResendCount?: number;
   reason?: string;
+}
+
+export interface DispatchEmailPayloadParams {
+  to: string | string[];
+  subject: string;
+  text: string;
+  html: string;
+  replyTo?: string;
+  entityRefId?: string;
+  extraHeaders?: Record<string, string>;
 }
 
 // Resend Free Tier Safeguards: 100 emails/day, 3,000/month
@@ -127,17 +145,17 @@ function getTransporter(): Transporter {
 }
 
 /**
- * Dispatches a spam-proof alert email to the recipient.
- * Defaults to Resend API, with seamless automatic fallback to hardened Gmail SMTP.
+ * Universal email dispatcher: Resend API with seamless, robust fallback to Gmail SMTP.
  */
-export async function sendAlertEmail({
+export async function dispatchEmailPayload({
   to,
-  name,
-  type,
-  consecutiveDays = 0,
-  weeklyHours = 0,
-  isTest = false,
-}: SendAlertParams): Promise<SendAlertResult> {
+  subject,
+  text,
+  html,
+  replyTo,
+  entityRefId = `sr-${Date.now()}`,
+  extraHeaders = {},
+}: DispatchEmailPayloadParams): Promise<SendAlertResult> {
   try {
     const config = isMailerConfigured();
     if (!config.configured) {
@@ -147,13 +165,22 @@ export async function sendAlertEmail({
       };
     }
 
+    // In automated testing environments, avoid making live network requests unless explicitly enabled
+    if (process.env.NODE_ENV === "test" && !process.env.ENABLE_TEST_NETWORK_MAIL) {
+      return { success: true, messageId: "test-mock-msg-id", provider: "resend" };
+    }
+
     const appUrl = getAppUrl();
-    const cleanTo = to.trim();
-    const template = generateAlertEmail(type, name, consecutiveDays, weeklyHours, cleanTo);
-    const subject = isTest ? `[TEST] ${template.subject}` : template.subject;
+    const recipients = Array.isArray(to) ? to.map((t) => t.trim()).filter(Boolean) : [to.trim()];
+
+    if (recipients.length === 0) {
+      return { success: false, error: "No recipient email addresses provided." };
+    }
+
+    const defaultReplyTo = replyTo || process.env.ALERT_GMAIL_USER?.trim() || "studyaliveapp@gmail.com";
 
     // -------------------------------------------------------------
-    // PRIMARY: Resend Transactional Engine (Default method when configured)
+    // PRIMARY: Resend Transactional Engine
     // -------------------------------------------------------------
     const resendKey = process.env.RESEND_API_KEY?.trim();
     if (resendKey) {
@@ -165,7 +192,6 @@ export async function sendAlertEmail({
       } else {
         try {
           const from = process.env.ALERT_FROM_EMAIL?.trim() || "StudyRoom <onboarding@resend.dev>";
-          const replyTo = process.env.ALERT_GMAIL_USER?.trim() || "studyaliveapp@gmail.com";
 
           const res = await fetch("https://api.resend.com/emails", {
             method: "POST",
@@ -175,16 +201,17 @@ export async function sendAlertEmail({
             },
             body: JSON.stringify({
               from,
-              to: [cleanTo],
-              reply_to: replyTo,
+              to: recipients,
+              reply_to: defaultReplyTo,
               subject,
-              text: template.text,
-              html: template.html,
+              text,
+              html,
               headers: {
-                "List-Unsubscribe": `<mailto:${replyTo}?subject=Unsubscribe%20${encodeURIComponent(cleanTo)}>, <${appUrl}/settings>`,
+                "List-Unsubscribe": `<mailto:${defaultReplyTo}?subject=Unsubscribe>, <${appUrl}/settings>`,
                 "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
                 "Auto-Submitted": "auto-generated",
-                "X-Entity-Ref-ID": `${type}-${Date.now()}`,
+                "X-Entity-Ref-ID": entityRefId,
+                ...extraHeaders,
               },
             }),
           });
@@ -199,7 +226,6 @@ export async function sendAlertEmail({
             };
           }
 
-          // If Resend rejected (e.g. 403 unverified custom domain for external recipient, or 429 quota)
           console.warn(
             `[Mailer] Resend dispatch returned (${res.status}: ${resData?.message || "error"}). Falling back seamlessly to hardened Gmail SMTP.`
           );
@@ -213,37 +239,31 @@ export async function sendAlertEmail({
     }
 
     // -------------------------------------------------------------
-    // FALLBACK / SECONDARY: Hardened, Spam-Proof Google Gmail SMTP
+    // FALLBACK / SECONDARY: Hardened Gmail SMTP
     // -------------------------------------------------------------
-
     const user = process.env.ALERT_GMAIL_USER!.trim();
     const fromName = process.env.ALERT_FROM_NAME?.trim() || "StudyRoom";
     const transporter = getTransporter();
 
-    // Generate unique compliant message ID
     const randomHex = Math.random().toString(36).substring(2, 10);
-    const customMessageId = `<studyroom.${type.toLowerCase()}.${Date.now()}.${randomHex}@studyaliveapp.gmail.com>`;
+    const customMessageId = `<studyroom.${Date.now()}.${randomHex}@studyaliveapp.gmail.com>`;
 
     const info = await transporter.sendMail({
       from: `"${fromName}" <${user}>`,
-      to: cleanTo,
-      replyTo: user,
+      to: recipients.join(", "),
+      replyTo: defaultReplyTo,
       subject,
-      text: template.text,
-      html: template.html,
+      text,
+      html,
       messageId: customMessageId,
       headers: {
-        "X-StudyRoom-Alert-Type": type,
-        "X-StudyRoom-Test": isTest ? "true" : "false",
-        "X-Entity-Ref-ID": `${type}-${Date.now()}`,
-        // RFC 8058 One-Click Unsubscribe (Mandatory for Gmail/Yahoo 2024+ deliverability)
-        "List-Unsubscribe": `<mailto:${user}?subject=Unsubscribe%20${encodeURIComponent(cleanTo)}>, <${appUrl}/settings>`,
+        "X-Entity-Ref-ID": entityRefId,
+        "List-Unsubscribe": `<mailto:${user}?subject=Unsubscribe>, <${appUrl}/settings>`,
         "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-        // Prevent auto-replies & out-of-office loops
         "Auto-Submitted": "auto-generated",
         "Precedence": "bulk",
         "X-Auto-Response-Suppress": "OOF, AutoReply",
-        "Feedback-ID": `${type}:StudyRoom:Alerts`,
+        ...extraHeaders,
       },
     });
 
@@ -253,10 +273,154 @@ export async function sendAlertEmail({
       provider: "gmail",
     };
   } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : "Unknown error sending alert email";
+    const errorMsg = err instanceof Error ? err.message : "Unknown error sending email";
     return {
       success: false,
       error: errorMsg,
     };
+  }
+}
+
+/**
+ * Dispatches a spam-proof alert email to the recipient.
+ */
+export async function sendAlertEmail({
+  to,
+  name,
+  type,
+  consecutiveDays = 0,
+  weeklyHours = 0,
+  isTest = false,
+}: SendAlertParams): Promise<SendAlertResult> {
+  const cleanTo = to.trim();
+  const template = generateAlertEmail(type, name, consecutiveDays, weeklyHours, cleanTo);
+  const subject = isTest ? `[TEST] ${template.subject}` : template.subject;
+
+  return dispatchEmailPayload({
+    to: cleanTo,
+    subject,
+    text: template.text,
+    html: template.html,
+    entityRefId: `${type}-${Date.now()}`,
+    extraHeaders: {
+      "X-StudyRoom-Alert-Type": type,
+      "X-StudyRoom-Test": isTest ? "true" : "false",
+      "Feedback-ID": `${type}:StudyRoom:Alerts`,
+    },
+  });
+}
+
+/**
+ * Dispatches immediate payment notification email to platform administrators.
+ */
+export async function sendAdminPaymentNotification(params: {
+  name: string;
+  email: string;
+  phone: string;
+  utr: string;
+  amount?: number;
+  submittedAt?: string;
+}): Promise<SendAlertResult> {
+  try {
+    const template = generateAdminPaymentNotificationEmail(params);
+    const adminRecipients = ["studyaliveapp@gmail.com", "thoughtfulmindg@gmail.com"];
+
+    return await dispatchEmailPayload({
+      to: adminRecipients,
+      subject: template.subject,
+      text: template.text,
+      html: template.html,
+      entityRefId: `admin-pay-${params.utr}`,
+      extraHeaders: {
+        "X-StudyRoom-Admin-Alert": "payment_submission",
+      },
+    });
+  } catch (err: any) {
+    console.error("[Mailer] Failed to send admin payment alert:", err);
+    return { success: false, error: err?.message || "Failed to send admin payment alert" };
+  }
+}
+
+/**
+ * Dispatches payment acknowledgement email to student (verification pending).
+ */
+export async function sendUserPaymentPendingEmail(params: {
+  name: string;
+  email: string;
+  phone?: string;
+  utr: string;
+}): Promise<SendAlertResult> {
+  try {
+    const template = generateUserPaymentPendingEmail(params);
+
+    return await dispatchEmailPayload({
+      to: params.email.trim(),
+      subject: template.subject,
+      text: template.text,
+      html: template.html,
+      entityRefId: `user-pay-pending-${params.utr}`,
+      extraHeaders: {
+        "X-StudyRoom-User-Notice": "payment_pending",
+      },
+    });
+  } catch (err: any) {
+    console.error("[Mailer] Failed to send user pending email:", err);
+    return { success: false, error: err?.message || "Failed to send user pending email" };
+  }
+}
+
+/**
+ * Dispatches verification approval email to student with single-use access link.
+ */
+export async function sendUserPaymentVerifiedEmail(params: {
+  name: string;
+  email: string;
+  accessLink: string;
+  otpCode?: string;
+}): Promise<SendAlertResult> {
+  try {
+    const template = generateUserPaymentVerifiedEmail(params);
+
+    return await dispatchEmailPayload({
+      to: params.email.trim(),
+      subject: template.subject,
+      text: template.text,
+      html: template.html,
+      entityRefId: `user-pay-verified-${Date.now()}`,
+      extraHeaders: {
+        "X-StudyRoom-User-Notice": "payment_verified",
+      },
+    });
+  } catch (err: any) {
+    console.error("[Mailer] Failed to send user verified email:", err);
+    return { success: false, error: err?.message || "Failed to send user verified email" };
+  }
+}
+
+/**
+ * Dispatches verification declined email to student.
+ */
+export async function sendUserPaymentRejectedEmail(params: {
+  name: string;
+  email: string;
+  utr: string;
+  reason?: string;
+}): Promise<SendAlertResult> {
+  try {
+    const template = generateUserPaymentRejectedEmail(params);
+
+    return await dispatchEmailPayload({
+      to: params.email.trim(),
+      subject: template.subject,
+      text: template.text,
+      html: template.html,
+      entityRefId: `user-pay-rejected-${params.utr}`,
+      extraHeaders: {
+        "X-StudyRoom-User-Notice": "payment_rejected",
+      },
+    });
+  } catch (err: any) {
+    console.error("[Mailer] Failed to send user rejected email:", err);
+    return { success: false, error: err?.message || "Failed to send user rejected email" };
   }
 }

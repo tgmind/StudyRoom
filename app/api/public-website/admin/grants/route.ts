@@ -16,25 +16,39 @@ export async function GET(request: NextRequest) {
 
     // Select recent grants from the last 24-hour audit retention window
     // NEVER select cryptographic token hashes or nonces
-    const { data: grants, error } = await adminClient
+    let grantsData: any[] = [];
+    const res1 = await adminClient
       .from("enrollment_grants")
       .select(
-        "id, authorization_type, source_reference, name, contact, status, otp_code, created_at, expires_at, preverified_at, consumed_at, consumed_email, failed_attempts, notes"
+        "id, authorization_type, source_reference, name, contact, email, phone, status, otp_code, created_at, expires_at, preverified_at, consumed_at, consumed_email, failed_attempts, notes"
       )
       .order("created_at", { ascending: false })
       .limit(200);
 
-    if (error) {
-      console.error("[Admin Grants] Error fetching grants:", error.message);
+    if (res1.error && res1.error.message?.includes("column")) {
+      const res2 = await adminClient
+        .from("enrollment_grants")
+        .select(
+          "id, authorization_type, source_reference, name, contact, status, otp_code, created_at, expires_at, preverified_at, consumed_at, consumed_email, failed_attempts, notes"
+        )
+        .order("created_at", { ascending: false })
+        .limit(200);
+      grantsData = res2.data || [];
+    } else if (res1.error) {
+      console.error("[Admin Grants] Error fetching grants:", res1.error.message);
       return NextResponse.json({ error: "Failed to fetch access grants" }, { status: 500 });
+    } else {
+      grantsData = res1.data || [];
     }
 
-    const mapped = (grants || []).map((g: any) => ({
+    const mapped = grantsData.map((g: any) => ({
       id: g.id,
       authorizationType: g.authorization_type,
       sourceReference: g.source_reference,
       name: g.name,
       contact: g.contact,
+      email: g.email || (g.contact && g.contact.includes("@") ? g.contact : null),
+      phone: g.phone || (!g.contact?.includes("@") ? g.contact : null),
       status: g.status,
       otpCode: g.otp_code,
       createdAt: g.created_at,

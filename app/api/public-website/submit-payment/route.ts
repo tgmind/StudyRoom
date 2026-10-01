@@ -8,7 +8,12 @@ import {
   setClaimSecretCookie,
   extractClientIp,
   checkRateLimit,
+  validateAndNormalizeIndianPhone,
 } from "@/lib/auth/enrollment";
+import {
+  sendAdminPaymentNotification,
+  sendUserPaymentPendingEmail,
+} from "@/lib/email/mailer";
 
 export async function POST(request: NextRequest) {
   try {
@@ -23,19 +28,45 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json().catch(() => ({}));
-    const { name, contact, utr, amount = 20, notes = "" } = body;
+    const { name, email, phone, contact, utr, amount = 20, notes = "" } = body;
 
     const trimmedName = String(name || "").trim();
-    const trimmedContact = String(contact || "").trim();
+    const trimmedEmail = String(email || (contact && String(contact).includes("@") ? contact : "")).trim().toLowerCase();
+    const rawPhone = String(phone || (contact && !String(contact).includes("@") ? contact : "")).trim();
     const trimmedUtr = String(utr || "").trim().replace(/\s+/g, "").toUpperCase();
 
     // 2. Validate input fields
     if (!trimmedName || trimmedName.length < 2) {
-      return NextResponse.json({ error: "Please enter your full name (at least 2 characters)." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Please enter your full name (at least 2 characters)." },
+        { status: 400 }
+      );
     }
 
-    if (!trimmedContact || trimmedContact.length < 5) {
-      return NextResponse.json({ error: "Please enter a valid email or phone number." }, { status: 400 });
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!trimmedEmail || !emailRegex.test(trimmedEmail)) {
+      return NextResponse.json(
+        { error: "Please enter a valid email address (e.g. yourname@gmail.com)." },
+        { status: 400 }
+      );
+    }
+
+    let normalizedPhone: string | null = null;
+    if (rawPhone) {
+      const phoneValidation = validateAndNormalizeIndianPhone(rawPhone);
+      if (!phoneValidation.valid || !phoneValidation.normalized) {
+        return NextResponse.json(
+          { error: phoneValidation.error || "Please enter a valid 10-digit Indian mobile number." },
+          { status: 400 }
+        );
+      }
+      normalizedPhone = phoneValidation.normalized;
+    } else if (email && !phone) {
+      // In new API contract with explicit email field, phone is required
+      return NextResponse.json(
+        { error: "Please enter a valid 10-digit Indian mobile number." },
+        { status: 400 }
+      );
     }
 
     if (!/^[A-Za-z0-9]{8,22}$/.test(trimmedUtr)) {
@@ -69,11 +100,17 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const { data: inserted, error: dbErr } = await adminClient
+      // Insert record (with backward-compatible column fallback)
+      let inserted = null;
+      let dbErr = null;
+
+      const insertRes = await adminClient
         .from("public_payment_submissions")
         .insert({
           name: trimmedName,
-          contact: trimmedContact,
+          email: trimmedEmail,
+          phone: normalizedPhone,
+          contact: trimmedEmail,
           utr: trimmedUtr,
           amount: Number(amount) || 20,
           status: "pending",
@@ -82,6 +119,28 @@ export async function POST(request: NextRequest) {
         })
         .select("id")
         .single();
+
+      if (insertRes.error && insertRes.error.message?.includes("column")) {
+        // Fallback for pre-migration table schema
+        const fallbackRes = await adminClient
+          .from("public_payment_submissions")
+          .insert({
+            name: trimmedName,
+            contact: `${trimmedEmail} (${normalizedPhone})`,
+            utr: trimmedUtr,
+            amount: Number(amount) || 20,
+            status: "pending",
+            notes: String(notes || ""),
+            claim_secret_hash: claimSecretHash,
+          })
+          .select("id")
+          .single();
+        inserted = fallbackRes.data;
+        dbErr = fallbackRes.error;
+      } else {
+        inserted = insertRes.data;
+        dbErr = insertRes.error;
+      }
 
       if (dbErr) {
         console.error("[Submit Payment] Database error:", dbErr.message);
@@ -95,7 +154,9 @@ export async function POST(request: NextRequest) {
     const memorySubmission: PaymentSubmission = {
       id: submissionId || `pay_${Date.now()}`,
       name: trimmedName,
-      contact: trimmedContact,
+      email: trimmedEmail,
+      phone: normalizedPhone,
+      contact: trimmedEmail,
       utr: trimmedUtr,
       amount: Number(amount) || 20,
       submittedAt: new Date().toISOString(),
@@ -105,7 +166,28 @@ export async function POST(request: NextRequest) {
     inMemorySubmissions.unshift(memorySubmission);
     if (inMemorySubmissions.length > 500) inMemorySubmissions.pop();
 
-    // 5. Build response and set HttpOnly claim secret cookie
+    // 5. Asynchronous, Non-Blocking Email Notifications
+    const submittedTimestamp = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+    Promise.allSettled([
+      sendAdminPaymentNotification({
+        name: trimmedName,
+        email: trimmedEmail,
+        phone: normalizedPhone || "N/A",
+        utr: trimmedUtr,
+        amount: Number(amount) || 20,
+        submittedAt: submittedTimestamp,
+      }),
+      sendUserPaymentPendingEmail({
+        name: trimmedName,
+        email: trimmedEmail,
+        phone: normalizedPhone || undefined,
+        utr: trimmedUtr,
+      }),
+    ]).catch((emailErr) => {
+      console.warn("[Submit Payment] Async email alert dispatch warning:", emailErr);
+    });
+
+    // 6. Build response and set HttpOnly claim secret cookie
     const response = NextResponse.json({
       success: true,
       submissionId: submissionId || memorySubmission.id,

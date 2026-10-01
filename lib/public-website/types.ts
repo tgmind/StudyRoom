@@ -98,11 +98,18 @@ export interface PaymentSubmission {
   id: string;
   name: string;
   contact: string;
+  email?: string | null;
+  phone?: string | null;
   utr: string;
   amount: number;
   submittedAt: string;
   status: "pending" | "verified" | "rejected";
+  emailDeliveryStatus?: "SENT" | "FAILED" | "NOT SENT" | null;
+  emailDeliveryError?: string | null;
   notes?: string;
+  verifiedAt?: string | null;
+  verifiedBy?: string | null;
+  rejectionReason?: string | null;
 }
 
 export interface PublicCoupon {
@@ -141,6 +148,10 @@ export interface EnrollmentGrant {
   otpCode: string;
   name: string;
   contact?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  accessTokenHash?: string | null;
+  accessTokenExpiresAt?: string | null;
   createdAt: string;
   expiresAt: string;
   consumedAt?: string | null;

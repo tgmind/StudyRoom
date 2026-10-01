@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
 
     const { data: grant, error } = await adminClient
       .from("enrollment_grants")
-      .select("id, otp_code, authorization_type, name, status, expires_at, failed_attempts")
+      .select("id, otp_code, authorization_type, name, contact, status, expires_at, failed_attempts, email")
       .eq("grant_token_hash", tokenHash)
       .maybeSingle();
 
@@ -96,6 +96,7 @@ export async function GET(request: NextRequest) {
       otp: grant.otp_code,
       authorizationType: grant.authorization_type,
       name: grant.name,
+      email: grant.email || (grant.contact && String(grant.contact).includes("@") ? grant.contact : undefined),
     });
   } catch (err: any) {
     console.error("[Preverify Enrollment] Unexpected error:", err);

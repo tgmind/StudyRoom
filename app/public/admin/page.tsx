@@ -30,6 +30,8 @@ import {
   KeyRound,
   ShieldCheck,
   Search,
+  Mail,
+  Phone,
 } from "lucide-react";
 
 export default function PublicSiteAdminPage() {
@@ -51,6 +53,8 @@ export default function PublicSiteAdminPage() {
   // Submissions Queue State
   const [submissions, setSubmissions] = useState<PaymentSubmission[]>([]);
   const [loadingSubmissions, setLoadingSubmissions] = useState(false);
+  const [resendingEmailId, setResendingEmailId] = useState<string | null>(null);
+  const [revealedPhones, setRevealedPhones] = useState<Record<string, boolean>>({});
 
   // Referral Coupons State
   const [coupons, setCoupons] = useState<PublicCoupon[]>([]);
@@ -318,6 +322,45 @@ export default function PublicSiteAdminPage() {
     const d = new Date(val);
     if (isNaN(d.getTime())) return "—";
     return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+  };
+
+  const toggleRevealPhone = (id: string) => {
+    setRevealedPhones((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const maskPhone = (phone: string | null | undefined) => {
+    if (!phone) return "—";
+    const str = phone.trim();
+    if (str.length < 8) return str;
+    const prefix = str.slice(0, 3);
+    const suffix = str.slice(-4);
+    return `${prefix}${"*".repeat(Math.max(2, str.length - 7))}${suffix}`;
+  };
+
+  const handleResendAccessEmail = async (id: string) => {
+    if (resendingEmailId) return;
+    setResendingEmailId(id);
+    try {
+      const res = await fetch("/api/public-website/admin/submissions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, action: "resend_access" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to resend access email.");
+      }
+      setSubmissions((prev) =>
+        prev.map((s) => (s.id === id ? { ...s, emailDeliveryStatus: "SENT", emailDeliveryError: null } : s))
+      );
+      setSaveToast(data.message || "Access email resent successfully.");
+      setTimeout(() => setSaveToast(null), 3500);
+      await fetchSubmissions();
+    } catch (err: any) {
+      alert(err.message || "Failed to resend access email.");
+    } finally {
+      setResendingEmailId(null);
+    }
   };
 
   const handleDeleteSubmission = async (id: string) => {
@@ -1052,81 +1095,147 @@ export default function PublicSiteAdminPage() {
                   <thead className="border-b border-slate-200 text-slate-400 uppercase tracking-wider">
                     <tr>
                       <th className="py-2.5 px-3">Student Name</th>
-                      <th className="py-2.5 px-3">Contact</th>
+                      <th className="py-2.5 px-3">Email Address</th>
+                      <th className="py-2.5 px-3">Mobile (+91)</th>
                       <th className="py-2.5 px-3">UTR Reference</th>
                       <th className="py-2.5 px-3">Amount</th>
                       <th className="py-2.5 px-3">Submitted</th>
-                      <th className="py-2.5 px-3">Status</th>
-                      <th className="py-2.5 px-3 text-right">Action</th>
+                      <th className="py-2.5 px-3">Payment</th>
+                      <th className="py-2.5 px-3">Access Email</th>
+                      <th className="py-2.5 px-3 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium">
-                    {submissions.map((sub) => (
-                      <tr key={sub.id} className="hover:bg-slate-50/70">
-                        <td className="py-3 px-3 font-bold text-[#071a3a]">{sub.name}</td>
-                        <td className="py-3 px-3 text-slate-600">{sub.contact}</td>
-                        <td className="py-3 px-3 font-mono font-black text-blue-700 tracking-wider">
-                          {sub.utr}
-                        </td>
-                        <td className="py-3 px-3 font-bold text-slate-800">₹{sub.amount}</td>
-                        <td className="py-3 px-3 text-slate-500 font-medium">
-                          {formatSafeDateTime(sub.submittedAt || (sub as any).submitted_at)}
-                        </td>
-                        <td className="py-3 px-3">
-                          <span
-                            className={`rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider ${
-                              sub.status === "verified"
-                                ? "bg-green-100 text-green-700"
-                                : sub.status === "rejected"
-                                ? "bg-red-100 text-red-700"
-                                : "bg-amber-100 text-amber-800"
-                            }`}
-                          >
-                            {sub.status}
-                          </span>
-                        </td>
-                        <td className="py-3 px-3 text-right">
-                          <div className="flex items-center justify-end gap-1.5 flex-wrap">
-                            {sub.status === "pending" && (
-                              <>
+                    {submissions.map((sub) => {
+                      const studentEmail = sub.email || (sub.contact?.includes("@") ? sub.contact : "—");
+                      const studentPhone = sub.phone || (!sub.contact?.includes("@") ? sub.contact : "—");
+                      const isRevealed = Boolean(revealedPhones[sub.id]);
+
+                      return (
+                        <tr key={sub.id} className="hover:bg-slate-50/70">
+                          <td className="py-3 px-3 font-bold text-[#071a3a]">{sub.name}</td>
+                          <td className="py-3 px-3 font-mono text-blue-700 font-semibold">{studentEmail}</td>
+                          <td className="py-3 px-3">
+                            <div className="flex items-center gap-1.5 font-mono">
+                              <span className="font-semibold text-emerald-800">
+                                {isRevealed ? studentPhone : maskPhone(studentPhone)}
+                              </span>
+                              {studentPhone && studentPhone !== "—" && (
                                 <button
                                   type="button"
-                                  onClick={() => handleUpdateSubmissionStatus(sub.id, "verified")}
-                                  disabled={updatingSubmissionId === sub.id}
-                                  className="rounded-lg bg-green-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-green-700 shadow-sm cursor-pointer disabled:opacity-50 inline-flex items-center gap-1"
+                                  onClick={() => toggleRevealPhone(sub.id)}
+                                  title={isRevealed ? "Hide phone" : "Reveal phone"}
+                                  className="text-slate-400 hover:text-slate-600 cursor-pointer p-0.5"
                                 >
-                                  {updatingSubmissionId === sub.id && <Loader2 className="w-3 h-3 animate-spin" />}
-                                  <span>Verify</span>
+                                  <Eye className="w-3.5 h-3.5" />
                                 </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleUpdateSubmissionStatus(sub.id, "rejected")}
-                                  disabled={updatingSubmissionId === sub.id}
-                                  className="rounded-lg bg-amber-50 border border-amber-200 px-2.5 py-1 text-[11px] font-bold text-amber-800 hover:bg-amber-100 cursor-pointer disabled:opacity-50 inline-flex items-center gap-1"
-                                >
-                                  {updatingSubmissionId === sub.id && <Loader2 className="w-3 h-3 animate-spin" />}
-                                  <span>Reject</span>
-                                </button>
-                              </>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteSubmission(sub.id)}
-                              disabled={deletingSubmissionId === sub.id}
-                              title="Permanently delete this entry from database"
-                              className="rounded-lg bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 px-2 py-1 text-[11px] font-bold shadow-sm transition-colors inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                            >
-                              {deletingSubmissionId === sub.id ? (
-                                <Loader2 className="w-3 h-3 animate-spin" />
-                              ) : (
-                                <Trash2 className="w-3 h-3" />
                               )}
-                              <span>{deletingSubmissionId === sub.id ? "Deleting..." : "Delete"}</span>
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                            </div>
+                          </td>
+                          <td className="py-3 px-3 font-mono font-black text-blue-700 tracking-wider">
+                            {sub.utr}
+                          </td>
+                          <td className="py-3 px-3 font-bold text-slate-800">₹{sub.amount}</td>
+                          <td className="py-3 px-3 text-slate-500 font-medium">
+                            {formatSafeDateTime(sub.submittedAt || (sub as any).submitted_at)}
+                          </td>
+                          <td className="py-3 px-3">
+                            <span
+                              className={`rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider ${
+                                sub.status === "verified"
+                                  ? "bg-green-100 text-green-700"
+                                  : sub.status === "rejected"
+                                  ? "bg-red-100 text-red-700"
+                                  : "bg-amber-100 text-amber-800"
+                              }`}
+                            >
+                              {sub.status}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3">
+                            {sub.status === "verified" ? (
+                              sub.emailDeliveryStatus === "FAILED" ? (
+                                <span
+                                  className="rounded-full bg-red-100 text-red-700 border border-red-200 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1 cursor-help"
+                                  title={sub.emailDeliveryError || "Email delivery failed. Click Resend to retry."}
+                                >
+                                  <span className="h-1.5 w-1.5 rounded-full bg-red-600 animate-ping" />
+                                  Failed
+                                </span>
+                              ) : sub.emailDeliveryStatus === "SENT" ? (
+                                <span className="rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1">
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                  Sent
+                                </span>
+                              ) : (
+                                <span className="rounded-full bg-slate-100 text-slate-600 px-2.5 py-0.5 text-[10px] font-bold">
+                                  Not Sent
+                                </span>
+                              )
+                            ) : (
+                              <span className="text-slate-400 text-[11px]">—</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-3 text-right">
+                            <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                              {sub.status === "pending" && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUpdateSubmissionStatus(sub.id, "verified")}
+                                    disabled={updatingSubmissionId === sub.id}
+                                    title="Verify payment and email secure access link"
+                                    className="rounded-lg bg-green-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-green-700 shadow-sm cursor-pointer disabled:opacity-50 inline-flex items-center gap-1"
+                                  >
+                                    {updatingSubmissionId === sub.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+                                    <span>Verify &amp; Email</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUpdateSubmissionStatus(sub.id, "rejected")}
+                                    disabled={updatingSubmissionId === sub.id}
+                                    title="Reject payment and email notice"
+                                    className="rounded-lg bg-amber-50 border border-amber-200 px-2.5 py-1 text-[11px] font-bold text-amber-800 hover:bg-amber-100 cursor-pointer disabled:opacity-50 inline-flex items-center gap-1"
+                                  >
+                                    {updatingSubmissionId === sub.id && <Loader2 className="w-3 h-3 animate-spin" />}
+                                    <span>Reject</span>
+                                  </button>
+                                </>
+                              )}
+                              {sub.status === "verified" && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleResendAccessEmail(sub.id)}
+                                  disabled={resendingEmailId === sub.id}
+                                  title="Generate fresh access link and resend email"
+                                  className="rounded-lg bg-indigo-50 border border-indigo-200 px-2.5 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100 cursor-pointer disabled:opacity-50 inline-flex items-center gap-1"
+                                >
+                                  {resendingEmailId === sub.id ? (
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                  ) : (
+                                    <Mail className="w-3 h-3" />
+                                  )}
+                                  <span>Resend Email</span>
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteSubmission(sub.id)}
+                                disabled={deletingSubmissionId === sub.id}
+                                title="Permanently delete this entry from database"
+                                className="rounded-lg bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 px-2 py-1 text-[11px] font-bold shadow-sm transition-colors inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                              >
+                                {deletingSubmissionId === sub.id ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <Trash2 className="w-3 h-3" />
+                                )}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

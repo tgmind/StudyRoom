@@ -374,3 +374,374 @@ export function generateAlertEmail(
 
   return { subject, text, html };
 }
+
+/* =========================================================
+   PAYMENT WORKFLOW: ADMIN NOTIFICATION
+   ========================================================= */
+export function generateAdminPaymentNotificationEmail({
+  name: rawName,
+  email: rawEmail,
+  phone: rawPhone,
+  utr: rawUtr,
+  amount = 20,
+  submittedAt = new Date().toISOString(),
+}: {
+  name: string;
+  email: string;
+  phone: string;
+  utr: string;
+  amount?: number;
+  submittedAt?: string;
+}): EmailTemplatePayload {
+  const name = escapeHtml(rawName || "Student");
+  const email = escapeHtml(rawEmail || "");
+  const phone = escapeHtml(rawPhone || "");
+  const utr = escapeHtml(rawUtr || "");
+  const appUrl = getAppUrl();
+  const adminUrl = `${appUrl}/public/admin`;
+
+  const subject = `New ₹${amount} Payment Submission: ${rawName} (${rawUtr})`;
+
+  const text = `New ₹${amount} Payment Submission Received\n\n` +
+    `Student Details:\n` +
+    `- Name: ${rawName}\n` +
+    `- Email: ${rawEmail}\n` +
+    `- Phone: ${rawPhone}\n` +
+    `- UTR / Ref: ${rawUtr}\n` +
+    `- Amount: ₹${amount}\n` +
+    `- Submitted At: ${submittedAt}\n\n` +
+    `Open Admin Verification Portal:\n` +
+    `${adminUrl}\n\n` +
+    `StudyRoom Administrative System`;
+
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(subject)}</title>
+</head>
+<body style="margin:0;padding:24px 16px;background-color:#0b0f19;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#e2e8f0;line-height:1.6;">
+  <div style="max-width:560px;margin:0 auto;background-color:#151d30;border:1px solid #27354f;border-radius:16px;overflow:hidden;">
+    <div style="padding:24px 32px;background:linear-gradient(180deg, rgba(59,130,246,0.15) 0%, rgba(21,29,48,0) 100%);border-bottom:1px solid #27354f;">
+      <span style="display:inline-block;padding:4px 12px;background-color:#1e3a8a;color:#93c5fd;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;border-radius:999px;">
+        Payment Alert
+      </span>
+      <h1 style="margin:12px 0 0 0;font-size:20px;font-weight:800;color:#ffffff;">
+        New ₹${amount} Payment Pending Review
+      </h1>
+    </div>
+
+    <div style="padding:24px 32px;">
+      <p style="font-size:14px;color:#94a3b8;margin-top:0;">
+        A student has submitted a new ₹${amount} payment for manual verification against bank records.
+      </p>
+
+      <table style="width:100%;border-collapse:collapse;margin:20px 0;background-color:#0b0f19;border-radius:8px;border:1px solid #27354f;">
+        <tr>
+          <td style="padding:10px 14px;border-bottom:1px solid #1e293b;color:#94a3b8;font-size:13px;width:120px;">Name:</td>
+          <td style="padding:10px 14px;border-bottom:1px solid #1e293b;color:#ffffff;font-size:13px;font-weight:bold;">${name}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 14px;border-bottom:1px solid #1e293b;color:#94a3b8;font-size:13px;">Email:</td>
+          <td style="padding:10px 14px;border-bottom:1px solid #1e293b;color:#60a5fa;font-size:13px;font-family:monospace;">${email}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 14px;border-bottom:1px solid #1e293b;color:#94a3b8;font-size:13px;">Phone:</td>
+          <td style="padding:10px 14px;border-bottom:1px solid #1e293b;color:#34d399;font-size:13px;font-family:monospace;font-weight:bold;">${phone}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 14px;border-bottom:1px solid #1e293b;color:#94a3b8;font-size:13px;">UTR / Ref:</td>
+          <td style="padding:10px 14px;border-bottom:1px solid #1e293b;color:#facc15;font-size:14px;font-family:monospace;font-weight:bold;letter-spacing:1px;">${utr}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 14px;border-bottom:1px solid #1e293b;color:#94a3b8;font-size:13px;">Amount:</td>
+          <td style="padding:10px 14px;border-bottom:1px solid #1e293b;color:#ffffff;font-size:13px;font-weight:bold;">₹${amount}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 14px;color:#94a3b8;font-size:13px;">Submitted:</td>
+          <td style="padding:10px 14px;color:#cbd5e1;font-size:12px;">${escapeHtml(submittedAt)}</td>
+        </tr>
+      </table>
+
+      <div style="text-align:center;margin:24px 0 8px 0;">
+        <a href="${adminUrl}" style="display:inline-block;padding:12px 24px;background-color:#2563eb;color:#ffffff;border-radius:8px;font-weight:bold;font-size:14px;text-decoration:none;">
+          Open Admin Portal to Verify &rarr;
+        </a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  return { subject, text, html };
+}
+
+/* =========================================================
+   PAYMENT WORKFLOW: USER ACKNOWLEDGEMENT (PENDING)
+   ========================================================= */
+export function generateUserPaymentPendingEmail({
+  name: rawName,
+  email: rawEmail,
+  phone: rawPhone,
+  utr: rawUtr,
+}: {
+  name: string;
+  email: string;
+  phone?: string;
+  utr: string;
+}): EmailTemplatePayload {
+  const name = escapeHtml(rawName || "Student");
+  const utr = escapeHtml(rawUtr || "");
+  const phone = rawPhone ? escapeHtml(rawPhone) : "";
+  const appUrl = getAppUrl();
+  const year = new Date().getFullYear();
+
+  const subject = "StudyRoom Payment Received — Verification Pending";
+
+  const text = `Hi ${rawName},\n\n` +
+    `Thank you for submitting your ₹20 enrollment fee for StudyRoom.\n\n` +
+    `Transaction Reference (UTR): ${rawUtr}\n\n` +
+    `What happens next?\n` +
+    `- Our administration team verifies each payment against our official banking records.\n` +
+    `- Verification is typically completed within 15 to 30 minutes (up to 24 hours during off-peak times or weekends).\n` +
+    `- You do NOT need to keep the website or browser window open.\n` +
+    `- As soon as your payment is verified, you will receive an email with your secure, single-use access link to complete your signup.\n\n` +
+    (rawPhone ? `If our team has any questions regarding your transaction, we may contact you at ${rawPhone}.\n\n` : "") +
+    `Need help or entered incorrect details? Reply directly to this email.\n\n` +
+    `StudyRoom Virtual Focus Space\n` +
+    `© ${year} StudyRoom. All rights reserved.`;
+
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(subject)}</title>
+</head>
+<body style="margin:0;padding:24px 16px;background-color:#0b0f19;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#e2e8f0;line-height:1.6;">
+  <div style="max-width:560px;margin:0 auto;background-color:#151d30;border:1px solid #27354f;border-radius:16px;overflow:hidden;">
+    <div style="padding:28px 32px;background:linear-gradient(180deg, rgba(59,130,246,0.12) 0%, rgba(21,29,48,0) 100%);text-align:center;border-bottom:1px solid #27354f;">
+      <div style="font-size:36px;margin-bottom:8px;">⏳</div>
+      <span style="display:inline-block;padding:4px 12px;background-color:#1e3a8a;color:#93c5fd;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;border-radius:999px;">
+        Payment Received
+      </span>
+      <h1 style="margin:12px 0 0 0;font-size:22px;font-weight:800;color:#ffffff;">
+        Verification in Progress
+      </h1>
+    </div>
+
+    <div style="padding:24px 32px;">
+      <p style="font-size:15px;color:#cbd5e1;margin-top:0;">
+        Hi <strong style="color:#ffffff;">${name}</strong>,
+      </p>
+      <p style="font-size:14px;color:#cbd5e1;line-height:1.6;">
+        We have safely received your ₹20 enrollment payment submission for StudyRoom.
+      </p>
+
+      <div style="background-color:#0b0f19;border-left:4px solid #3b82f6;border-radius:8px;padding:14px 18px;margin:20px 0;">
+        <div style="font-size:12px;color:#94a3b8;margin-bottom:4px;">Recorded Transaction UTR:</div>
+        <div style="font-size:16px;font-family:monospace;font-weight:bold;color:#60a5fa;letter-spacing:1px;">${utr}</div>
+      </div>
+
+      <div style="background-color:#1e293b;border-radius:10px;padding:16px 20px;margin:20px 0;">
+        <h4 style="margin:0 0 10px 0;font-size:13px;font-weight:700;color:#f8fafc;text-transform:uppercase;letter-spacing:0.5px;">What to expect next:</h4>
+        <ul style="margin:0;padding-left:20px;font-size:13px;color:#cbd5e1;line-height:1.7;">
+          <li>Our team manually verifies each submission against live bank records.</li>
+          <li>Verification typically takes <strong>15 to 30 minutes</strong> (up to 24 hours during off-peak times).</li>
+          <li><strong>You do not need to keep the website open.</strong></li>
+          <li>Once approved, you will receive an email with your secure signup link.</li>
+        </ul>
+      </div>
+
+      ${phone ? `
+      <p style="font-size:13px;color:#94a3b8;margin:16px 0;">
+        If needed, our administration team may contact you at <strong style="color:#cbd5e1;">${phone}</strong> regarding your transaction.
+      </p>` : ""}
+
+      <p style="font-size:12px;color:#64748b;margin-top:24px;border-top:1px solid #27354f;padding-top:16px;text-align:center;">
+        Questions or made a mistake? Reply directly to this email or visit <a href="${appUrl}" style="color:#60a5fa;text-decoration:none;">StudyRoom</a>.
+      </p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  return { subject, text, html };
+}
+
+/* =========================================================
+   PAYMENT WORKFLOW: USER ACCESS LINK (VERIFIED)
+   ========================================================= */
+export function generateUserPaymentVerifiedEmail({
+  name: rawName,
+  email: rawEmail,
+  accessLink,
+}: {
+  name: string;
+  email: string;
+  accessLink: string;
+  otpCode?: string;
+}): EmailTemplatePayload {
+  const name = escapeHtml(rawName || "Student");
+  const link = escapeHtml(accessLink || "");
+  const year = new Date().getFullYear();
+
+  const subject = "StudyRoom Payment Verified — Complete Your Signup";
+
+  const text = `Hi ${rawName}!\n\n` +
+    `Great news: your ₹20 enrollment fee for StudyRoom has been verified by the administrator.\n\n` +
+    `Your enrollment authorization is now ready. Click the link below to complete your registration:\n\n` +
+    `${accessLink}\n\n` +
+    `IMPORTANT SECURITY NOTE:\n` +
+    `- This secure signup link is valid for 24 hours and can be used once.\n` +
+    `- Clicking the link will authenticate your pre-verified status and unlock registration.\n` +
+    `- Simply enter your password and choose your display name to start studying immediately.\n\n` +
+    `Welcome to the StudyRoom family!\n` +
+    `© ${year} StudyRoom. All rights reserved.`;
+
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(subject)}</title>
+</head>
+<body style="margin:0;padding:24px 16px;background-color:#0b0f19;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#e2e8f0;line-height:1.6;">
+  <div style="max-width:560px;margin:0 auto;background-color:#151d30;border:1px solid #27354f;border-radius:16px;overflow:hidden;">
+    <div style="padding:28px 32px;background:linear-gradient(180deg, rgba(16,185,129,0.15) 0%, rgba(21,29,48,0) 100%);text-align:center;border-bottom:1px solid #27354f;">
+      <div style="font-size:38px;margin-bottom:8px;">🎉</div>
+      <span style="display:inline-block;padding:4px 12px;background-color:#064e3b;color:#34d399;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;border-radius:999px;">
+        Payment Confirmed
+      </span>
+      <h1 style="margin:12px 0 0 0;font-size:22px;font-weight:800;color:#ffffff;">
+        Your Access is Verified!
+      </h1>
+    </div>
+
+    <div style="padding:28px 32px;">
+      <p style="font-size:15px;color:#cbd5e1;margin-top:0;">
+        Hi <strong style="color:#ffffff;">${name}</strong>,
+      </p>
+      <p style="font-size:14px;color:#cbd5e1;line-height:1.6;">
+        Your ₹20 enrollment fee has been confirmed by our administrators. Your StudyRoom access has been officially unlocked.
+      </p>
+
+      <!-- Prominent CTA Button -->
+      <div style="text-align:center;margin:32px 0;">
+        <a href="${link}" style="display:inline-block;padding:16px 36px;background-color:#10b981;color:#ffffff;font-size:15px;font-weight:800;text-decoration:none;border-radius:12px;box-shadow:0 4px 15px rgba(16,185,129,0.4);letter-spacing:0.3px;">
+          Complete Your Signup Now &rarr;
+        </a>
+      </div>
+
+      <div style="background-color:#1e293b;border-radius:10px;padding:14px 18px;margin:20px 0;font-size:12px;color:#94a3b8;line-height:1.6;">
+        <strong style="color:#f1f5f9;">Notice:</strong> This secure single-use access link expires in <strong>24 hours</strong>. If the button above does not open, copy and paste this link into your browser:<br />
+        <a href="${link}" style="color:#60a5fa;word-break:break-all;text-decoration:none;font-size:11px;margin-top:6px;display:inline-block;">${link}</a>
+      </div>
+
+      <p style="font-size:12px;color:#64748b;margin-top:24px;border-top:1px solid #27354f;padding-top:16px;text-align:center;">
+        Welcome to StudyRoom. We look forward to studying with you!
+      </p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  return { subject, text, html };
+}
+
+
+/* =========================================================
+   PAYMENT WORKFLOW: USER NOTICE (REJECTED)
+   ========================================================= */
+export function generateUserPaymentRejectedEmail({
+  name: rawName,
+  email: rawEmail,
+  utr: rawUtr,
+  reason: rawReason,
+}: {
+  name: string;
+  email: string;
+  utr: string;
+  reason?: string;
+}): EmailTemplatePayload {
+  const name = escapeHtml(rawName || "Student");
+  const utr = escapeHtml(rawUtr || "");
+  const reason = escapeHtml(rawReason || "Transaction could not be matched with bank statements.");
+  const appUrl = getAppUrl();
+  const year = new Date().getFullYear();
+
+  const subject = "StudyRoom Payment Verification Update";
+
+  const text = `Hi ${rawName},\n\n` +
+    `We reviewed your ₹20 payment submission for StudyRoom with transaction reference (UTR): ${rawUtr}.\n\n` +
+    `Unfortunately, we were unable to verify this transaction against our bank records.\n\n` +
+    `Reason: ${rawReason || "Transaction could not be matched with bank statements."}\n\n` +
+    `Next steps:\n` +
+    `1. Please check your payment app (Google Pay, PhonePe, Paytm) to ensure the ₹20 transfer was successful and not reversed.\n` +
+    `2. Double-check your 12-digit UPI reference (UTR) number.\n` +
+    `3. You can submit your correct UTR again at ${appUrl}.\n\n` +
+    `If you believe this is an error or if money was debited from your account, please reply directly to this email with a screenshot of your transaction.\n\n` +
+    `StudyRoom Team\n` +
+    `© ${year} StudyRoom. All rights reserved.`;
+
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(subject)}</title>
+</head>
+<body style="margin:0;padding:24px 16px;background-color:#0b0f19;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#e2e8f0;line-height:1.6;">
+  <div style="max-width:560px;margin:0 auto;background-color:#151d30;border:1px solid #27354f;border-radius:16px;overflow:hidden;">
+    <div style="padding:28px 32px;background:linear-gradient(180deg, rgba(239,68,68,0.12) 0%, rgba(21,29,48,0) 100%);text-align:center;border-bottom:1px solid #27354f;">
+      <div style="font-size:36px;margin-bottom:8px;">⚠️</div>
+      <span style="display:inline-block;padding:4px 12px;background-color:#7f1d1d;color:#fca5a5;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;border-radius:999px;">
+        Verification Notice
+      </span>
+      <h1 style="margin:12px 0 0 0;font-size:22px;font-weight:800;color:#ffffff;">
+        Unable to Confirm Payment
+      </h1>
+    </div>
+
+    <div style="padding:24px 32px;">
+      <p style="font-size:15px;color:#cbd5e1;margin-top:0;">
+        Hi <strong style="color:#ffffff;">${name}</strong>,
+      </p>
+      <p style="font-size:14px;color:#cbd5e1;line-height:1.6;">
+        We reviewed your ₹20 enrollment submission for StudyRoom with transaction reference:
+      </p>
+
+      <div style="background-color:#0b0f19;border-left:4px solid #ef4444;border-radius:8px;padding:12px 18px;margin:16px 0;">
+        <div style="font-size:12px;color:#94a3b8;">Submitted UTR:</div>
+        <div style="font-size:15px;font-family:monospace;font-weight:bold;color:#f87171;">${utr}</div>
+      </div>
+
+      <div style="background-color:#1e293b;border-radius:10px;padding:14px 18px;margin:20px 0;font-size:13px;color:#cbd5e1;">
+        <strong style="color:#fca5a5;">Note from administration:</strong><br />
+        ${reason}
+      </div>
+
+      <p style="font-size:13px;color:#94a3b8;line-height:1.6;">
+        <strong>What you can do:</strong><br />
+        • Check your payment app (GPay, PhonePe, Paytm) to verify if the payment was debited or refunded.<br />
+        • Verify that you entered the correct 12-digit UTR number.<br />
+        • If money was debited, reply directly to this email with your transaction receipt, and our team will resolve it manually.
+      </p>
+
+      <div style="text-align:center;margin:24px 0 8px 0;">
+        <a href="${appUrl}" style="display:inline-block;padding:12px 24px;background-color:#374151;color:#ffffff;border-radius:8px;font-weight:bold;font-size:13px;text-decoration:none;">
+          Visit StudyRoom Website &rarr;
+        </a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  return { subject, text, html };
+}

@@ -42,6 +42,91 @@ export function generateClaimSecret(): string {
 }
 
 /**
+ * Generate a 32-byte CSPRNG hex access token for single-use email links.
+ */
+export function generateAccessToken(): string {
+  return crypto.randomBytes(32).toString("hex");
+}
+
+/**
+ * Validate and canonically normalize an Indian mobile phone number.
+ * Accepts formats: +919876543210, 919876543210, 09876543210, 9876543210 (with spaces/dashes).
+ * Normalizes to canonical format: +91XXXXXXXXXX
+ */
+export function validateAndNormalizeIndianPhone(phone: string | null | undefined): {
+  valid: boolean;
+  normalized?: string;
+  error?: string;
+} {
+  if (!phone || typeof phone !== "string") {
+    return { valid: false, error: "Phone number is required." };
+  }
+
+  // Remove whitespace, dashes, parens, dots
+  let cleaned = phone.replace(/[\s\-\(\)\.]+/g, "").trim();
+
+  // If starts with +, strip + for digit check
+  let hasPlus = false;
+  if (cleaned.startsWith("+")) {
+    hasPlus = true;
+    cleaned = cleaned.substring(1);
+  }
+
+  // Ensure cleaned contains only digits
+  if (!/^\d+$/.test(cleaned)) {
+    return { valid: false, error: "Phone number must contain only valid digits." };
+  }
+
+  let mobileDigits = "";
+
+  if (cleaned.length === 12 && cleaned.startsWith("91")) {
+    mobileDigits = cleaned.substring(2);
+  } else if (cleaned.length === 11 && cleaned.startsWith("0")) {
+    mobileDigits = cleaned.substring(1);
+  } else if (cleaned.length === 10) {
+    mobileDigits = cleaned;
+  } else {
+    return {
+      valid: false,
+      error: "Please enter a valid 10-digit Indian mobile number (e.g. +91 98765 43210).",
+    };
+  }
+
+  // Valid Indian mobile numbers must start with 6, 7, 8, or 9
+  if (!/^[6-9]\d{9}$/.test(mobileDigits)) {
+    return {
+      valid: false,
+      error: "Indian mobile numbers must start with 6, 7, 8, or 9.",
+    };
+  }
+
+  // Reject obvious dummy repeating numbers (e.g. 9999999999, 8888888888)
+  if (/^(\d)\1{9}$/.test(mobileDigits)) {
+    return {
+      valid: false,
+      error: "Please enter a genuine, active phone number.",
+    };
+  }
+
+  return {
+    valid: true,
+    normalized: `+91${mobileDigits}`,
+  };
+}
+
+/**
+ * Mask a phone number for privacy in logs and UI previews (+91******3210).
+ */
+export function maskPhoneNumber(phone: string | null | undefined): string {
+  if (!phone) return "";
+  const cleaned = phone.trim();
+  if (cleaned.length < 8) return "***";
+  const prefix = cleaned.slice(0, 3);
+  const suffix = cleaned.slice(-4);
+  return `${prefix}${"*".repeat(Math.max(2, cleaned.length - 7))}${suffix}`;
+}
+
+/**
  * Set the HttpOnly enrollment token cookie on a NextResponse.
  */
 export function setEnrollmentTokenCookie(response: NextResponse, token: string): void {

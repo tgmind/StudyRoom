@@ -39,6 +39,9 @@ export function SignupForm() {
             if (data.name) {
               setDisplayName((prev) => prev || data.name);
             }
+            if (data.email) {
+              setEmail((prev) => prev || data.email);
+            }
             setAuthTypeLabel(
               data.authorizationType === "referral_coupon"
                 ? "100% Scholarship Referral"
