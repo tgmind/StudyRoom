@@ -304,6 +304,10 @@ export function useLiveRoom(currentUserId?: string) {
               weekly_sessions_count: existing.weekly_sessions_count ?? u.weekly_sessions_count ?? 0,
               leaderboard_score: existing.leaderboard_score ?? u.leaderboard_score,
               leaderboard_rank: existing.leaderboard_rank ?? u.leaderboard_rank,
+              streak_days: existing.streak_days ?? u.streak_days,
+              completed_tasks: existing.completed_tasks ?? u.completed_tasks,
+              total_tasks: existing.total_tasks ?? u.total_tasks,
+              total_study_minutes: existing.total_study_minutes ?? u.total_study_minutes,
               is_present: isPresent,
               state_version: Math.max(lastVersion, restVersion),
             };
@@ -337,6 +341,10 @@ export function useLiveRoom(currentUserId?: string) {
             weekly_sessions_count: existing?.weekly_sessions_count ?? u.weekly_sessions_count ?? 0,
             leaderboard_score: existing?.leaderboard_score ?? u.leaderboard_score,
             leaderboard_rank: existing?.leaderboard_rank ?? u.leaderboard_rank,
+            streak_days: existing?.streak_days ?? u.streak_days,
+            completed_tasks: existing?.completed_tasks ?? u.completed_tasks,
+            total_tasks: existing?.total_tasks ?? u.total_tasks,
+            total_study_minutes: existing?.total_study_minutes ?? u.total_study_minutes,
             is_present: isPresent,
             state_version: Math.max(lastVersion, restVersion),
           };
@@ -364,7 +372,9 @@ export function useLiveRoom(currentUserId?: string) {
 
       let rpcPromise: PromiseLike<{ data: unknown; error: { message: string } | null }> | null = null;
       try {
-        const res = (supabase as unknown as RpcCaller).rpc("rpc_get_leaderboard", {});
+        const res = (supabase as unknown as RpcCaller).rpc("rpc_get_leaderboard", {
+          p_timezone: process.env.NEXT_PUBLIC_APP_TIMEZONE || "Asia/Kolkata",
+        });
         if (res && typeof res.then === "function") {
           rpcPromise = res;
         }
@@ -399,21 +409,48 @@ export function useLiveRoom(currentUserId?: string) {
             ? (sessionDataResult.value.data as unknown as SessionRow[] | null)
             : null;
 
-        const leaderboardMap = new Map<string, { score: number; rank: number }>();
+        const leaderboardMap = new Map<
+          string,
+          {
+            score: number;
+            rank: number;
+            streakDays?: number;
+            completedTasks?: number;
+            totalTasks?: number;
+            totalStudyMinutes?: number;
+          }
+        >();
         if (
           leaderboardResult.status === "fulfilled" &&
           leaderboardResult.value &&
           !leaderboardResult.value.error &&
           Array.isArray(leaderboardResult.value.data)
         ) {
-          leaderboardResult.value.data.forEach((entry: { user_id?: string; score?: number }, idx: number) => {
-            if (entry && entry.user_id) {
-              leaderboardMap.set(entry.user_id, {
-                score: typeof entry.score === "number" ? entry.score : 0,
-                rank: idx + 1,
-              });
+          leaderboardResult.value.data.forEach(
+            (
+              entry: {
+                user_id?: string;
+                score?: number;
+                rank?: number;
+                streak_days?: number;
+                completed_tasks?: number;
+                total_tasks?: number;
+                total_study_minutes?: number;
+              },
+              idx: number
+            ) => {
+              if (entry && entry.user_id) {
+                leaderboardMap.set(entry.user_id, {
+                  score: typeof entry.score === "number" ? entry.score : 0,
+                  rank: typeof entry.rank === "number" ? entry.rank : idx + 1,
+                  streakDays: typeof entry.streak_days === "number" ? entry.streak_days : undefined,
+                  completedTasks: typeof entry.completed_tasks === "number" ? entry.completed_tasks : undefined,
+                  totalTasks: typeof entry.total_tasks === "number" ? entry.total_tasks : undefined,
+                  totalStudyMinutes: typeof entry.total_study_minutes === "number" ? entry.total_study_minutes : undefined,
+                });
+              }
             }
-          });
+          );
         }
 
         const statsMap = new Map<string, { past24hSeconds: number; weeklySeconds: number; weeklySessions: number; totalSessions: number; latestSessionEndMs: number }>();
@@ -465,6 +502,10 @@ export function useLiveRoom(currentUserId?: string) {
               weekly_sessions_count: stat?.weeklySessions ?? (hasAnySessions ? 0 : (m.weekly_sessions_count ?? 0)),
               leaderboard_score: lb ? lb.score : (hasAnySessions ? 0 : m.leaderboard_score),
               leaderboard_rank: lb ? lb.rank : (hasAnySessions ? undefined : m.leaderboard_rank),
+              streak_days: lb?.streakDays ?? m.streak_days,
+              completed_tasks: lb?.completedTasks ?? m.completed_tasks,
+              total_tasks: lb?.totalTasks ?? m.total_tasks,
+              total_study_minutes: lb?.totalStudyMinutes ?? m.total_study_minutes,
               last_offline_at: m.current_status === "offline" && bestOfflineMs > 0
                 ? new Date(bestOfflineMs).toISOString()
                 : m.last_offline_at,
@@ -955,6 +996,14 @@ export function useLiveRoom(currentUserId?: string) {
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "study_sessions" },
+        () => {
+          if (channelGenRef.current !== thisGen) return;
+          triggerDebouncedFetchRef.current?.();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "daily_goals" },
         () => {
           if (channelGenRef.current !== thisGen) return;
           triggerDebouncedFetchRef.current?.();

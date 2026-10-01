@@ -488,9 +488,10 @@ export function detectLiveRivalries(
         return b.weeklySeconds - a.weeklySeconds;
       });
 
-      const scoreGap = Math.abs(
-        (sorted[0].member.leaderboard_score ?? 0) - (sorted[1].member.leaderboard_score ?? 0)
-      );
+      const scoreGap =
+        Math.round(
+          Math.abs((sorted[0].member.leaderboard_score ?? 0) - (sorted[1].member.leaderboard_score ?? 0)) * 10
+        ) / 10;
 
       rivalries.push({
         id: group.id,
@@ -610,7 +611,9 @@ export function evaluateRivalryResolution(
     const leader = participantsWithStatus[0];
     const runnerUp = participantsWithStatus[1];
     const decisiveScoreGap =
-      (leader.member.leaderboard_score ?? 0) - (runnerUp.member.leaderboard_score ?? 0);
+      Math.round(
+        ((leader.member.leaderboard_score ?? 0) - (runnerUp.member.leaderboard_score ?? 0)) * 10
+      ) / 10;
 
     const standings: RivalryStanding[] = participantsWithStatus.map((p, idx) => ({
       userId: p.member.id,

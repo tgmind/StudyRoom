@@ -24,6 +24,10 @@ export interface UserProfile {
   last_offline_at?: string | null;
   leaderboard_score?: number;
   leaderboard_rank?: number;
+  streak_days?: number;
+  completed_tasks?: number;
+  total_tasks?: number;
+  total_study_minutes?: number;
   is_present?: boolean;
   state_version?: number;
   updated_at?: string | null;

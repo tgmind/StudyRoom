@@ -18,6 +18,7 @@ import {
   RivalryState,
   RivalryWinEvent,
 } from "@/lib/time/rivalry";
+import { computeLiveLeaderboardMap } from "@/lib/scoring/engine";
 import { RivalryWinCelebration } from "./RivalryWinCelebration";
 import { Users, WifiOff, Flame, Coffee } from "lucide-react";
 import {
@@ -162,10 +163,46 @@ export const MemberList = memo(function MemberList({
     [currentUserId, currentUserElapsedSeconds]
   );
 
+  // Authoritative live leaderboard scores and ranks computed continuously on the atomic server tick
+  const liveLeaderboardMap = useMemo(() => {
+    return computeLiveLeaderboardMap(
+      members,
+      currentTimestamp,
+      currentUserId,
+      currentUserElapsedSeconds
+    );
+  }, [members, currentTimestamp, currentUserId, currentUserElapsedSeconds]);
+
+  // Enrich active members with live leaderboard score and rank
+  const liveActiveMembers = useMemo(() => {
+    return activeMembers.map((m) => {
+      const live = liveLeaderboardMap.get(m.id);
+      if (!live) return m;
+      return {
+        ...m,
+        leaderboard_score: live.liveScore,
+        leaderboard_rank: live.liveRank,
+      };
+    });
+  }, [activeMembers, liveLeaderboardMap]);
+
+  // Enrich all members for resolution evaluation
+  const liveAllMembers = useMemo(() => {
+    return (members || []).map((m) => {
+      const live = liveLeaderboardMap.get(m.id);
+      if (!live) return m;
+      return {
+        ...m,
+        leaderboard_score: live.liveScore,
+        leaderboard_rank: live.liveRank,
+      };
+    });
+  }, [members, liveLeaderboardMap]);
+
   // Sorted in decreasing order of active study session time in Global view
   const prevSortedActiveRef = useRef<UserProfile[]>([]);
   const sortedActiveMembers = useMemo(() => {
-    const nextSorted = [...activeMembers].sort((a, b) => {
+    const nextSorted = [...liveActiveMembers].sort((a, b) => {
       const elapsedA = getMemberStudySeconds(a, currentTimestamp);
       const elapsedB = getMemberStudySeconds(b, currentTimestamp);
 
@@ -195,13 +232,14 @@ export const MemberList = memo(function MemberList({
 
     prevSortedActiveRef.current = nextSorted;
     return nextSorted;
-  }, [activeMembers, currentTimestamp, getMemberStudySeconds]);
+  }, [liveActiveMembers, currentTimestamp, getMemberStudySeconds]);
 
   // Real-time Multi-Rivalry Detection: triggers when 2 or 3 active members come within <= 10m in weekly study time
+  // or within proximity on the authoritative live leaderboard
   const prevStableRivalriesRef = useRef<RivalryState[]>([]);
   const rivalries = useMemo(() => {
     const rawRivalries = detectLiveRivalries(
-      activeMembers,
+      liveActiveMembers,
       currentTimestamp,
       currentUserId,
       currentUserElapsedSeconds,
@@ -246,7 +284,7 @@ export const MemberList = memo(function MemberList({
 
     prevStableRivalriesRef.current = rawRivalries;
     return rawRivalries;
-  }, [activeMembers, currentTimestamp, currentUserId, currentUserElapsedSeconds]);
+  }, [liveActiveMembers, currentTimestamp, currentUserId, currentUserElapsedSeconds]);
 
   const rivalMemberIds = useMemo(() => {
     const set = new Set<string>();
@@ -281,7 +319,7 @@ export const MemberList = memo(function MemberList({
           if (stillRivalsTogether) continue;
 
           // Rigorously evaluate the resolution state
-          const resolution = evaluateRivalryResolution(prev, members, currentTimestamp);
+          const resolution = evaluateRivalryResolution(prev, liveAllMembers, currentTimestamp);
           if (!resolution || resolution.resolutionType !== "WON" || !resolution.winner || !resolution.loser) {
             // Non-won resolution (e.g. SESSION_STOPPED, MEMBER_LEFT, NO_CONTEST, WEEK_ROLLOVER, EXPIRED)
             // Strict rule: NEVER declare a win or fire celebrations!
@@ -348,7 +386,7 @@ export const MemberList = memo(function MemberList({
       }
     }
     prevRivalriesRef.current = rivalries;
-  }, [rivalries, onRivalryWin, currentUserId, activeMembers, sortedActiveMembers, members, currentTimestamp]);
+  }, [rivalries, onRivalryWin, currentUserId, activeMembers, sortedActiveMembers, liveAllMembers, currentTimestamp]);
 
   // Refs for tracking DOM card elements and their bounding rectangles across re-orders
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());

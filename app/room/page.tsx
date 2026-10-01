@@ -158,6 +158,10 @@ export default function RoomPage() {
         past_24h_study_seconds: m.past_24h_study_seconds ?? 0,
         leaderboard_score: m.leaderboard_score,
         leaderboard_rank: m.leaderboard_rank,
+        streak_days: m.streak_days,
+        completed_tasks: m.completed_tasks,
+        total_tasks: m.total_tasks,
+        total_study_minutes: m.total_study_minutes,
 
         // 2. Identity fields from profile:
         display_name: effectiveProfile?.display_name || m.display_name,
