@@ -63,13 +63,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             return prev;
           }
           const isIncomingOffline = incoming.current_status === "offline";
+          const isPrevActiveSameSession = prev && prev.current_status !== "offline" && !isIncomingOffline;
+
+          const session_start_time = isIncomingOffline
+            ? null
+            : (incoming.session_start_time !== undefined
+                ? (incoming.session_start_time ?? (isPrevActiveSameSession ? (prev?.session_start_time ?? null) : null))
+                : (prev?.session_start_time ?? null));
+
+          const last_resumed_at = isIncomingOffline
+            ? null
+            : (incoming.last_resumed_at !== undefined
+                ? (incoming.last_resumed_at ?? (isPrevActiveSameSession ? (prev?.last_resumed_at ?? null) : null))
+                : (prev?.last_resumed_at ?? null));
+
+          const break_started_at = isIncomingOffline
+            ? null
+            : (incoming.break_started_at !== undefined
+                ? (incoming.break_started_at ?? (isPrevActiveSameSession ? (prev?.break_started_at ?? null) : null))
+                : (prev?.break_started_at ?? null));
+
+          const active_study_seconds_snapshot = isIncomingOffline
+            ? 0
+            : (incoming.active_study_seconds_snapshot ?? (isPrevActiveSameSession ? (prev?.active_study_seconds_snapshot ?? 0) : 0));
+
           const updated: UserProfile = {
             ...(prev || {}),
             ...incoming,
-            session_start_time: isIncomingOffline ? null : (incoming.session_start_time ?? null),
-            last_resumed_at: isIncomingOffline ? null : (incoming.last_resumed_at ?? null),
-            break_started_at: isIncomingOffline ? null : (incoming.break_started_at ?? null),
-            active_study_seconds_snapshot: isIncomingOffline ? 0 : (incoming.active_study_seconds_snapshot ?? 0),
+            session_start_time,
+            last_resumed_at,
+            break_started_at,
+            active_study_seconds_snapshot,
           };
           saveCachedUserProfile(updated);
           return updated;
@@ -211,13 +235,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               }
             }
 
+            const isPrevActiveSameSession = prev && prev.current_status !== "offline" && !isIncomingOffline;
+
+            const session_start_time = isIncomingOffline
+              ? null
+              : (incoming.session_start_time !== undefined
+                  ? (incoming.session_start_time ?? (isPrevActiveSameSession ? (prev?.session_start_time ?? null) : null))
+                  : (prev?.session_start_time ?? null));
+
+            const last_resumed_at = isIncomingOffline
+              ? null
+              : (incoming.last_resumed_at !== undefined
+                  ? (incoming.last_resumed_at ?? (isPrevActiveSameSession ? (prev?.last_resumed_at ?? null) : null))
+                  : (prev?.last_resumed_at ?? null));
+
+            const break_started_at = isIncomingOffline
+              ? null
+              : (incoming.break_started_at !== undefined
+                  ? (incoming.break_started_at ?? (isPrevActiveSameSession ? (prev?.break_started_at ?? null) : null))
+                  : (prev?.break_started_at ?? null));
+
+            const active_study_seconds_snapshot = isIncomingOffline
+              ? 0
+              : (incoming.active_study_seconds_snapshot ?? (isPrevActiveSameSession ? (prev?.active_study_seconds_snapshot ?? 0) : 0));
+
             const updated: UserProfile = {
               ...prev,
               ...incoming,
-              session_start_time: isIncomingOffline ? null : (incoming.session_start_time ?? prev.session_start_time),
-              last_resumed_at: isIncomingOffline ? null : (incoming.last_resumed_at ?? prev.last_resumed_at),
-              break_started_at: isIncomingOffline ? null : (incoming.break_started_at ?? prev.break_started_at),
-              active_study_seconds_snapshot: isIncomingOffline ? 0 : (incoming.active_study_seconds_snapshot ?? prev.active_study_seconds_snapshot ?? 0),
+              session_start_time,
+              last_resumed_at,
+              break_started_at,
+              active_study_seconds_snapshot,
             };
             saveCachedUserProfile(updated);
             return updated;

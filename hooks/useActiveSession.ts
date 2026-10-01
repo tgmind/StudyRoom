@@ -218,7 +218,18 @@ export function useActiveSession(
   const [blocks, setBlocks] = useState<SessionBlock[]>([]);
   const [elapsedStudySeconds, setElapsedStudySeconds] = useState<number>(() => {
     if (profile) {
-      return calculateMemberElapsedStudySeconds(profile, getServerNow());
+      if (profile.current_status === "studying" && !isMemberTimerCalibrating(profile)) {
+        return calculateMemberElapsedStudySeconds(profile, getServerNow());
+      }
+      const studyState = getActiveStudyState();
+      if (studyState && studyState.sessionStartTime) {
+        const serverOffset = getServerTimeOffset();
+        const resumeTime = studyState.lastResumedAt
+          ? new Date(studyState.lastResumedAt).getTime() - serverOffset
+          : new Date(studyState.sessionStartTime).getTime() - serverOffset;
+        const currentPeriod = Math.max(0, Math.floor((Date.now() - resumeTime) / 1000));
+        return (studyState.snapshotSeconds || 0) + currentPeriod;
+      }
     }
     return 0;
   });
@@ -344,6 +355,9 @@ export function useActiveSession(
   // Reset 10-minute warning dismissal when session status changes
   useEffect(() => {
     isTenMinWarningDismissedRef.current = false;
+    if (currentStatus === "offline") {
+      lastAuthoritativeElapsedRef.current = 0;
+    }
   }, [currentStatus]);
 
   const actionLoadingRef = useRef(actionLoading);
@@ -351,6 +365,10 @@ export function useActiveSession(
 
   const elapsedStudySecondsRef = useRef(elapsedStudySeconds);
   elapsedStudySecondsRef.current = elapsedStudySeconds;
+
+  const lastAuthoritativeElapsedRef = useRef<number>(0);
+  const reconcilePromiseRef = useRef<Promise<boolean> | null>(null);
+  const lastReconcileTimeRef = useRef<number>(0);
 
   const blocksRef = useRef(blocks);
   blocksRef.current = blocks;
@@ -766,6 +784,7 @@ export function useActiveSession(
       if (!offlineSession) {
         setBlocks([]);
         setElapsedStudySeconds(0);
+        lastAuthoritativeElapsedRef.current = 0;
       }
       return;
     }
@@ -795,7 +814,15 @@ export function useActiveSession(
       if (fetchedBlocks.length > 0) {
         setBlocks(fetchedBlocks);
         const serverNow = getServerNow();
-        setElapsedStudySeconds(calculateMemberElapsedStudySeconds(profile, serverNow));
+        if (profile.current_status === "studying" && !isMemberTimerCalibrating(profile)) {
+          const s = calculateMemberElapsedStudySeconds(profile, serverNow);
+          setElapsedStudySeconds(s);
+          lastAuthoritativeElapsedRef.current = s;
+        } else {
+          const s = calculateActiveStudySeconds(fetchedBlocks, serverNow);
+          setElapsedStudySeconds(s);
+          lastAuthoritativeElapsedRef.current = s;
+        }
       }
     } catch (err) {
       console.warn("Network error fetching blocks, using local state:", err);
@@ -835,6 +862,125 @@ export function useActiveSession(
       };
     } catch {}
   }, [supabase, profile?.id, fetchSessionBlocks]);
+
+  // -----------------------------------------------------------------------
+  // SESSION RECONCILIATION & SELF-HEALING
+  // -----------------------------------------------------------------------
+  const reconcileActiveSession = useCallback(async (): Promise<boolean> => {
+    // Coalesce concurrent calls
+    if (reconcilePromiseRef.current) {
+      return reconcilePromiseRef.current;
+    }
+    // Rate limit: maximum once every 5 seconds unless explicitly forced
+    const now = Date.now();
+    if (now - lastReconcileTimeRef.current < 5000) {
+      return false;
+    }
+    lastReconcileTimeRef.current = now;
+
+    const task = (async () => {
+      try {
+        const { data, error: rpcErr } = await with10sTimeout(
+          (supabase as unknown as RpcCaller).rpc("rpc_synchronize_session"),
+          "Reconcile session RPC"
+        );
+
+        if (rpcErr || !data) {
+          console.warn("Session reconciliation RPC failed:", rpcErr);
+          return false;
+        }
+
+        const res = data as {
+          success: boolean;
+          status: UserStatus;
+          repaired: boolean;
+          reason: string;
+          session_start_time: string | null;
+          last_resumed_at: string | null;
+          break_started_at: string | null;
+          active_study_seconds_snapshot: number;
+          elapsed_seconds: number;
+          state_version: number;
+          server_now: string;
+        };
+
+        if (res.server_now) {
+          calibrateWithServerTime(res.server_now, 0);
+        }
+
+        if (res.repaired || res.status) {
+          if (updateProfileOptimisticRef.current) {
+            updateProfileOptimisticRef.current({
+              current_status: res.status,
+              session_start_time: res.session_start_time,
+              last_resumed_at: res.last_resumed_at,
+              break_started_at: res.break_started_at,
+              active_study_seconds_snapshot: res.active_study_seconds_snapshot,
+              state_version: res.state_version,
+            });
+          }
+
+          if (res.status === "offline") {
+            purgeStaleActiveSession();
+            clearOfflineActiveSession();
+            setBlocks([]);
+            setElapsedStudySeconds(0);
+            lastAuthoritativeElapsedRef.current = 0;
+            if (res.reason === "break_expired") {
+              setSavedStudySecondsOnBreakExpiry(res.elapsed_seconds || res.active_study_seconds_snapshot || 0);
+              setIsBreakExpiredNoticeOpen(true);
+            } else if (res.reason === "session_limit_exceeded") {
+              setSavedStudySecondsOnLimit(res.elapsed_seconds || 10800);
+              setIsSessionLimitNoticeOpen(true);
+            }
+          } else if (res.status === "studying" || res.status === "break") {
+            if (typeof res.elapsed_seconds === "number" && res.elapsed_seconds >= 0) {
+              setElapsedStudySeconds(res.elapsed_seconds);
+              lastAuthoritativeElapsedRef.current = res.elapsed_seconds;
+            }
+          }
+        }
+        return true;
+      } catch (err) {
+        console.warn("Session reconciliation error:", err);
+        return false;
+      } finally {
+        reconcilePromiseRef.current = null;
+      }
+    })();
+
+    reconcilePromiseRef.current = task;
+    return task;
+  }, [supabase]);
+
+  // Event-driven automatic reconciliation trigger (1200ms grace period)
+  useEffect(() => {
+    if (!isTimerCalibrating || !isOnline || effectiveStatus !== "studying") {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      if (profileRef.current && isMemberTimerCalibrating(profileRef.current)) {
+        reconcileActiveSession();
+      }
+    }, 1200);
+
+    return () => clearTimeout(timer);
+  }, [isTimerCalibrating, isOnline, effectiveStatus, reconcileActiveSession]);
+
+  // Manual interactive force synchronization
+  const forceSynchronizeSession = useCallback(async () => {
+    lastReconcileTimeRef.current = 0; // Bypass rate limit for intentional user click
+    setSyncStatus("syncing");
+    try {
+      await Promise.all([
+        reconcileActiveSession(),
+        fetchSessionBlocks(),
+      ]);
+    } catch (err) {
+      console.warn("Force synchronization error:", err);
+    }
+  }, [reconcileActiveSession, fetchSessionBlocks]);
 
   // -----------------------------------------------------------------------
   // FINISH SESSION (STOP)
@@ -1290,13 +1436,20 @@ export function useActiveSession(
 
     const computeCurrentSeconds = (now: Date) => {
       const p = profileRef.current;
-      if (p && p.current_status === "studying") {
-        return calculateMemberElapsedStudySeconds(p, now);
+      // Tier 1: Authoritative profile timestamps (if not calibrating)
+      if (p && p.current_status === "studying" && !isMemberTimerCalibrating(p)) {
+        const s = calculateMemberElapsedStudySeconds(p, now);
+        lastAuthoritativeElapsedRef.current = s;
+        return s;
       }
+      // Tier 2: Authoritative server session_blocks (unlinked active blocks)
       const b = blocksRef.current;
       if (b && b.length > 0) {
-        return calculateActiveStudySeconds(b, now);
+        const s = calculateActiveStudySeconds(b, now);
+        lastAuthoritativeElapsedRef.current = s;
+        return s;
       }
+      // Tier 3: Local cached study state (read-only fallback during initial render/hydration)
       const studyState = getActiveStudyState();
       if (studyState && studyState.sessionStartTime) {
         const serverOffset = getServerTimeOffset();
@@ -1304,7 +1457,12 @@ export function useActiveSession(
           ? new Date(studyState.lastResumedAt).getTime() - serverOffset
           : new Date(studyState.sessionStartTime).getTime() - serverOffset;
         const currentPeriod = Math.max(0, Math.floor((Date.now() - resumeTime) / 1000));
-        return (studyState.snapshotSeconds || 0) + currentPeriod;
+        const s = (studyState.snapshotSeconds || 0) + currentPeriod;
+        return s;
+      }
+      // Tier 4: Memory continuity while calibrating (never drop to 0 if previous authoritative seconds exist)
+      if (lastAuthoritativeElapsedRef.current > 0) {
+        return lastAuthoritativeElapsedRef.current;
       }
       return 0;
     };
@@ -1343,6 +1501,7 @@ export function useActiveSession(
 
     const currentSeq = ++actionSeqRef.current;
     setError(null);
+    lastAuthoritativeElapsedRef.current = 0;
     setMutationPending("start");
     setSyncStatus("syncing");
     setActionLoading(true);
@@ -1381,6 +1540,7 @@ export function useActiveSession(
     applyLocalStatusOverride("studying");
     setBlocks([newBlock]);
     setElapsedStudySeconds(0);
+    lastAuthoritativeElapsedRef.current = 0;
     const optimisticStartDetails: Partial<UserProfile> = {
       current_status: "studying",
       session_start_time: nowIso,
@@ -1932,6 +2092,8 @@ export function useActiveSession(
     pauseSession,
     resumeSession,
     finishSession,
+    reconcileActiveSession,
+    forceSynchronizeSession,
     refreshBlocks: fetchSessionBlocks,
   };
 }

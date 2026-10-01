@@ -68,6 +68,7 @@ export default function RoomPage() {
     pauseSession,
     resumeSession,
     finishSession,
+    forceSynchronizeSession,
   } = useActiveSession(
     effectiveProfile,
     (newStatus, details) => {
@@ -238,6 +239,7 @@ export default function RoomPage() {
             countdown={countdown}
             isLoading={actionLoading || mutationPending !== null}
             isHydrating={authLoading && status === "offline"}
+            onForceSync={forceSynchronizeSession}
           />
         </section>
 

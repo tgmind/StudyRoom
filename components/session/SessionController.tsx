@@ -19,6 +19,7 @@ interface SessionControllerProps {
   elapsedSeconds: number;
   breakStartedAt?: string | null;
   syncStatus?: SessionSyncStatus;
+  onForceSync?: () => Promise<void> | void;
   onStartSession: () => Promise<void>;
   onPauseSession: () => Promise<void>;
   onResumeSession: () => Promise<void>;
@@ -35,6 +36,7 @@ export const SessionController = memo(function SessionController({
   elapsedSeconds,
   breakStartedAt,
   syncStatus,
+  onForceSync,
   onStartSession,
   onPauseSession,
   onResumeSession,
@@ -163,34 +165,55 @@ export const SessionController = memo(function SessionController({
             status={status}
             breakStartedAt={breakStartedAt}
             syncStatus={syncStatus}
+            onForceSync={onForceSync}
           />
         </div>
       )}
       {isIdle && !isHydratingState && syncStatus && syncStatus !== "synced" && (
         <div className="flex items-center justify-end px-1 -mt-2 mb-1">
-          <div className="flex items-center space-x-1 text-[9px] font-semibold tracking-normal select-none">
+          <div
+            className={`flex items-center space-x-1 text-[9px] font-semibold tracking-normal select-none ${
+              onForceSync && (syncStatus === "syncing" || syncStatus === "error")
+                ? "cursor-pointer hover:opacity-80 active:scale-95 transition-all"
+                : ""
+            }`}
+            onClick={() => {
+              if (onForceSync && (syncStatus === "syncing" || syncStatus === "error")) {
+                onForceSync();
+              }
+            }}
+            role={onForceSync && (syncStatus === "syncing" || syncStatus === "error") ? "button" : undefined}
+            tabIndex={onForceSync && (syncStatus === "syncing" || syncStatus === "error") ? 0 : undefined}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                if (onForceSync && (syncStatus === "syncing" || syncStatus === "error")) {
+                  onForceSync();
+                }
+              }
+            }}
+          >
             {syncStatus === "syncing" && (
-              <span className="text-amber-400 flex items-center space-x-1">
+              <span className="text-amber-400 flex items-center space-x-1" title="Synchronizing with server (Click to retry / force sync)">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
                 <span>Syncing...</span>
               </span>
             )}
             {syncStatus === "reconnecting" && (
-              <span className="text-amber-400 flex items-center space-x-1">
+              <span className="text-amber-400 flex items-center space-x-1" title="Restoring realtime stream">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
                 <span>Reconnecting...</span>
               </span>
             )}
             {syncStatus === "no_network" && (
-              <span className="text-zinc-400 flex items-center space-x-1">
+              <span className="text-zinc-400 flex items-center space-x-1" title="No network connection available">
                 <span className="w-1.5 h-1.5 rounded-full bg-zinc-500" />
                 <span>No network</span>
               </span>
             )}
             {syncStatus === "error" && (
-              <span className="text-rose-400 flex items-center space-x-1">
+              <span className="text-rose-400 flex items-center space-x-1" title="Requested session mutation failed (Click to retry / force sync)">
                 <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
-                <span>Action failed / Error</span>
+                <span>Action failed / Retry</span>
               </span>
             )}
           </div>

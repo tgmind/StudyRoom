@@ -14,6 +14,7 @@ interface ActiveTimerProps {
   status: UserStatus;
   breakStartedAt?: string | null;
   syncStatus?: SessionSyncStatus;
+  onForceSync?: () => Promise<void> | void;
 }
 
 export function ActiveTimer({
@@ -21,6 +22,7 @@ export function ActiveTimer({
   status,
   breakStartedAt,
   syncStatus,
+  onForceSync,
 }: ActiveTimerProps) {
   const isStudying = status === "studying";
   const isBreak = status === "break";
@@ -90,7 +92,27 @@ export function ActiveTimer({
 
           {/* Truthful Sync Status Badge */}
           {syncStatus && (
-            <div className="flex items-center space-x-1 text-[9px] font-semibold tracking-normal select-none">
+            <div
+              className={`flex items-center space-x-1 text-[9px] font-semibold tracking-normal select-none ${
+                onForceSync && (syncStatus === "syncing" || syncStatus === "reconciling" || syncStatus === "error")
+                  ? "cursor-pointer hover:opacity-80 active:scale-95 transition-all"
+                  : ""
+              }`}
+              onClick={() => {
+                if (onForceSync && (syncStatus === "syncing" || syncStatus === "reconciling" || syncStatus === "error")) {
+                  onForceSync();
+                }
+              }}
+              role={onForceSync && (syncStatus === "syncing" || syncStatus === "reconciling" || syncStatus === "error") ? "button" : undefined}
+              tabIndex={onForceSync && (syncStatus === "syncing" || syncStatus === "reconciling" || syncStatus === "error") ? 0 : undefined}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  if (onForceSync && (syncStatus === "syncing" || syncStatus === "reconciling" || syncStatus === "error")) {
+                    onForceSync();
+                  }
+                }
+              }}
+            >
               {syncStatus === "synced" && (
                 <span className="text-emerald-400 flex items-center space-x-1" title="Authoritative session synchronized with server">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
@@ -98,13 +120,13 @@ export function ActiveTimer({
                 </span>
               )}
               {syncStatus === "syncing" && (
-                <span className="text-amber-400 flex items-center space-x-1" title="Mutation in flight">
+                <span className="text-amber-400 flex items-center space-x-1" title="Synchronizing with server (Click to retry / force sync)">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
                   <span>Syncing...</span>
                 </span>
               )}
               {syncStatus === "reconciling" && (
-                <span className="text-amber-400 flex items-center space-x-1" title="Reconciling with authoritative server session">
+                <span className="text-amber-400 flex items-center space-x-1" title="Reconciling with authoritative server session (Click to retry / force sync)">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
                   <span>Reconciling...</span>
                 </span>
@@ -122,9 +144,9 @@ export function ActiveTimer({
                 </span>
               )}
               {syncStatus === "error" && (
-                <span className="text-rose-400 flex items-center space-x-1" title="Requested session mutation failed">
+                <span className="text-rose-400 flex items-center space-x-1" title="Requested session mutation failed (Click to retry / force sync)">
                   <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
-                  <span>Action failed / Error</span>
+                  <span>Action failed / Retry</span>
                 </span>
               )}
             </div>
