@@ -133,3 +133,19 @@ export interface CouponValidationResult {
   message: string;
 }
 
+export interface EnrollmentGrant {
+  id: string;
+  authorizationType: "payment" | "referral_coupon" | "admin_comp";
+  sourceReference?: string | null;
+  status: "active" | "preverified" | "signup_in_progress" | "consumed" | "expired" | "revoked";
+  otpCode: string;
+  name: string;
+  contact?: string | null;
+  createdAt: string;
+  expiresAt: string;
+  consumedAt?: string | null;
+  consumedEmail?: string | null;
+  failedAttempts: number;
+  notes?: string | null;
+}
+

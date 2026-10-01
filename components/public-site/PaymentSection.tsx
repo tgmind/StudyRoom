@@ -65,6 +65,7 @@ export function PaymentSection({ membership, branding, onOpenUtrModal }: Payment
   const [submittingReferral, setSubmittingReferral] = useState(false);
   const [referralError, setReferralError] = useState<string | null>(null);
   const [referralSuccess, setReferralSuccess] = useState(false);
+  const [referralOtp, setReferralOtp] = useState<string | null>(null);
 
   // Apply Coupon Handler
   const handleApplyCoupon = async (e?: React.FormEvent) => {
@@ -158,10 +159,13 @@ export function PaymentSection({ membership, branding, onOpenUtrModal }: Payment
         throw new Error(data.error || "Failed to process referral enrollment.");
       }
 
+      if (data.otp) {
+        setReferralOtp(data.otp);
+      }
       setReferralSuccess(true);
       setTimeout(() => {
         router.push(data.redirectUrl || "/signup");
-      }, 1500);
+      }, 4000);
     } catch (err: any) {
       setReferralError(err.message || "Failed to process referral enrollment.");
     } finally {
@@ -381,9 +385,22 @@ export function PaymentSection({ membership, branding, onOpenUtrModal }: Payment
                   )}
 
                   {referralSuccess && (
-                    <div className="flex items-center gap-2 rounded-xl bg-emerald-50 p-3 text-xs font-bold text-emerald-700 border border-emerald-200 min-w-0">
-                      <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
-                      <span className="break-words">Referral access verified! Redirecting to StudyRoom registration...</span>
+                    <div className="rounded-2xl bg-emerald-50 border-2 border-emerald-300 p-4 text-center space-y-2 min-w-0 animate-in fade-in">
+                      <div className="flex items-center justify-center gap-1.5 text-xs font-black text-emerald-800 uppercase tracking-wider">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                        <span>100% Scholarship Access Authorized!</span>
+                      </div>
+                      {referralOtp && (
+                        <div className="py-1">
+                          <span className="text-[11px] font-bold text-emerald-700 block">Your 4-Digit Enrollment OTP:</span>
+                          <span className="font-mono text-3xl font-black tracking-widest text-emerald-950 inline-block bg-white px-4 py-1 rounded-xl border border-emerald-200 shadow-sm mt-1">
+                            {referralOtp}
+                          </span>
+                        </div>
+                      )}
+                      <p className="text-[11px] font-semibold text-emerald-700">
+                        Auto-prefilled on registration. Redirecting to signup in 4s...
+                      </p>
                     </div>
                   )}
 

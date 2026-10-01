@@ -1,24 +1,65 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
-import { Info } from "lucide-react";
+import { Info, ShieldCheck, Lock, ArrowRight, Loader2 } from "lucide-react";
 import { AuthInstallOptions } from "@/components/auth/AuthInstallOptions";
 
 export function SignupForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+
+  // Preverification state
+  const [preverifying, setPreverifying] = useState(true);
+  const [isPreverified, setIsPreverified] = useState(false);
+  const [authTypeLabel, setAuthTypeLabel] = useState<string | null>(null);
 
   const router = useRouter();
-  const supabase = createClient();
+
+  // Check enrollment token cookie on mount
+  useEffect(() => {
+    let isMounted = true;
+
+    async function checkEnrollment() {
+      try {
+        const res = await fetch("/api/auth/preverify-enrollment");
+        const data = await res.json();
+
+        if (isMounted) {
+          if (res.ok && data.preverified) {
+            setIsPreverified(true);
+            setOtp(data.otp || "");
+            if (data.name) {
+              setDisplayName((prev) => prev || data.name);
+            }
+            setAuthTypeLabel(
+              data.authorizationType === "referral_coupon"
+                ? "100% Scholarship Referral"
+                : "Verified ₹20 Payment"
+            );
+          } else {
+            setIsPreverified(false);
+          }
+        }
+      } catch {
+        if (isMounted) setIsPreverified(false);
+      } finally {
+        if (isMounted) setPreverifying(false);
+      }
+    }
+
+    checkEnrollment();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,58 +73,48 @@ export function SignupForm() {
       return;
     }
 
+    if (!otp || otp.length !== 4) {
+      setError("A valid 4-digit enrollment code is required");
+      return;
+    }
+
     setLoading(true);
     setError(null);
-    setSuccess(null);
 
     try {
-      const { data, error: authErr } = await supabase.auth.signUp({
-        email: email.trim(),
-        password,
-        options: {
-          data: {
-            display_name: displayName.trim() || undefined,
-          },
-        },
+      const res = await fetch("/api/auth/enrollment-signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: email.trim(),
+          password,
+          displayName: displayName.trim(),
+          otp: otp.trim(),
+        }),
       });
 
-      if (authErr) throw authErr;
+      const data = await res.json();
 
-      if (data.user) {
-        if (!data.session) {
-          // Email confirmation is required by Supabase project settings
-          setSuccess(
-            "Account created successfully! If email confirmation is enabled, please verify your email before logging in. You can now proceed to Log In."
-          );
-          return;
-        }
-
-        // Active session established: update display_name if provided
-        if (displayName.trim()) {
-          try {
-            await (
-              supabase.from("users") as unknown as {
-                update: (data: Record<string, unknown>) => {
-                  eq: (col: string, val: string) => Promise<{ error: unknown }>;
-                };
-              }
-            )
-              .update({ display_name: displayName.trim() })
-              .eq("id", data.user.id);
-          } catch {
-            // non-fatal
-          }
-          window.location.href = "/room";
-        } else {
-          window.location.href = "/onboarding";
-        }
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to create account");
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create account");
-    } finally {
+
+      // Successful registration: redirect to room
+      window.location.href = data.redirect || "/room";
+    } catch (err: any) {
+      setError(err?.message || "Failed to create account");
       setLoading(false);
     }
   };
+
+  if (preverifying) {
+    return (
+      <div className="w-full max-w-md mx-auto p-8 bg-zinc-950 border border-zinc-800 rounded-2xl shadow-xl flex flex-col items-center justify-center space-y-4 text-center">
+        <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+        <p className="text-sm font-medium text-zinc-300">Checking enrollment verification...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full max-w-md mx-auto p-6 bg-zinc-950 border border-zinc-800 rounded-2xl shadow-xl space-y-6">
@@ -95,6 +126,42 @@ export function SignupForm() {
           Join StudyRoom live accountability study group
         </p>
       </div>
+
+      {/* State A: Pre-verified Enrollment Banner */}
+      {isPreverified ? (
+        <div className="p-3.5 bg-emerald-950/40 border border-emerald-700/60 rounded-xl space-y-1 text-xs">
+          <div className="flex items-center gap-2 text-emerald-300 font-bold">
+            <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>Enrollment Access Verified ({authTypeLabel})</span>
+          </div>
+          <div className="flex items-center justify-between text-emerald-400/90 font-mono pt-1 text-[11px]">
+            <span>Authorization Code:</span>
+            <span className="font-bold tracking-widest bg-emerald-900/50 px-2 py-0.5 rounded border border-emerald-700/50 text-emerald-200">
+              {otp}
+            </span>
+          </div>
+        </div>
+      ) : (
+        /* State B: Locked Banner (No valid enrollment cookie found) */
+        <div className="p-4 bg-amber-950/30 border border-amber-700/50 rounded-2xl space-y-3 text-xs text-amber-200 text-center">
+          <div className="mx-auto w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-400">
+            <Lock className="w-5 h-5" />
+          </div>
+          <div className="space-y-1">
+            <p className="font-bold text-sm text-amber-100">StudyRoom Membership Required</p>
+            <p className="text-zinc-400 leading-relaxed text-[11px]">
+              New registrations require a verified ₹20 UPI enrollment or an authorized 100% scholarship referral coupon.
+            </p>
+          </div>
+          <Link
+            href="/public#membership"
+            className="inline-flex items-center justify-center gap-1.5 w-full py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 font-bold text-white text-xs transition-all shadow-md shadow-blue-600/20 active:scale-98"
+          >
+            <span>Complete ₹20 Enrollment / Apply Coupon</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+      )}
 
       {/* Prominent Real Name Alert Banner */}
       <div className="p-3 bg-red-500/10 border border-red-500/35 rounded-xl flex items-start space-x-2.5 text-red-300 text-xs shadow-sm">
@@ -111,19 +178,13 @@ export function SignupForm() {
           </div>
         )}
 
-        {success && (
-          <div className="p-3.5 bg-violet-950/40 border border-violet-800/80 rounded-xl text-xs font-medium text-violet-200 space-y-1">
-            <p className="font-bold text-violet-100">Notice</p>
-            <p className="text-violet-300 leading-relaxed">{success}</p>
-          </div>
-        )}
-
         <Input
           label="Display Name"
           type="text"
           placeholder="e.g. Alex, Rahul S."
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
+          disabled={!isPreverified || loading}
           hint="Your public name visible to study room members"
         />
 
@@ -134,6 +195,7 @@ export function SignupForm() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
+          disabled={!isPreverified || loading}
           autoComplete="email"
         />
 
@@ -144,11 +206,17 @@ export function SignupForm() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
+          disabled={!isPreverified || loading}
           autoComplete="new-password"
         />
 
-        <Button type="submit" size="lg" isLoading={loading}>
-          Sign Up & Join Room
+        <Button
+          type="submit"
+          size="lg"
+          isLoading={loading}
+          disabled={!isPreverified}
+        >
+          {isPreverified ? "Complete Registration & Enter Room" : "Enrollment Required to Register"}
         </Button>
       </form>
 

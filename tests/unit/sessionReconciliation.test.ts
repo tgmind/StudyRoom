@@ -3,6 +3,7 @@ import { renderHook, act } from "@testing-library/react";
 import { useActiveSession } from "@/hooks/useActiveSession";
 import { UserProfile, SessionBlock } from "@/lib/supabase/types";
 import { isMemberTimerCalibrating } from "@/lib/time/format";
+import { resetClockCalibration } from "@/lib/time/clockSync";
 
 const mockRpc = vi.fn();
 const mockFrom = vi.fn();
@@ -19,6 +20,7 @@ vi.mock("@/lib/supabase/client", () => ({
 describe("Timer Sync & Authoritative Session Reconciliation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetClockCalibration();
     vi.useFakeTimers();
     if (typeof localStorage !== "undefined") {
       localStorage.clear();

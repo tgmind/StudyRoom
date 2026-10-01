@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAdminEmail } from "@/lib/admin";
 import { createClient } from "@/lib/supabase/server";
-import { isMatchingAdminKey, DEFAULT_PUBLIC_ADMIN_KEY } from "@/lib/public-website/authUtils";
+import { isMatchingAdminKey } from "@/lib/public-website/authUtils";
 
 export async function POST(request: NextRequest) {
   try {
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid admin key or unauthorized email." }, { status: 401 });
     }
 
-    const token = key?.trim() || DEFAULT_PUBLIC_ADMIN_KEY;
+    const token = key?.trim() || process.env.PUBLIC_SITE_ADMIN_KEY || "authenticated_admin_session";
     const response = NextResponse.json({
       success: true,
       token,

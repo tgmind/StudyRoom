@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   extractDriveId,
   getDriveImageUrls,
@@ -110,18 +110,31 @@ describe("Public Website - UTR Validation Logic", () => {
   });
 });
 
-import { isMatchingAdminKey, DEFAULT_PUBLIC_ADMIN_KEY } from "@/lib/public-website/authUtils";
+import { isMatchingAdminKey } from "@/lib/public-website/authUtils";
 
 describe("Public Website - Admin Multi-Key Auth Logic", () => {
-  it("matches the default administrative key", () => {
-    expect(isMatchingAdminKey(DEFAULT_PUBLIC_ADMIN_KEY)).toBe(true);
-    expect(isMatchingAdminKey("studyroom_admin_secure_key")).toBe(true);
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    process.env = { ...originalEnv };
   });
 
-  it("rejects unauthorized passwords", () => {
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  it("matches valid administrative key from environment when >= 24 chars", () => {
+    process.env.PUBLIC_SITE_ADMIN_KEY = "super_secret_admin_key_with_at_least_24_chars";
+    expect(isMatchingAdminKey("super_secret_admin_key_with_at_least_24_chars")).toBe(true);
+  });
+
+  it("rejects unauthorized, short, or empty passwords", () => {
+    process.env.PUBLIC_SITE_ADMIN_KEY = "super_secret_admin_key_with_at_least_24_chars";
     expect(isMatchingAdminKey("wrong_password")).toBe(false);
+    expect(isMatchingAdminKey("too_short_key")).toBe(false);
     expect(isMatchingAdminKey("")).toBe(false);
     expect(isMatchingAdminKey(null)).toBe(false);
+    expect(isMatchingAdminKey(undefined)).toBe(false);
   });
 });
 

@@ -12,6 +12,7 @@ export interface UserProfile {
   active_study_seconds_snapshot?: number | null;
   has_achiever_badge: boolean;
   is_admin?: boolean;
+  enrollment_grant_id?: string | null;
   created_at: string;
   past_24h_study_seconds?: number;
   total_sessions_count?: number;
@@ -197,6 +198,195 @@ export interface Database {
         }>;
         Relationships: [];
       };
+      public_payment_submissions: {
+        Row: {
+          id: string;
+          name: string;
+          contact: string;
+          utr: string;
+          amount: number;
+          claim_secret_hash: string | null;
+          status: "pending" | "verified" | "rejected";
+          verified_at?: string | null;
+          verified_by?: string | null;
+          notes?: string | null;
+          submitted_at: string;
+          created_at: string;
+          updated_at?: string | null;
+        };
+        Insert: Partial<{
+          id: string;
+          name: string;
+          contact: string;
+          utr: string;
+          amount: number;
+          claim_secret_hash: string | null;
+          status: "pending" | "verified" | "rejected";
+          verified_at?: string | null;
+          verified_by?: string | null;
+          notes?: string | null;
+          submitted_at: string;
+          created_at: string;
+          updated_at?: string | null;
+        }>;
+        Update: Partial<{
+          id: string;
+          name: string;
+          contact: string;
+          utr: string;
+          amount: number;
+          claim_secret_hash: string | null;
+          status: "pending" | "verified" | "rejected";
+          verified_at?: string | null;
+          verified_by?: string | null;
+          notes?: string | null;
+          submitted_at: string;
+          created_at: string;
+          updated_at?: string | null;
+        }>;
+        Relationships: [];
+      };
+      enrollment_grants: {
+        Row: {
+          id: string;
+          grant_token_hash: string;
+          otp_code: string;
+          authorization_type: "payment" | "referral_coupon";
+          source_reference: string;
+          payment_submission_id?: string | null;
+          coupon_id?: string | null;
+          name?: string | null;
+          contact?: string | null;
+          status: "active" | "preverified" | "signup_in_progress" | "consumed" | "expired" | "revoked";
+          created_at: string;
+          expires_at: string;
+          preverified_at?: string | null;
+          reservation_expires_at?: string | null;
+          reserved_email?: string | null;
+          creation_nonce_hash?: string | null;
+          consumed_at?: string | null;
+          consumed_user_id?: string | null;
+          consumed_email?: string | null;
+          failed_attempts: number;
+          last_attempt_at?: string | null;
+          notes?: string | null;
+          updated_at?: string | null;
+        };
+        Insert: Partial<{
+          id: string;
+          grant_token_hash: string;
+          otp_code: string;
+          authorization_type: "payment" | "referral_coupon";
+          source_reference: string;
+          payment_submission_id?: string | null;
+          coupon_id?: string | null;
+          name?: string | null;
+          contact?: string | null;
+          status: "active" | "preverified" | "signup_in_progress" | "consumed" | "expired" | "revoked";
+          created_at: string;
+          expires_at: string;
+          preverified_at?: string | null;
+          reservation_expires_at?: string | null;
+          reserved_email?: string | null;
+          creation_nonce_hash?: string | null;
+          consumed_at?: string | null;
+          consumed_user_id?: string | null;
+          consumed_email?: string | null;
+          failed_attempts: number;
+          last_attempt_at?: string | null;
+          notes?: string | null;
+          updated_at?: string | null;
+        }>;
+        Update: Partial<{
+          id: string;
+          grant_token_hash: string;
+          otp_code: string;
+          authorization_type: "payment" | "referral_coupon";
+          source_reference: string;
+          payment_submission_id?: string | null;
+          coupon_id?: string | null;
+          name?: string | null;
+          contact?: string | null;
+          status: "active" | "preverified" | "signup_in_progress" | "consumed" | "expired" | "revoked";
+          created_at: string;
+          expires_at: string;
+          preverified_at?: string | null;
+          reservation_expires_at?: string | null;
+          reserved_email?: string | null;
+          creation_nonce_hash?: string | null;
+          consumed_at?: string | null;
+          consumed_user_id?: string | null;
+          consumed_email?: string | null;
+          failed_attempts: number;
+          last_attempt_at?: string | null;
+          notes?: string | null;
+          updated_at?: string | null;
+        }>;
+        Relationships: [];
+      };
+      public_coupons: {
+        Row: {
+          id: string;
+          code: string;
+          discount_percent: number;
+          is_active: boolean;
+          max_uses: number;
+          used_count: number;
+          created_at: string;
+          updated_at?: string | null;
+        };
+        Insert: Partial<{
+          id: string;
+          code: string;
+          discount_percent: number;
+          is_active: boolean;
+          max_uses: number;
+          used_count: number;
+          created_at: string;
+          updated_at?: string | null;
+        }>;
+        Update: Partial<{
+          id: string;
+          code: string;
+          discount_percent: number;
+          is_active: boolean;
+          max_uses: number;
+          used_count: number;
+          created_at: string;
+          updated_at?: string | null;
+        }>;
+        Relationships: [];
+      };
+      public_referral_enrollments: {
+        Row: {
+          id: string;
+          coupon_code: string;
+          name: string;
+          referred_by: string;
+          agreement_accepted: boolean;
+          status: string;
+          created_at: string;
+        };
+        Insert: Partial<{
+          id: string;
+          coupon_code: string;
+          name: string;
+          referred_by: string;
+          agreement_accepted: boolean;
+          status: string;
+          created_at: string;
+        }>;
+        Update: Partial<{
+          id: string;
+          coupon_code: string;
+          name: string;
+          referred_by: string;
+          agreement_accepted: boolean;
+          status: string;
+          created_at: string;
+        }>;
+        Relationships: [];
+      };
     };
     Views: {
       [_ in never]: never;
@@ -276,6 +466,45 @@ export interface Database {
       };
       rpc_admin_get_platform_stats: {
         Args: { p_admin_email: string };
+        Returns: Json;
+      };
+      rpc_verify_payment_and_create_grant: {
+        Args: {
+          p_submission_id: string;
+          p_token_hash: string;
+          p_otp: string;
+          p_admin_identifier: string;
+        };
+        Returns: Json;
+      };
+      rpc_claim_coupon_and_create_grant: {
+        Args: {
+          p_coupon_code: string;
+          p_name: string;
+          p_referred_by: string;
+          p_token_hash: string;
+          p_otp: string;
+          p_ip_address?: string;
+        };
+        Returns: Json;
+      };
+      rpc_reserve_enrollment_grant: {
+        Args: {
+          p_token_hash: string;
+          p_otp: string;
+          p_email: string;
+          p_nonce_hash: string;
+        };
+        Returns: Json;
+      };
+      rpc_release_enrollment_reservation: {
+        Args: {
+          p_grant_id: string;
+        };
+        Returns: void;
+      };
+      rpc_cleanup_expired_enrollment_grants: {
+        Args: Record<string, never>;
         Returns: Json;
       };
     };

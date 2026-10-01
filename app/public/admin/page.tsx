@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { PublicWebsiteContent, PaymentSubmission, PublicCoupon, ReferralEnrollment } from "@/lib/public-website/types";
+import { PublicWebsiteContent, PaymentSubmission, PublicCoupon, ReferralEnrollment, EnrollmentGrant } from "@/lib/public-website/types";
 import { DEFAULT_PUBLIC_CONTENT } from "@/lib/public-website/defaultContent";
 import { extractDriveId, getDriveImageUrls } from "@/lib/public-website/driveUtils";
 import { synchronizeContentPricing } from "@/lib/public-website/priceUtils";
@@ -27,6 +27,9 @@ import {
   Ticket,
   Plus,
   Trash2,
+  KeyRound,
+  ShieldCheck,
+  Search,
 } from "lucide-react";
 
 export default function PublicSiteAdminPage() {
@@ -37,7 +40,7 @@ export default function PublicSiteAdminPage() {
 
   // Active Management Tab
   const [activeTab, setActiveTab] = useState<
-    "general" | "branding" | "sections" | "conditions" | "faqs" | "submissions" | "coupons"
+    "general" | "branding" | "sections" | "conditions" | "faqs" | "submissions" | "coupons" | "grants"
   >("general");
 
   // Editable Content State
@@ -67,6 +70,13 @@ export default function PublicSiteAdminPage() {
   const [togglingCouponCode, setTogglingCouponCode] = useState<string | null>(null);
   const [updatingSubmissionId, setUpdatingSubmissionId] = useState<string | null>(null);
 
+  // Access Grants & OTPs State
+  const [grants, setGrants] = useState<EnrollmentGrant[]>([]);
+  const [loadingGrants, setLoadingGrants] = useState(false);
+  const [grantsSearch, setGrantsSearch] = useState("");
+  const [grantsFilter, setGrantsFilter] = useState<"all" | "active" | "consumed" | "revoked" | "expired">("all");
+  const [revokingGrantId, setRevokingGrantId] = useState<string | null>(null);
+
   // Check initial authentication
   useEffect(() => {
     fetch("/api/public-website/content")
@@ -90,7 +100,7 @@ export default function PublicSiteAdminPage() {
       .catch(() => setIsAuthenticated(false));
   }, []);
 
-  // Fetch submissions when tab becomes active
+  // Fetch data when active tab changes
   useEffect(() => {
     if (isAuthenticated && activeTab === "submissions") {
       fetchSubmissions();
@@ -98,7 +108,44 @@ export default function PublicSiteAdminPage() {
     if (isAuthenticated && activeTab === "coupons") {
       fetchCoupons();
     }
+    if (isAuthenticated && activeTab === "grants") {
+      fetchGrants();
+    }
   }, [isAuthenticated, activeTab]);
+
+  const fetchGrants = async () => {
+    setLoadingGrants(true);
+    try {
+      const res = await fetch("/api/public-website/admin/grants");
+      if (res.ok) {
+        const data = await res.json();
+        setGrants(data.grants || []);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoadingGrants(false);
+    }
+  };
+
+  const handleRevokeGrant = async (grantId: string) => {
+    if (!confirm("Are you sure you want to revoke this enrollment grant? The user will not be able to sign up.")) return;
+    setRevokingGrantId(grantId);
+    try {
+      const res = await fetch("/api/public-website/admin/grants", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "revoke", grantId }),
+      });
+      if (res.ok) {
+        setGrants((prev) => prev.map((g) => (g.id === grantId ? { ...g, status: "revoked" } : g)));
+      }
+    } catch {
+      // ignore
+    } finally {
+      setRevokingGrantId(null);
+    }
+  };
 
   const fetchSubmissions = async () => {
     setLoadingSubmissions(true);
@@ -564,6 +611,7 @@ export default function PublicSiteAdminPage() {
             { id: "faqs", label: "FAQs" },
             { id: "submissions", label: `₹${content.membership?.priceInr ?? 50} Submissions (${submissions.filter((s) => s.status === "pending").length} pending)` },
             { id: "coupons", label: `Referral Coupons (${coupons.filter((c) => c.isActive).length} active)` },
+            { id: "grants", label: `Access Grants & OTPs (${grants.filter((g) => g.status === "active" || g.status === "preverified").length} active)` },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -1328,6 +1376,190 @@ export default function PublicSiteAdminPage() {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Tab 8: Access Grants & OTPs */}
+        {activeTab === "grants" && (
+          <div className="mt-6 rounded-3xl border border-slate-200 bg-white p-6 sm:p-8 shadow-sm space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+              <div>
+                <h3 className="text-lg font-black text-[#071a3a] flex items-center gap-2">
+                  <KeyRound className="w-5 h-5 text-blue-600" />
+                  <span>Access Grants & 4-Digit OTPs (Previous 24 Hours)</span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Active, preverified, consumed, and revoked enrollment grants. Cryptographic hashes and nonces are suppressed for security.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={fetchGrants}
+                disabled={loadingGrants}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 px-3.5 py-2 text-xs font-bold text-slate-700 transition-colors shrink-0"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loadingGrants ? "animate-spin" : ""}`} />
+                <span>Refresh Grants</span>
+              </button>
+            </div>
+
+            {/* Controls: Search and Filters */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+                {(["all", "active", "consumed", "revoked", "expired"] as const).map((filter) => (
+                  <button
+                    key={filter}
+                    type="button"
+                    onClick={() => setGrantsFilter(filter)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold capitalize transition-all ${
+                      grantsFilter === filter
+                        ? "bg-white text-[#071a3a] shadow-sm"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    {filter} ({filter === "all" ? grants.length : grants.filter((g) => g.status === filter).length})
+                  </button>
+                ))}
+              </div>
+
+              <div className="relative min-w-[240px]">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={grantsSearch}
+                  onChange={(e) => setGrantsSearch(e.target.value)}
+                  placeholder="Search by name, OTP, reference, email..."
+                  className="w-full pl-9 pr-4 py-1.5 text-xs rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
+                />
+              </div>
+            </div>
+
+            {/* Grants List Table */}
+            {(() => {
+              const filtered = grants.filter((g) => {
+                if (grantsFilter !== "all" && g.status !== grantsFilter) return false;
+                if (!grantsSearch) return true;
+                const q = grantsSearch.toLowerCase();
+                return (
+                  g.name?.toLowerCase().includes(q) ||
+                  g.otpCode?.includes(q) ||
+                  g.contact?.toLowerCase().includes(q) ||
+                  g.sourceReference?.toLowerCase().includes(q) ||
+                  g.consumedEmail?.toLowerCase().includes(q)
+                );
+              });
+
+              if (loadingGrants) {
+                return (
+                  <div className="text-center py-12 text-slate-400">
+                    <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-blue-500" />
+                    <span>Loading access grants...</span>
+                  </div>
+                );
+              }
+
+              if (filtered.length === 0) {
+                return (
+                  <div className="text-center py-12 text-slate-400 text-xs">
+                    No enrollment grants found matching the criteria.
+                  </div>
+                );
+              }
+
+              return (
+                <div className="overflow-x-auto rounded-2xl border border-slate-200">
+                  <table className="w-full text-left text-xs">
+                    <thead className="border-b border-slate-200 bg-slate-50 text-slate-500 uppercase tracking-wider font-bold">
+                      <tr>
+                        <th className="py-3 px-3.5">4-Digit OTP</th>
+                        <th className="py-3 px-3.5">Student</th>
+                        <th className="py-3 px-3.5">Type & Reference</th>
+                        <th className="py-3 px-3.5">Status</th>
+                        <th className="py-3 px-3.5">Created</th>
+                        <th className="py-3 px-3.5">Consumed As</th>
+                        <th className="py-3 px-3.5 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-medium">
+                      {filtered.map((g) => (
+                        <tr key={g.id} className="hover:bg-slate-50/70">
+                          <td className="py-3 px-3.5">
+                            <span className="font-mono text-sm font-black tracking-widest text-[#071a3a] bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200 inline-block">
+                              {g.otpCode}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3.5">
+                            <div className="font-bold text-[#071a3a]">{g.name}</div>
+                            {g.contact && <div className="text-[11px] text-slate-500">{g.contact}</div>}
+                          </td>
+                          <td className="py-3 px-3.5">
+                            <span className="inline-block text-[10px] font-bold uppercase rounded-md px-1.5 py-0.5 border mb-0.5 bg-slate-100 text-slate-700 border-slate-200">
+                              {g.authorizationType === "payment" ? "₹20 Payment" : "Scholarship Coupon"}
+                            </span>
+                            {g.sourceReference && (
+                              <div className="font-mono text-[11px] text-slate-600 truncate max-w-[140px]" title={g.sourceReference}>
+                                {g.sourceReference}
+                              </div>
+                            )}
+                          </td>
+                          <td className="py-3 px-3.5">
+                            <span
+                              className={`rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase border ${
+                                g.status === "active"
+                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                  : g.status === "preverified"
+                                  ? "bg-blue-50 text-blue-700 border-blue-200"
+                                  : g.status === "signup_in_progress"
+                                  ? "bg-amber-50 text-amber-700 border-amber-200"
+                                  : g.status === "consumed"
+                                  ? "bg-purple-50 text-purple-700 border-purple-200"
+                                  : g.status === "revoked"
+                                  ? "bg-red-50 text-red-700 border-red-200"
+                                  : "bg-slate-100 text-slate-500 border-slate-200"
+                              }`}
+                            >
+                              {g.status}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3.5 text-slate-500 text-[11px]">
+                            {formatSafeDateTime(g.createdAt)}
+                          </td>
+                          <td className="py-3 px-3.5">
+                            {g.consumedEmail ? (
+                              <span className="font-mono text-[11px] text-purple-900 font-bold">
+                                {g.consumedEmail}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 text-[11px]">Unregistered</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-3.5 text-right">
+                            {g.status === "active" || g.status === "preverified" ? (
+                              <button
+                                type="button"
+                                onClick={() => handleRevokeGrant(g.id)}
+                                disabled={revokingGrantId === g.id}
+                                className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 px-2 py-1 text-[11px] font-bold text-red-700 transition-colors shadow-sm disabled:opacity-50"
+                              >
+                                {revokingGrantId === g.id ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <ShieldAlert className="w-3 h-3" />
+                                )}
+                                <span>Revoke</span>
+                              </button>
+                            ) : (
+                              <span className="text-slate-300 text-[11px]">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })()}
           </div>
         )}
       </div>
