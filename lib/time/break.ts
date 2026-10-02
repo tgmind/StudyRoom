@@ -93,6 +93,7 @@ export function isMemberBreakExpired(
 /**
  * Checks if a member profile's active study session has reached the 3-hour limit (>= 10800 seconds).
  * Optional graceSeconds (default 0) allows peer-initiated auto-stops to wait with a safety buffer.
+ * Optional customElapsedSeconds allows passing the authoritative elapsed study seconds (e.g. for current user).
  */
 export function isMemberStudyExpired(
   member: {
@@ -102,16 +103,21 @@ export function isMemberStudyExpired(
     active_study_seconds_snapshot?: number | null;
   },
   now: Date = getServerNow(),
-  graceSeconds: number = 0
+  graceSeconds: number = 0,
+  customElapsedSeconds?: number
 ): boolean {
   if (member.current_status !== "studying") return false;
-  return calculateMemberElapsedStudySeconds(member as Partial<UserProfile>, now, false) >= (MAX_SESSION_STUDY_SECONDS + graceSeconds);
+  const elapsed = customElapsedSeconds !== undefined
+    ? customElapsedSeconds
+    : calculateMemberElapsedStudySeconds(member as Partial<UserProfile>, now, false);
+  return elapsed >= (MAX_SESSION_STUDY_SECONDS + graceSeconds);
 }
 
 /**
  * Returns the effective status of a member:
  * - If their break exceeded 1 hour, status is 'offline'.
  * - If their active study session reached 3 hours, status is 'offline'.
+ * Optional customElapsedSeconds allows passing the authoritative elapsed study seconds for the current user.
  */
 export function getEffectiveMemberStatus(
   member: {
@@ -121,12 +127,13 @@ export function getEffectiveMemberStatus(
     last_resumed_at?: string | null;
     active_study_seconds_snapshot?: number | null;
   },
-  now: Date = getServerNow()
+  now: Date = getServerNow(),
+  customElapsedSeconds?: number
 ): "studying" | "break" | "offline" {
   if (member.current_status === "break" && isMemberBreakExpired(member, now)) {
     return "offline";
   }
-  if (member.current_status === "studying" && isMemberStudyExpired(member, now)) {
+  if (member.current_status === "studying" && isMemberStudyExpired(member, now, 0, customElapsedSeconds)) {
     return "offline";
   }
   if (member.current_status === "studying" || member.current_status === "break" || member.current_status === "offline") {

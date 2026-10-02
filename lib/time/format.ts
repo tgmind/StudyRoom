@@ -74,9 +74,14 @@ export function calculateActiveStudySeconds(
 export function calculateMemberElapsedStudySeconds(
   member: Partial<UserProfile> | UserProfile,
   now: Date = getServerNow(),
-  clamp: boolean = true
+  clamp: boolean = true,
+  customElapsedSeconds?: number
 ): number {
   if (member.current_status === "offline") return 0;
+  if (customElapsedSeconds !== undefined) {
+    const valid = Math.max(0, customElapsedSeconds);
+    return clamp ? Math.min(MAX_SESSION_STUDY_SECONDS, valid) : valid;
+  }
 
   const baseSeconds = member.active_study_seconds_snapshot ?? 0;
   let rawSeconds = 0;

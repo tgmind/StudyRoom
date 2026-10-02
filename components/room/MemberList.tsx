@@ -40,6 +40,7 @@ interface MemberListProps {
   isRealtimeConnected?: boolean;
   connectionState?: "connecting" | "connected" | "reconnecting" | "offline";
   syncStatus?: SessionSyncStatus;
+  isReconciling?: boolean;
   winEvents?: RivalryWinEvent[] | null;
   winEvent?: RivalryWinEvent | null;
   onRivalryWin?: (event: RivalryWinEvent) => void;
@@ -54,6 +55,7 @@ export const MemberList = memo(function MemberList({
   isRealtimeConnected = true,
   connectionState,
   syncStatus,
+  isReconciling = false,
   winEvents,
   winEvent,
   onRivalryWin,
@@ -84,11 +86,13 @@ export const MemberList = memo(function MemberList({
     };
     document.addEventListener("visibilitychange", handleVisibility);
     window.addEventListener("focus", handleVisibility);
+    window.addEventListener("pageshow", handleVisibility);
 
     return () => {
       clearInterval(intervalId);
       document.removeEventListener("visibilitychange", handleVisibility);
       window.removeEventListener("focus", handleVisibility);
+      window.removeEventListener("pageshow", handleVisibility);
     };
   }, [hasAnyActiveOrBreak]);
 
@@ -101,20 +105,44 @@ export const MemberList = memo(function MemberList({
 
   // Memoize filtered member groupings based on authoritative live effective status
   const studyingMembers = useMemo(
-    () => (members || []).filter((m) => getEffectiveMemberStatus(m, currentTimestamp) === "studying"),
-    [members, currentTimestamp]
+    () =>
+      (members || []).filter(
+        (m) =>
+          getEffectiveMemberStatus(
+            m,
+            currentTimestamp,
+            m.id === currentUserId ? currentUserElapsedSeconds : undefined
+          ) === "studying"
+      ),
+    [members, currentTimestamp, currentUserId, currentUserElapsedSeconds]
   );
   const breakMembers = useMemo(
-    () => (members || []).filter((m) => getEffectiveMemberStatus(m, currentTimestamp) === "break"),
-    [members, currentTimestamp]
+    () =>
+      (members || []).filter(
+        (m) =>
+          getEffectiveMemberStatus(
+            m,
+            currentTimestamp,
+            m.id === currentUserId ? currentUserElapsedSeconds : undefined
+          ) === "break"
+      ),
+    [members, currentTimestamp, currentUserId, currentUserElapsedSeconds]
   );
   const activeMembers = useMemo(
     () => [...studyingMembers, ...breakMembers],
     [studyingMembers, breakMembers]
   );
   const offlineMembers = useMemo(
-    () => (members || []).filter((m) => getEffectiveMemberStatus(m, offlineTimestamp) === "offline"),
-    [members, offlineTimestamp]
+    () =>
+      (members || []).filter(
+        (m) =>
+          getEffectiveMemberStatus(
+            m,
+            offlineTimestamp,
+            m.id === currentUserId ? currentUserElapsedSeconds : undefined
+          ) === "offline"
+      ),
+    [members, offlineTimestamp, currentUserId, currentUserElapsedSeconds]
   );
 
   // Cached ref for reference-stability to prevent unnecessary DOM reconciliation of offline cards
@@ -212,8 +240,16 @@ export const MemberList = memo(function MemberList({
       }
 
       // 2. Active studying before break
-      const statusA = getEffectiveMemberStatus(a, currentTimestamp);
-      const statusB = getEffectiveMemberStatus(b, currentTimestamp);
+      const statusA = getEffectiveMemberStatus(
+        a,
+        currentTimestamp,
+        a.id === currentUserId ? currentUserElapsedSeconds : undefined
+      );
+      const statusB = getEffectiveMemberStatus(
+        b,
+        currentTimestamp,
+        b.id === currentUserId ? currentUserElapsedSeconds : undefined
+      );
       if (statusA !== statusB) {
         return statusA === "studying" ? -1 : 1;
       }
@@ -232,7 +268,7 @@ export const MemberList = memo(function MemberList({
 
     prevSortedActiveRef.current = nextSorted;
     return nextSorted;
-  }, [liveActiveMembers, currentTimestamp, getMemberStudySeconds]);
+  }, [liveActiveMembers, currentTimestamp, getMemberStudySeconds, currentUserId, currentUserElapsedSeconds]);
 
   // Real-time Multi-Rivalry Detection: triggers when 2 or 3 active members come within <= 10m in weekly study time
   // or within proximity on the authoritative live leaderboard
@@ -540,12 +576,18 @@ export const MemberList = memo(function MemberList({
 
             {(() => {
               const isOnline = typeof navigator === "undefined" || navigator.onLine;
-              const isTrulyConnected = isRealtimeConnected && (connectionState === "connected" || (!connectionState && isRealtimeConnected)) && isOnline && !isLoading;
+              const isTrulyConnected =
+                isRealtimeConnected &&
+                (connectionState === "connected" || (!connectionState && isRealtimeConnected)) &&
+                isOnline &&
+                !isLoading &&
+                !isReconciling;
               const isNoNetwork = !isOnline;
-              const isOffline = isNoNetwork || connectionState === "offline" || (!connectionState && !isRealtimeConnected);
+              const isOffline =
+                isNoNetwork || connectionState === "offline" || (!connectionState && !isRealtimeConnected);
               const isReconnecting = !isOffline && connectionState === "reconnecting";
               const isConnecting = !isOffline && !isReconnecting && connectionState === "connecting";
-              const isSyncing = !isOffline && !isReconnecting && !isConnecting && isLoading;
+              const isSyncing = !isOffline && !isReconnecting && !isConnecting && (isLoading || Boolean(isReconciling));
               const isLive = isTrulyConnected && !isSyncing && !isConnecting;
 
               return (

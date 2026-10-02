@@ -142,6 +142,7 @@ export function useLiveRoom(currentUserId?: string) {
   // Deterministic SSR & first-client-render initial state
   const [members, setMembers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [isReconciling, setIsReconciling] = useState<boolean>(false);
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
   const [connectionState, setConnectionState] = useState<RealtimeConnectionState>("connecting");
   const [presentUserIds, setPresentUserIds] = useState<Set<string>>(() => new Set());
@@ -236,6 +237,7 @@ export function useLiveRoom(currentUserId?: string) {
   const fetchMembers = useCallback(async () => {
     const fetchStartMs = Date.now();
     const thisFetchGen = ++fetchGenRef.current;
+    setIsReconciling(true);
     try {
       setError(null);
 
@@ -601,6 +603,9 @@ export function useLiveRoom(currentUserId?: string) {
       console.error("Failed to fetch group members:", err);
       setError(err instanceof Error ? err.message : "Failed to load group members");
     } finally {
+      if (thisFetchGen === fetchGenRef.current) {
+        setIsReconciling(false);
+      }
       setLoading(false);
     }
   }, [supabase, updateActiveWinEvent]);
@@ -1224,26 +1229,21 @@ export function useLiveRoom(currentUserId?: string) {
     // 2. Setup initial realtime channel
     ensureRoomChannelRef.current(false);
 
-    // 3. Event-driven resync on visibility change, focus, and network online/offline
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
+    // 3. Event-driven resync on visibility change, focus, pageshow, and network online/offline
+    const handleWakeup = () => {
+      if (typeof document === "undefined" || document.visibilityState === "visible") {
         ensureRoomChannelRef.current(false);
       }
-    };
-    const handleWindowFocus = () => {
-      ensureRoomChannelRef.current(false);
-    };
-    const handleOnline = () => {
-      ensureRoomChannelRef.current(false);
     };
     const handleOffline = () => {
       setConnectionState("offline");
       setIsRealtimeConnected(false);
     };
 
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("focus", handleWindowFocus);
-    window.addEventListener("online", handleOnline);
+    document.addEventListener("visibilitychange", handleWakeup);
+    window.addEventListener("focus", handleWakeup);
+    window.addEventListener("pageshow", handleWakeup);
+    window.addEventListener("online", handleWakeup);
     window.addEventListener("offline", handleOffline);
 
     // 4. Supabase Auth token refresh listener
@@ -1297,9 +1297,10 @@ export function useLiveRoom(currentUserId?: string) {
 
     return () => {
       clearInterval(watchdogInterval);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("focus", handleWindowFocus);
-      window.removeEventListener("online", handleOnline);
+      document.removeEventListener("visibilitychange", handleWakeup);
+      window.removeEventListener("focus", handleWakeup);
+      window.removeEventListener("pageshow", handleWakeup);
+      window.removeEventListener("online", handleWakeup);
       window.removeEventListener("offline", handleOffline);
       authSubscription?.unsubscribe();
       if (reconnectTimerRef.current) {
@@ -1412,6 +1413,7 @@ export function useLiveRoom(currentUserId?: string) {
   return {
     members,
     loading,
+    isReconciling,
     isRealtimeConnected,
     connectionState,
     isRoomPresent,

@@ -36,7 +36,11 @@ export const MemberCard = memo(function MemberCard({
   isInRivalry = false,
 }: MemberCardProps) {
   const inRivalry = Boolean(isInRivalry || compact);
-  const effectiveStatus = getEffectiveMemberStatus(member, currentTimestamp);
+  const effectiveStatus = getEffectiveMemberStatus(
+    member,
+    currentTimestamp,
+    isCurrentUser && customElapsedSeconds !== undefined ? customElapsedSeconds : undefined
+  );
   const isStudying = effectiveStatus === "studying";
   const isBreak = effectiveStatus === "break";
   const isOffline = effectiveStatus === "offline";
@@ -434,8 +438,16 @@ function areMemberCardsEqual(prev: MemberCardProps, next: MemberCardProps): bool
   const prevNow = prev.currentTimestamp || new Date();
   const nextNow = next.currentTimestamp || new Date();
 
-  const statusA = getEffectiveMemberStatus(mA, prevNow);
-  const statusB = getEffectiveMemberStatus(mB, nextNow);
+  const statusA = getEffectiveMemberStatus(
+    mA,
+    prevNow,
+    prev.isCurrentUser && prev.customElapsedSeconds !== undefined ? prev.customElapsedSeconds : undefined
+  );
+  const statusB = getEffectiveMemberStatus(
+    mB,
+    nextNow,
+    next.isCurrentUser && next.customElapsedSeconds !== undefined ? next.customElapsedSeconds : undefined
+  );
   if (statusA !== statusB) return false;
 
   // If member is actively studying or on break, timer ticks every second -> re-render

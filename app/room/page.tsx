@@ -31,6 +31,7 @@ export default function RoomPage() {
     refreshMembers,
     broadcastStatusChange,
     isRoomPresent,
+    isReconciling: roomReconciling,
   } = useLiveRoom(user?.id);
 
   // Own profile is always the canonical source for session state.
@@ -177,11 +178,15 @@ export default function RoomPage() {
             : (status === "break" ? (effectiveProfile?.session_start_time || m.session_start_time) : null),
         last_resumed_at:
           status === "studying"
-            ? (effectiveProfile?.last_resumed_at || m.last_resumed_at)
+            ? (effectiveProfile?.last_resumed_at || m.last_resumed_at || effectiveProfile?.session_start_time || m.session_start_time)
             : null,
         break_started_at: status === "break" ? (breakStartedAt || effectiveProfile?.break_started_at || m.break_started_at) : null,
         active_study_seconds_snapshot:
-          status === "studying" ? elapsedStudySeconds : (status === "break" ? m.active_study_seconds_snapshot : 0),
+          status === "studying"
+            ? (effectiveProfile?.active_study_seconds_snapshot ?? m.active_study_seconds_snapshot ?? 0)
+            : (status === "break"
+                ? (effectiveProfile?.active_study_seconds_snapshot ?? m.active_study_seconds_snapshot ?? elapsedStudySeconds)
+                : 0),
         is_present: isRoomPresent,
       };
     }
@@ -250,6 +255,7 @@ export default function RoomPage() {
             currentUserId={user?.id}
             currentUserElapsedSeconds={elapsedStudySeconds}
             isLoading={roomLoading}
+            isReconciling={roomReconciling}
             isRealtimeConnected={isRealtimeConnected}
             connectionState={connectionState}
             syncStatus={syncStatus}

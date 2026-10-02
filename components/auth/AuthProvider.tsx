@@ -310,12 +310,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     document.addEventListener("visibilitychange", handleWakeup);
     window.addEventListener("focus", handleWakeup);
+    window.addEventListener("pageshow", handleWakeup);
     window.addEventListener("online", handleOnline);
 
     return () => {
       clearInterval(intervalId);
       document.removeEventListener("visibilitychange", handleWakeup);
       window.removeEventListener("focus", handleWakeup);
+      window.removeEventListener("pageshow", handleWakeup);
       window.removeEventListener("online", handleOnline);
     };
   }, [user?.id, fetchProfile]);
