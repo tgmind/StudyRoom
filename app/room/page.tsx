@@ -12,6 +12,7 @@ import { MemberList } from "@/components/room/MemberList";
 import { SessionGoalUpdateModal } from "@/components/session/SessionGoalUpdateModal";
 import { CreateGoalModal } from "@/components/goals/CreateGoalModal";
 import { TenMinuteWarningBanner } from "@/components/session/TenMinuteWarningBanner";
+import { GlobalAnalyticsAlert } from "@/components/analytics/GlobalAnalyticsAlert";
 import { getServerNow } from "@/lib/time/clockSync";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 
@@ -226,6 +227,9 @@ export default function RoomPage() {
             onDismiss={dismissTenMinuteWarning}
           />
         )}
+
+        {/* Monday Global Analytics Notification Card */}
+        <GlobalAnalyticsAlert userId={user?.id} />
 
         {/* Session Controller Panel */}
         <section aria-label="Session Controller">

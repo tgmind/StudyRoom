@@ -44,12 +44,13 @@ describe("BottomNav Component", () => {
   });
 
   // 1 & 2: All existing navigation items render with labels and links
-  it("renders all 6 canonical navigation items with correct labels and links", () => {
+  it("renders all 7 canonical navigation items with correct labels and links", () => {
     render(<BottomNav isStudying={false} />);
 
     const expectedItems = [
       { label: "Room", href: "/room" },
       { label: "Rankings", href: "/leaderboard" },
+      { label: "Analytics", href: "/analytics" },
       { label: "Streak", href: "/streak" },
       { label: "Goals", href: "/goals" },
       { label: "History", href: "/history" },
@@ -77,6 +78,25 @@ describe("BottomNav Component", () => {
     const inactiveLink = screen.getByRole("link", { name: /Room/i });
     expect(inactiveLink).not.toHaveClass("bg-white");
     expect(inactiveLink).not.toHaveAttribute("aria-current");
+  });
+
+  it("applies the high-contrast active indication when on /analytics", () => {
+    setMockPathname("/analytics");
+    render(<BottomNav isStudying={false} />);
+
+    const analyticsLink = screen.getByRole("link", { name: /Global Analytics/i });
+    expect(analyticsLink).toHaveClass("bg-white");
+    expect(analyticsLink).toHaveClass("text-zinc-950");
+    expect(analyticsLink).toHaveAttribute("aria-current", "page");
+
+    // Other links like Rankings and Room should NOT be active
+    const rankingsLink = screen.getByRole("link", { name: /Rankings/i });
+    expect(rankingsLink).not.toHaveClass("bg-white");
+    expect(rankingsLink).not.toHaveAttribute("aria-current");
+
+    const roomLink = screen.getByRole("link", { name: /Room/i });
+    expect(roomLink).not.toHaveClass("bg-white");
+    expect(roomLink).not.toHaveAttribute("aria-current");
   });
 
   // 5: Nested route matching works
@@ -266,16 +286,17 @@ describe("BottomNav Component", () => {
   });
 
   // 15: Exact production routes preserved
-  it("contains exactly and only the 6 production routes without placeholder items", () => {
+  it("contains exactly and only the 7 production routes without placeholder items", () => {
     render(<BottomNav isStudying={false} />);
 
     const links = screen.getAllByRole("link");
-    expect(links).toHaveLength(6);
+    expect(links).toHaveLength(7);
 
     const hrefs = links.map((link) => link.getAttribute("href"));
     expect(hrefs).toEqual([
       "/room",
       "/leaderboard",
+      "/analytics",
       "/streak",
       "/goals",
       "/history",

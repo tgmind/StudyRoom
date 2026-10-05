@@ -182,17 +182,16 @@ Every Monday morning, `rpc_calculate_weekly_achiever` evaluates the previous wee
 - **File**: `lib/email/achieverAutomation.ts` (lines 217–225)
 
 #### 3. Concrete Solution (Two-Pronged Fix)
-1. **Operational Schedule Fix**:
-   Update `pg_cron` (and any GitHub Action/cron job) to run at **04:00 AM IST on Monday** (22:30 UTC Sunday):
-   ```sql
-   -- Schedule at 04:00 AM IST on Monday (22:30 UTC Sunday)
-   SELECT cron.schedule(
-     'weekly-achiever-badge',
-     '30 22 * * 0',
-     $$SELECT public.rpc_calculate_weekly_achiever('Asia/Kolkata')$$
-   );
-   ```
-   *Rationale*: Sessions are strictly limited to 180 minutes (3 hours). Any session started before midnight Sunday is guaranteed to finish, timeout, and split into `study_sessions` before 03:00 AM IST. Running at 04:00 AM IST ensures 100% data finality.
+1. **Operational Schedule Fix (Netlify)**:
+   StudyRoom is hosted on **Netlify**. Weekly finalization is authoritatively executed by the HTTP endpoint:
+   `https://studyalive.netlify.app/api/cron/weekly-achiever`
+   scheduled at **04:00 AM IST on Monday** (22:30 UTC Sunday, cron expression: `30 22 * * 0`).
+
+   **CRITICAL ARCHITECTURAL CONTRACT**:
+   - `pg_cron weekly-achiever-badge` **MUST NOT BE PROVISIONED**.
+   - Database fallback is **NOT USED**.
+   - *Rationale*: Sessions are strictly limited to 180 minutes (3 hours). Any session started before midnight Sunday is guaranteed to finish, timeout, and split before 03:00 AM IST. Running the authoritative HTTP endpoint at 04:00 AM IST triggers `rpc_finalize_weekly_global_analytics('Asia/Kolkata')`, which runs `rpc_reconcile_expired_sessions()`, calculates the Achiever, persists snapshots into `weekly_achiever_snapshots`, `weekly_user_analytics_records`, and `weekly_global_analytics_snapshots`, and dispatches the celebration email under a serialized transaction advisory lock. An independent `pg_cron` badge job lacks advisory locks and session reconciliation, introducing severe concurrency race conditions and badge/snapshot divergence.
+
 
 2. **SQL Resilience Fix in `rpc_get_leaderboard`**:
    Allow past-week queries to inspect unclosed `session_blocks` that started before `v_week_end`:

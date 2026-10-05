@@ -119,6 +119,20 @@ export async function processWeeklyAchieverAutomation(options?: {
     };
   }
 
+  // 1.5. Authoritatively finalize previous week's Global Analytics & Achiever Snapshot
+  // Must execute independently of mailer configuration or email delivery status
+  try {
+    const supabaseForAnalytics = options?.supabaseOverride
+      ? (options.supabaseOverride as ReturnType<typeof createServerClient> extends Promise<infer U> ? U : unknown)
+      : await createServerClient();
+    const rpcCaller = supabaseForAnalytics as unknown as RpcCaller;
+    await rpcCaller.rpc("rpc_finalize_weekly_global_analytics", {
+      p_timezone: timezone,
+    });
+  } catch (analyticsErr) {
+    console.warn("[Weekly Automation] Global Analytics finalization notice:", analyticsErr);
+  }
+
   // 2. Check mailer configuration
   const mailerStatus = isMailerConfigured();
   if (!mailerStatus.configured) {
@@ -255,6 +269,42 @@ export async function processWeeklyAchieverAutomation(options?: {
     };
   }
 
+  // 5.5. Atomic database-backed claim to serialize email dispatch and prevent concurrent race duplicates
+  let claimAlertId: string | null = null;
+  try {
+    const claimRes = await rpcClient.rpc("rpc_claim_weekly_achiever_alert", {
+      p_user_id: winnerId,
+      p_user_name: winnerName,
+      p_user_email: winnerEmail,
+      p_week_key: weekKey,
+      p_force: Boolean(options?.force),
+    });
+
+    const claimData = claimRes?.data as {
+      claimed?: boolean;
+      status?: string;
+      alert_id?: string;
+      reason?: string;
+    } | null;
+
+    if (claimData && typeof claimData.claimed === "boolean") {
+      if (!claimData.claimed) {
+        return {
+          success: true,
+          processed: false,
+          skipped: true,
+          alreadySentThisWeek: claimData.status === "already_sent",
+          weekKey,
+          reason: claimData.reason || `Achiever email claim was not granted (${claimData.status}).`,
+          isMonday,
+        };
+      }
+      claimAlertId = claimData.alert_id || null;
+    }
+  } catch (claimErr) {
+    console.warn("[Weekly Automation] rpc_claim_weekly_achiever_alert fallback:", claimErr);
+  }
+
   // 6. Send Congratulations Email (Type A)
   const sendResult = await sendAlertEmail({
     to: winnerEmail,
@@ -265,21 +315,33 @@ export async function processWeeklyAchieverAutomation(options?: {
 
   if (!sendResult.success) {
     // Log failure in database
-    try {
-      if (winnerId) {
-        await rpcClient.rpc("rpc_admin_log_alert_result", {
-          p_user_id: winnerId,
-          p_user_name: winnerName,
-          p_user_email: winnerEmail,
-          p_alert_type: "A",
+    if (claimAlertId) {
+      try {
+        await rpcClient.rpc("rpc_complete_weekly_achiever_alert", {
+          p_alert_id: claimAlertId,
           p_status: "failed",
-          p_consecutive_days: 0,
-          p_reason: `Weekly Achiever Title: Week of ${weekKey}`,
           p_error_message: sendResult.error || "Email delivery failed",
         });
+      } catch (completeErr) {
+        console.warn("Could not mark alert claim as failed:", completeErr);
       }
-    } catch {
-      // ignore db logging error
+    } else {
+      try {
+        if (winnerId) {
+          await rpcClient.rpc("rpc_admin_log_alert_result", {
+            p_user_id: winnerId,
+            p_user_name: winnerName,
+            p_user_email: winnerEmail,
+            p_alert_type: "A",
+            p_status: "failed",
+            p_consecutive_days: 0,
+            p_reason: `Weekly Achiever Title: Week of ${weekKey}`,
+            p_error_message: sendResult.error || "Email delivery failed",
+          });
+        }
+      } catch {
+        // ignore db logging error
+      }
     }
 
     return {
@@ -294,7 +356,13 @@ export async function processWeeklyAchieverAutomation(options?: {
 
   // 7. Log success in database & increment counts
   try {
-    if (winnerId) {
+    if (claimAlertId) {
+      await rpcClient.rpc("rpc_complete_weekly_achiever_alert", {
+        p_alert_id: claimAlertId,
+        p_status: "sent",
+        p_error_message: null,
+      });
+    } else if (winnerId) {
       const { error: rpcLogErr } = await rpcClient.rpc("rpc_admin_log_alert_result", {
         p_user_id: winnerId,
         p_user_name: winnerName,

@@ -1,2 +1,10 @@
 [build.environment]
   SECRETS_SCAN_OMIT_PATHS = ".netlify/.next/cache"
+
+[functions]
+  directory = "netlify/functions"
+
+[functions."scheduled-weekly-achiever"]
+  schedule = "30 22 * * 0"
+
+

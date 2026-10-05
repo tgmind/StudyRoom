@@ -10,6 +10,7 @@ import {
   Target,
   History,
   Settings,
+  Globe,
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
@@ -41,6 +42,7 @@ export const BottomNav = memo(function BottomNav({ isStudying }: BottomNavProps 
   const navItems = [
     { href: "/room", label: "Room", icon: Users },
     { href: "/leaderboard", label: "Rankings", icon: Trophy },
+    { href: "/analytics", label: "Global Analytics", shortLabel: "Analytics", icon: Globe },
     { href: "/streak", label: "Streak", icon: Flame },
     { href: "/goals", label: "Goals", icon: Target },
     { href: "/history", label: "History", icon: History },
@@ -165,7 +167,7 @@ export const BottomNav = memo(function BottomNav({ isStudying }: BottomNavProps 
           <ChevronDown className="w-4 h-4" aria-hidden="true" />
         </button>
 
-        <div className="max-w-md mx-auto flex items-center justify-around h-16 px-1">
+        <div className="max-w-md sm:max-w-lg mx-auto flex items-center justify-around h-16 px-1">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive =
@@ -180,7 +182,8 @@ export const BottomNav = memo(function BottomNav({ isStudying }: BottomNavProps 
                 prefetch={true}
                 tabIndex={isCollapsed ? -1 : 0}
                 aria-current={isActive ? "page" : undefined}
-                className={`group flex flex-col items-center justify-center min-w-[46px] sm:min-w-[52px] min-h-[44px] px-1 sm:px-2 py-1 sm:py-1.5 rounded-2xl text-[10px] font-bold transition-all duration-150 touch-manipulation select-none active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white motion-reduce:transition-none ${
+                aria-label={item.label}
+                className={`group flex flex-col items-center justify-center min-w-[44px] sm:min-w-[50px] min-h-[44px] px-0.5 sm:px-2 py-1 sm:py-1.5 rounded-2xl text-[10px] font-bold transition-all duration-150 touch-manipulation select-none active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white motion-reduce:transition-none ${
                   isActive
                     ? item.href === "/streak"
                       ? "bg-white text-zinc-950 shadow-[0_2px_14px_rgba(255,255,255,0.22)] scale-105 ring-1 ring-amber-400/40"
@@ -201,11 +204,12 @@ export const BottomNav = memo(function BottomNav({ isStudying }: BottomNavProps 
                 <span
                   className={
                     isActive
-                      ? "text-zinc-950 font-black text-[10.5px] tracking-tight"
-                      : "text-zinc-400 group-hover:text-zinc-200 font-bold"
+                      ? "text-zinc-950 font-black text-[9.5px] sm:text-[10.5px] tracking-tight truncate max-w-[52px] sm:max-w-none text-center"
+                      : "text-zinc-400 group-hover:text-zinc-200 font-bold text-[9.5px] sm:text-[10px] truncate max-w-[52px] sm:max-w-none text-center"
                   }
                 >
-                  {item.label}
+                  <span className="hidden sm:inline">{item.label}</span>
+                  <span className="inline sm:hidden">{item.shortLabel || item.label}</span>
                 </span>
               </Link>
             );

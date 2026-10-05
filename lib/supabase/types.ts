@@ -109,6 +109,131 @@ export interface ScoringResult {
   discipline_score?: number;
 }
 
+export interface WeeklyAchieverSnapshot {
+  id: string;
+  celebration_period_id: string;
+  source_period_id: string;
+  achiever_user_id: string | null;
+  display_name: string;
+  avatar_url: string | null;
+  week_start: string;
+  week_end: string;
+  total_study_minutes: number;
+  average_study_minutes_per_day: number;
+  study_sessions_count: number;
+  active_study_days: number;
+  goal_completion_pct: number;
+  completed_goals_count: number;
+  total_goals_count: number;
+  leaderboard_score?: number | null;
+  score?: number | null;
+  global_rank: number;
+  is_finalized: boolean;
+  finalized_at: string;
+}
+
+export interface MostStudyingEntry {
+  rank: number;
+  user_id: string;
+  display_name: string;
+  avatar_url: string | null;
+  total_study_minutes: number;
+  daily_average_minutes: number;
+  active_study_days: number;
+  score: number;
+}
+
+export interface ConsistencyEntry {
+  rank: number;
+  user_id: string;
+  display_name: string;
+  avatar_url: string | null;
+  total_study_minutes: number;
+  daily_average_minutes: number;
+  active_study_days: number;
+  score: number;
+}
+
+export type LowPerformerEntry = ConsistencyEntry;
+
+export interface AchieverWinnerEntry {
+  rank: number;
+  user_id: string;
+  display_name: string;
+  avatar_url: string | null;
+  achiever_count: number;
+  total_study_minutes: number;
+}
+
+export interface GoalChaserEntry {
+  rank: number;
+  user_id: string;
+  display_name: string;
+  avatar_url: string | null;
+  completed_tasks: number;
+  total_tasks: number;
+  goal_completion_pct: number;
+  total_study_minutes: number;
+}
+
+export interface GlobalAnalyticsRankings {
+  most_studying: MostStudyingEntry[];
+  low_performers: LowPerformerEntry[];
+  consistency_rhythm_matrix?: ConsistencyEntry[];
+  achiever_winners: AchieverWinnerEntry[];
+  goal_chasers: GoalChaserEntry[];
+}
+
+export interface GlobalCommunityStats {
+  total_eligible_students: number;
+  global_avg_study_minutes: number;
+  global_avg_daily_minutes: number;
+  global_avg_goal_pct: number;
+  total_community_hours: number;
+  total_completed_goals: number;
+}
+
+export interface UserGlobalPosition {
+  user_id: string;
+  rank: number;
+  total_eligible_students: number;
+  percentile: number;
+  total_study_minutes: number;
+  daily_average_minutes: number;
+  active_study_days: number;
+  completed_tasks: number;
+  total_tasks: number;
+  goal_completion_pct: number;
+  score: number;
+  is_in_top5: boolean;
+  minutes_to_top5: number;
+  delta_vs_community_study_mins: number;
+  delta_vs_community_goal_pct: number;
+}
+
+export interface GlobalAnalyticsPayload {
+  success: boolean;
+  is_finalized: boolean;
+  period_id: string;
+  celebration_period_id: string;
+  week_start: string;
+  week_end: string;
+  finalized_at: string;
+  achiever: WeeklyAchieverSnapshot | null;
+  rankings: GlobalAnalyticsRankings;
+  community_stats: GlobalCommunityStats;
+  user_position: UserGlobalPosition | null;
+  message?: string;
+}
+
+export interface UserAnalyticsAcknowledgement {
+  id: string;
+  user_id: string;
+  period_id: string;
+  action: "dismissed" | "viewed";
+  acknowledged_at: string;
+}
+
 export type Json =
   | string
   | number

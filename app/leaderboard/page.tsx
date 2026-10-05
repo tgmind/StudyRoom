@@ -8,7 +8,8 @@ import { TopHeader } from "@/components/navigation/TopHeader";
 import { BottomNav } from "@/components/navigation/BottomNav";
 import { LeaderboardCard } from "@/components/leaderboard/LeaderboardCard";
 import { ScoringBreakdown } from "@/components/leaderboard/ScoringBreakdown";
-import { Trophy, HelpCircle, Star, Sparkles, Clock, Target, Flame } from "lucide-react";
+import Link from "next/link";
+import { Trophy, HelpCircle, Star, Sparkles, Clock, Target, Flame, Globe } from "lucide-react";
 import { getAdminUserId, isAdminUserId } from "@/hooks/useAdmin";
 import { calculateLeaderboardScore, calculateCurrentUserLeaderboardMinutes } from "@/lib/scoring/engine";
 import { calculateWeeklyStreak } from "@/lib/scoring/streak";
@@ -354,6 +355,21 @@ export default function LeaderboardPage() {
 
       {/* Fluid Screen Container */}
       <main className="flex-1 w-full max-w-2xl sm:max-w-3xl px-3.5 sm:px-6 py-4 mx-auto space-y-4 sm:space-y-5">
+        {/* Navigation Switcher: Weekly Leaderboard <-> Global Analytics */}
+        <div className="w-full flex items-center justify-between gap-2 p-1.5 rounded-2xl bg-zinc-900/60 border border-zinc-800/80 backdrop-blur-md">
+          <div className="flex-1 py-1.5 px-3 rounded-xl text-center text-xs font-black bg-zinc-800/90 text-amber-300 shadow-sm border border-amber-500/25 flex items-center justify-center space-x-1.5">
+            <Trophy className="w-3.5 h-3.5 text-amber-400" />
+            <span>Weekly Leaderboard</span>
+          </div>
+          <Link
+            href="/analytics"
+            className="flex-1 py-1.5 px-3 rounded-xl text-center text-xs font-bold text-zinc-400 hover:text-zinc-200 transition-colors flex items-center justify-center space-x-1.5"
+          >
+            <Globe className="w-3.5 h-3.5 text-zinc-500" />
+            <span>Global Analytics</span>
+          </Link>
+        </div>
+
         {/* Header Hero Card */}
         <div className="w-full bg-zinc-900/70 border border-zinc-800/90 rounded-2xl p-4 sm:p-5 shadow-xl space-y-3 backdrop-blur-md">
           <div className="flex items-center justify-between gap-2">

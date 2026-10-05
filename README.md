@@ -106,15 +106,17 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
 NEXT_PUBLIC_APP_TIMEZONE=UTC
 ```
 
-### 4. Weekly Achiever Scheduling (pg_cron)
-To calculate the weekly achiever after all in-flight Sunday night sessions have concluded (04:00 AM IST on Monday / 22:30 UTC on Sunday, BUG-03):
-```sql
-SELECT cron.schedule(
-  'weekly-achiever-badge',
-  '30 22 * * 0',
-  $$SELECT public.rpc_calculate_weekly_achiever('Asia/Kolkata')$$
-);
-```
+### 4. Weekly Achiever & Global Analytics Scheduling (Netlify)
+StudyRoom hosting: **Netlify** (`https://studyalive.netlify.app`).
+
+The authoritative weekly finalization is triggered via a Netlify-compatible scheduled HTTP invocation:
+- **Endpoint**: `/api/cron/weekly-achiever`
+- **Canonical Execution**: Every Monday at **04:00 AM IST** (= Sunday **22:30 UTC**, schedule: `30 22 * * 0`).
+- **Mechanism**: Netlify Scheduled Function (`netlify/functions/scheduled-weekly-achiever.js` configured in `netlify.toml`) or external HTTP scheduler hitting the endpoint with `Authorization: Bearer <CRON_SECRET>`.
+- **Database Fallback**: **NOT USED**.
+- **`pg_cron weekly-achiever-badge`**: **MUST NOT BE PROVISIONED**.
+  *Reason*: An independent `pg_cron` badge job lacks transaction advisory locks and session reconciliation. Running it concurrently with HTTP finalization causes `public.users.has_achiever_badge` to race and diverge from `weekly_achiever_snapshots`. All weekly finalization (session reconciliation → Achiever calculation → snapshot persistence → email) is authoritatively executed by `/api/cron/weekly-achiever`.
+
 
 ---
 
