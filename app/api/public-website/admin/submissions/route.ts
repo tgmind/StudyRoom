@@ -244,8 +244,13 @@ export async function POST(request: NextRequest) {
           p_access_token_hash: accessTokenHash,
         });
 
-        if (call1.error && call1.error.message?.includes("function")) {
-          // Fallback to 4-parameter call if migration not yet applied
+        const isMissingRpc =
+          Boolean(call1.error) &&
+          ((call1.error as any).code === "PGRST202" ||
+            call1.error?.message?.includes("Could not find the function"));
+
+        if (isMissingRpc) {
+          // Fallback to legacy 4-parameter call only if 5-parameter RPC is not found in schema cache
           const call2 = await adminClient.rpc("rpc_verify_payment_and_create_grant", {
             p_submission_id: id,
             p_token_hash: tokenHash,

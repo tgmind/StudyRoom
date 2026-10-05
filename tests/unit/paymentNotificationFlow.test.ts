@@ -15,11 +15,19 @@ import {
   generateUserPaymentRejectedEmail,
 } from "@/lib/email/templates";
 import { GET as redeemAccessGet, POST as redeemAccessPost } from "@/app/api/auth/redeem-access/route";
-import { POST as adminSubmissionsPost } from "@/app/api/public-website/admin/submissions/route";
+import {
+  GET as adminSubmissionsGet,
+  POST as adminSubmissionsPost,
+  DELETE as adminSubmissionsDelete,
+} from "@/app/api/public-website/admin/submissions/route";
 
 // --- IN-MEMORY TEST DATABASE ---
 let mockGrants: any[] = [];
 let mockSubmissions: any[] = [];
+let mockRpcHandler: (name: string, args: any) => Promise<any> = async () => ({
+  data: { success: true, grant_id: "test-grant-id", otp: "1234" },
+  error: null,
+});
 
 vi.mock("@/lib/supabase/admin", () => ({
   createAdminClient: () => ({
@@ -27,25 +35,16 @@ vi.mock("@/lib/supabase/admin", () => ({
       let currentTable = table;
       let filters: Array<(row: any) => boolean> = [];
       let pendingUpdates: any = null;
+      let pendingDelete = false;
 
       const builder: any = {
-        select: (cols: string = "*") => {
-          if (pendingUpdates) {
-            const list = currentTable === "enrollment_grants" ? mockGrants : mockSubmissions;
-            const matches = list.filter((item) => filters.every((fn) => fn(item)));
-            for (const item of matches) {
-              Object.assign(item, pendingUpdates);
-            }
-            const res = { data: matches, error: null };
-            return {
-              ...res,
-              then: (resolve: any) => resolve(res),
-            };
-          }
-          return builder;
-        },
+        select: (_cols: string = "*") => builder,
         eq: (col: string, val: any) => {
           filters.push((row: any) => row[col] === val);
+          return builder;
+        },
+        neq: (col: string, val: any) => {
+          filters.push((row: any) => row[col] !== val);
           return builder;
         },
         in: (col: string, vals: any[]) => {
@@ -54,6 +53,12 @@ vi.mock("@/lib/supabase/admin", () => ({
         },
         gt: (col: string, val: any) => {
           filters.push((row: any) => new Date(row[col]).getTime() > new Date(val).getTime());
+          return builder;
+        },
+        order: () => builder,
+        limit: () => builder,
+        delete: () => {
+          pendingDelete = true;
           return builder;
         },
         maybeSingle: async () => {
@@ -67,6 +72,15 @@ vi.mock("@/lib/supabase/admin", () => ({
         },
         then: (resolve: any) => {
           const list = currentTable === "enrollment_grants" ? mockGrants : mockSubmissions;
+          if (pendingDelete) {
+            const matches: any[] = [];
+            for (let i = list.length - 1; i >= 0; i--) {
+              if (filters.every((fn) => fn(list[i]))) {
+                matches.push(list.splice(i, 1)[0]);
+              }
+            }
+            return resolve({ data: matches, error: null });
+          }
           if (pendingUpdates) {
             const matches = list.filter((item) => filters.every((fn) => fn(item)));
             for (const item of matches) {
@@ -81,10 +95,7 @@ vi.mock("@/lib/supabase/admin", () => ({
 
       return builder;
     },
-    rpc: async () => ({
-      data: { success: true, grant_id: "test-grant-id", otp: "1234" },
-      error: null,
-    }),
+    rpc: async (name: string, args: any) => mockRpcHandler(name, args),
   }),
 }));
 
@@ -113,6 +124,10 @@ describe("Payment Notification & Phone Contact Workflow Tests", () => {
   beforeEach(() => {
     mockGrants = [];
     mockSubmissions = [];
+    mockRpcHandler = async () => ({
+      data: { success: true, grant_id: "test-grant-id", otp: "1234" },
+      error: null,
+    });
     vi.clearAllMocks();
   });
 
@@ -566,6 +581,273 @@ describe("Payment Notification & Phone Contact Workflow Tests", () => {
       expect(res2.status).toBe(429);
       const data2 = await res2.json();
       expect(data2.error).toContain("wait 30 seconds");
+    });
+  });
+
+  /* =========================================================
+     7. ADMIN QUEUE RETRIEVAL & PHONE COLUMN MAPPING
+     ========================================================= */
+  describe("Admin Submissions Queue & Dedicated Phone Column Mapping", () => {
+    it("GET: returns submissions with canonical phone numbers and all mapped fields", async () => {
+      mockSubmissions.push({
+        id: "sub-1",
+        name: "Aman Sharma",
+        email: "aman@example.com",
+        phone: "+919876543210",
+        contact: "aman@example.com",
+        utr: "123456789012",
+        amount: 20,
+        status: "pending",
+        submitted_at: "2026-10-04T10:30:00.000Z",
+      });
+
+      const req = new NextRequest("http://localhost:3000/api/public-website/admin/submissions");
+      const res = await adminSubmissionsGet(req);
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      expect(data.submissions).toHaveLength(1);
+      const sub = data.submissions[0];
+      expect(sub.name).toBe("Aman Sharma");
+      expect(sub.email).toBe("aman@example.com");
+      expect(sub.phone).toBe("+919876543210");
+      expect(sub.contact).toBe("aman@example.com");
+      expect(sub.utr).toBe("123456789012");
+      expect(sub.amount).toBe(20);
+      expect(sub.status).toBe("pending");
+    });
+
+    it("GET: falls back gracefully when phone is null but legacy contact contains a phone number", async () => {
+      mockSubmissions.push({
+        id: "sub-legacy",
+        name: "Legacy Student",
+        email: null,
+        phone: null,
+        contact: "9876543210",
+        utr: "987654321098",
+        amount: 20,
+        status: "pending",
+        submitted_at: "2026-10-04T10:30:00.000Z",
+      });
+
+      const req = new NextRequest("http://localhost:3000/api/public-website/admin/submissions");
+      const res = await adminSubmissionsGet(req);
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      const sub = data.submissions[0];
+      expect(sub.phone).toBe("9876543210");
+      expect(sub.email).toBeNull();
+    });
+
+    it("GET: handles missing phone and email without throwing or crashing", async () => {
+      mockSubmissions.push({
+        id: "sub-empty",
+        name: "Empty Contact Student",
+        email: null,
+        phone: null,
+        contact: null,
+        utr: "111122223333",
+        amount: 20,
+        status: "pending",
+        submitted_at: "2026-10-04T10:30:00.000Z",
+      });
+
+      const req = new NextRequest("http://localhost:3000/api/public-website/admin/submissions");
+      const res = await adminSubmissionsGet(req);
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      const sub = data.submissions[0];
+      expect(sub.phone).toBeNull();
+      expect(sub.email).toBeNull();
+    });
+  });
+
+  /* =========================================================
+     8. ADMIN VERIFY WORKFLOW & HARDENED FALLBACK
+     ========================================================= */
+  describe("Admin Verify Payment Workflow & Hardened Fallback", () => {
+    it("POST: verifies pending payment, creates enrollment grant, and dispatches access email", async () => {
+      const submissionId = "sub-verify-1";
+      mockSubmissions.push({
+        id: submissionId,
+        name: "Sunita Rao",
+        email: "sunita@example.com",
+        phone: "+919876543210",
+        contact: "sunita@example.com",
+        utr: "555566667777",
+        amount: 20,
+        status: "pending",
+        claim_secret_hash: "hash123",
+      });
+
+      let rpcCalledWith: any = null;
+      mockRpcHandler = async (name: string, args: any) => {
+        rpcCalledWith = { name, args };
+        return {
+          data: { success: true, grant_id: "grant-sunita-1", otp: "9999" },
+          error: null,
+        };
+      };
+
+      const req = new NextRequest("http://localhost:3000/api/public-website/admin/submissions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: submissionId, status: "verified" }),
+      });
+
+      const res = await adminSubmissionsPost(req);
+      const data = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.otp).toBe("9999");
+      expect(data.emailDeliveryStatus).toBe("SENT");
+
+      expect(rpcCalledWith.name).toBe("rpc_verify_payment_and_create_grant");
+      expect(rpcCalledWith.args.p_submission_id).toBe(submissionId);
+      expect(rpcCalledWith.args.p_token_hash).toBe("hash123");
+      expect(rpcCalledWith.args.p_access_token_hash).toBeTruthy();
+    });
+
+    it("POST: does NOT fall back to 4-parameter call if RPC error is an internal database failure", async () => {
+      const submissionId = "sub-db-err";
+      mockSubmissions.push({
+        id: submissionId,
+        name: "Error Student",
+        email: "err@example.com",
+        phone: "+919876543210",
+        utr: "888899990000",
+        status: "pending",
+      });
+
+      let rpcCallCount = 0;
+      mockRpcHandler = async () => {
+        rpcCallCount++;
+        return {
+          data: null,
+          error: {
+            code: "42883",
+            message: "function pg_catalog.coalesce(text, text, text) does not exist",
+          },
+        };
+      };
+
+      const req = new NextRequest("http://localhost:3000/api/public-website/admin/submissions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: submissionId, status: "verified" }),
+      });
+
+      const res = await adminSubmissionsPost(req);
+      const data = await res.json();
+
+      expect(res.status).toBe(500);
+      expect(data.error).toContain("function pg_catalog.coalesce");
+      // Fallback must NOT trigger! Exactly 1 call was attempted.
+      expect(rpcCallCount).toBe(1);
+    });
+
+    it("POST: DOES fall back to 4-parameter call only when PostgREST reports PGRST202 missing function", async () => {
+      const submissionId = "sub-pgrst202";
+      mockSubmissions.push({
+        id: submissionId,
+        name: "Legacy RPC Student",
+        email: "legacy@example.com",
+        phone: "+919876543210",
+        utr: "112233445566",
+        status: "pending",
+      });
+
+      let callSequence: any[] = [];
+      mockRpcHandler = async (_name: string, args: any) => {
+        callSequence.push(args);
+        if (args.p_access_token_hash) {
+          // 5-parameter call returns missing function in schema cache
+          return {
+            data: null,
+            error: {
+              code: "PGRST202",
+              message: "Could not find the function public.rpc_verify_payment_and_create_grant in the schema cache",
+            },
+          };
+        }
+        // 4-parameter call succeeds
+        return {
+          data: { success: true, grant_id: "grant-legacy-1", otp: "5678" },
+          error: null,
+        };
+      };
+
+      const req = new NextRequest("http://localhost:3000/api/public-website/admin/submissions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: submissionId, status: "verified" }),
+      });
+
+      const res = await adminSubmissionsPost(req);
+      const data = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.otp).toBe("5678");
+      expect(callSequence).toHaveLength(2);
+      expect(callSequence[0].p_access_token_hash).toBeTruthy();
+      expect(callSequence[1].p_access_token_hash).toBeUndefined();
+    });
+
+    it("POST: rejects submission properly and dispatches rejection notice", async () => {
+      const submissionId = "sub-reject-1";
+      mockSubmissions.push({
+        id: submissionId,
+        name: "Reject Student",
+        email: "reject@example.com",
+        phone: "+919876543210",
+        utr: "999988887777",
+        status: "pending",
+      });
+
+      const req = new NextRequest("http://localhost:3000/api/public-website/admin/submissions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: submissionId, status: "rejected", notes: "UTR not found" }),
+      });
+
+      const res = await adminSubmissionsPost(req);
+      const data = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(data.success).toBe(true);
+
+      const subInDb = mockSubmissions.find((s) => s.id === submissionId);
+      expect(subInDb.status).toBe("rejected");
+      expect(subInDb.notes).toBe("UTR not found");
+      expect(subInDb.verified_at).toBeNull();
+    });
+
+    it("DELETE: permanently deletes a submission from the database", async () => {
+      const submissionId = "11111111-2222-4333-8444-555555555555";
+      mockSubmissions.push({
+        id: submissionId,
+        name: "Delete Student",
+        email: "del@example.com",
+        utr: "000011112222",
+        status: "rejected",
+      });
+
+      const req = new NextRequest("http://localhost:3000/api/public-website/admin/submissions", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: submissionId }),
+      });
+
+      const res = await adminSubmissionsDelete(req);
+      const data = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(mockSubmissions.find((s) => s.id === submissionId)).toBeUndefined();
     });
   });
 });

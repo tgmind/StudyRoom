@@ -1095,27 +1095,26 @@ export default function PublicSiteAdminPage() {
                   <thead className="border-b border-slate-200 text-slate-400 uppercase tracking-wider">
                     <tr>
                       <th className="py-2.5 px-3">Student Name</th>
-                      <th className="py-2.5 px-3">Email Address</th>
-                      <th className="py-2.5 px-3">Mobile (+91)</th>
+                      <th className="py-2.5 px-3">Contact</th>
+                      <th className="py-2.5 px-3">Phone Number</th>
                       <th className="py-2.5 px-3">UTR Reference</th>
                       <th className="py-2.5 px-3">Amount</th>
                       <th className="py-2.5 px-3">Submitted</th>
-                      <th className="py-2.5 px-3">Payment</th>
-                      <th className="py-2.5 px-3">Access Email</th>
-                      <th className="py-2.5 px-3 text-right">Actions</th>
+                      <th className="py-2.5 px-3">Status</th>
+                      <th className="py-2.5 px-3 text-right">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium">
                     {submissions.map((sub) => {
-                      const studentEmail = sub.email || (sub.contact?.includes("@") ? sub.contact : "—");
-                      const studentPhone = sub.phone || (!sub.contact?.includes("@") ? sub.contact : "—");
+                      const studentContact = sub.email || (sub.contact?.includes("@") ? sub.contact : (sub.contact || "—"));
+                      const studentPhone = sub.phone || (!sub.contact?.includes("@") ? sub.contact : null) || "—";
                       const isRevealed = Boolean(revealedPhones[sub.id]);
 
                       return (
                         <tr key={sub.id} className="hover:bg-slate-50/70">
-                          <td className="py-3 px-3 font-bold text-[#071a3a]">{sub.name}</td>
-                          <td className="py-3 px-3 font-mono text-blue-700 font-semibold">{studentEmail}</td>
-                          <td className="py-3 px-3">
+                          <td className="py-3 px-3 font-bold text-[#071a3a] whitespace-nowrap">{sub.name}</td>
+                          <td className="py-3 px-3 font-mono text-blue-700 font-semibold">{studentContact}</td>
+                          <td className="py-3 px-3 whitespace-nowrap">
                             <div className="flex items-center gap-1.5 font-mono">
                               <span className="font-semibold text-emerald-800">
                                 {isRevealed ? studentPhone : maskPhone(studentPhone)}
@@ -1132,49 +1131,43 @@ export default function PublicSiteAdminPage() {
                               )}
                             </div>
                           </td>
-                          <td className="py-3 px-3 font-mono font-black text-blue-700 tracking-wider">
+                          <td className="py-3 px-3 font-mono font-black text-blue-700 tracking-wider whitespace-nowrap">
                             {sub.utr}
                           </td>
-                          <td className="py-3 px-3 font-bold text-slate-800">₹{sub.amount}</td>
-                          <td className="py-3 px-3 text-slate-500 font-medium">
+                          <td className="py-3 px-3 font-bold text-slate-800 whitespace-nowrap">₹{sub.amount}</td>
+                          <td className="py-3 px-3 text-slate-500 font-medium whitespace-nowrap">
                             {formatSafeDateTime(sub.submittedAt || (sub as any).submitted_at)}
                           </td>
-                          <td className="py-3 px-3">
-                            <span
-                              className={`rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider ${
-                                sub.status === "verified"
-                                  ? "bg-green-100 text-green-700"
-                                  : sub.status === "rejected"
-                                  ? "bg-red-100 text-red-700"
-                                  : "bg-amber-100 text-amber-800"
-                              }`}
-                            >
-                              {sub.status}
-                            </span>
-                          </td>
-                          <td className="py-3 px-3">
-                            {sub.status === "verified" ? (
-                              sub.emailDeliveryStatus === "FAILED" ? (
-                                <span
-                                  className="rounded-full bg-red-100 text-red-700 border border-red-200 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1 cursor-help"
-                                  title={sub.emailDeliveryError || "Email delivery failed. Click Resend to retry."}
-                                >
-                                  <span className="h-1.5 w-1.5 rounded-full bg-red-600 animate-ping" />
-                                  Failed
-                                </span>
-                              ) : sub.emailDeliveryStatus === "SENT" ? (
-                                <span className="rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1">
-                                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                  Sent
-                                </span>
-                              ) : (
-                                <span className="rounded-full bg-slate-100 text-slate-600 px-2.5 py-0.5 text-[10px] font-bold">
-                                  Not Sent
-                                </span>
-                              )
-                            ) : (
-                              <span className="text-slate-400 text-[11px]">—</span>
-                            )}
+                          <td className="py-3 px-3 whitespace-nowrap">
+                            <div className="flex flex-col gap-1 items-start">
+                              <span
+                                className={`rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider ${
+                                  sub.status === "verified"
+                                    ? "bg-green-100 text-green-700"
+                                    : sub.status === "rejected"
+                                    ? "bg-red-100 text-red-700"
+                                    : "bg-amber-100 text-amber-800"
+                                }`}
+                              >
+                                {sub.status}
+                              </span>
+                              {sub.status === "verified" && sub.emailDeliveryStatus && (
+                                sub.emailDeliveryStatus === "FAILED" ? (
+                                  <span
+                                    className="rounded-full bg-red-100 text-red-700 border border-red-200 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider inline-flex items-center gap-1 cursor-help"
+                                    title={sub.emailDeliveryError || "Email delivery failed. Click Resend to retry."}
+                                  >
+                                    <span className="h-1.5 w-1.5 rounded-full bg-red-600 animate-ping" />
+                                    Email Failed
+                                  </span>
+                                ) : sub.emailDeliveryStatus === "SENT" ? (
+                                  <span className="rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider inline-flex items-center gap-1">
+                                    <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" />
+                                    Email Sent
+                                  </span>
+                                ) : null
+                              )}
+                            </div>
                           </td>
                           <td className="py-3 px-3 text-right">
                             <div className="flex items-center justify-end gap-1.5 flex-wrap">
@@ -1188,7 +1181,7 @@ export default function PublicSiteAdminPage() {
                                     className="rounded-lg bg-green-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-green-700 shadow-sm cursor-pointer disabled:opacity-50 inline-flex items-center gap-1"
                                   >
                                     {updatingSubmissionId === sub.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
-                                    <span>Verify &amp; Email</span>
+                                    <span>Verify</span>
                                   </button>
                                   <button
                                     type="button"
