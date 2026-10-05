@@ -8,7 +8,7 @@ import {
   OfflineSessionBlock,
 } from "./storageKeys";
 import { getDateInTimezone, getTimeUntilMidnight } from "../scoring/streak";
-import { getWeekStartTimestamp } from "../time/format";
+import { getWeekStartTimestamp, getLeaderboardPeriodId } from "../time/format";
 
 export type {
   OfflineActiveSession,
@@ -389,6 +389,36 @@ export function getCachedUserProfile<T = unknown>(expectedUserId?: string): T | 
       } catch {}
       return null;
     }
+
+    // Weekly Period Sanitization:
+    // If the cached profile was saved in a different week or is missing week_start metadata,
+    // cleanly sanitize weekly-derived fields to 0 for the brand-new week (BUG FIX for stale 12h21m carryover).
+    const currentWeekStart = getWeekStartTimestamp();
+    const currentPeriodId = getLeaderboardPeriodId();
+    const savedWeekStartStr = localStorage.getItem(STORAGE_KEYS.CACHED_USER_PROFILE + "_week_start");
+    const savedTsStr = localStorage.getItem(STORAGE_KEYS.CACHED_USER_PROFILE + "_ts");
+    const savedWeekStart = savedWeekStartStr ? parseInt(savedWeekStartStr, 10) : 0;
+    const savedTs = savedTsStr ? parseInt(savedTsStr, 10) : 0;
+
+    const periodId = parsed._weekly_period_id || null;
+    const isDifferentWeek =
+      periodId !== currentPeriodId ||
+      (savedWeekStartStr ? savedWeekStart !== currentWeekStart : false) ||
+      (savedTs > 0 && savedTs < currentWeekStart);
+
+    if (isDifferentWeek) {
+      parsed.weekly_study_seconds = 0;
+      parsed.weekly_sessions_count = 0;
+      parsed.leaderboard_score = 0;
+      parsed.leaderboard_rank = undefined;
+      parsed._weekly_period_id = currentPeriodId;
+      try {
+        localStorage.setItem(STORAGE_KEYS.CACHED_USER_PROFILE, JSON.stringify(parsed));
+        localStorage.setItem(STORAGE_KEYS.CACHED_USER_PROFILE + "_week_start", currentWeekStart.toString());
+        localStorage.setItem(STORAGE_KEYS.CACHED_USER_PROFILE + "_ts", Date.now().toString());
+      } catch {}
+    }
+
     return parsed as T;
   } catch {
     try {
@@ -401,8 +431,15 @@ export function getCachedUserProfile<T = unknown>(expectedUserId?: string): T | 
 export function saveCachedUserProfile(profile: unknown): void {
   if (typeof window === "undefined" || !profile) return;
   try {
-    localStorage.setItem(STORAGE_KEYS.CACHED_USER_PROFILE, JSON.stringify(profile));
+    const currentWeekStart = getWeekStartTimestamp();
+    const currentPeriodId = getLeaderboardPeriodId();
+    const toSave =
+      typeof profile === "object" && profile !== null
+        ? { ...profile, _weekly_period_id: currentPeriodId }
+        : profile;
+    localStorage.setItem(STORAGE_KEYS.CACHED_USER_PROFILE, JSON.stringify(toSave));
     localStorage.setItem(STORAGE_KEYS.CACHED_USER_PROFILE + "_ts", Date.now().toString());
+    localStorage.setItem(STORAGE_KEYS.CACHED_USER_PROFILE + "_week_start", currentWeekStart.toString());
   } catch {}
 }
 

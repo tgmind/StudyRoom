@@ -245,6 +245,26 @@ export function getWeekStartTimestamp(
 }
 
 /**
+ * Returns the canonical Monday date string (YYYY-MM-DD) representing the weekly leaderboard period.
+ * Strictly adheres to Monday 00:00:00 IST boundary in Asia/Kolkata (or specified timezone).
+ * Example: Monday 2026-10-05 00:00:00 IST -> "2026-10-05"
+ *          Sunday 2026-10-04 23:59:59.999 IST -> "2026-09-28"
+ */
+export function getLeaderboardPeriodId(
+  now: Date = getServerNow(),
+  timezone = process.env.NEXT_PUBLIC_APP_TIMEZONE || "Asia/Kolkata"
+): string {
+  const weekStartMs = getWeekStartTimestamp(now, timezone);
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  return formatter.format(new Date(weekStartMs));
+}
+
+/**
  * Calculates a member's authoritative live weekly study time in seconds:
  * past completed sessions of the current week (member.weekly_study_seconds) +
  * live elapsed study seconds of the current active session strictly clamped to the current week boundary.

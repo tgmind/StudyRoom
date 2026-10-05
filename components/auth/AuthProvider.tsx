@@ -14,6 +14,7 @@ import {
   clearOfflineActiveSession,
 } from "@/lib/offline/sessionQueue";
 import { syncServerClockOnce } from "@/lib/time/clockSync";
+import { getLeaderboardPeriodId } from "@/lib/time/format";
 
 export interface AuthContextValue {
   user: User | null;
@@ -87,6 +88,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             ? 0
             : (incoming.active_study_seconds_snapshot ?? (isPrevActiveSameSession ? (prev?.active_study_seconds_snapshot ?? 0) : 0));
 
+          const currentPeriodId = getLeaderboardPeriodId();
+          const prevPeriodId = (prev as any)?._weekly_period_id;
+          const isPrevFromPastWeek = prevPeriodId !== currentPeriodId;
+
           const updated: UserProfile = {
             ...(prev || {}),
             ...incoming,
@@ -94,7 +99,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             last_resumed_at,
             break_started_at,
             active_study_seconds_snapshot,
-          };
+            weekly_study_seconds: isPrevFromPastWeek ? 0 : prev?.weekly_study_seconds,
+            weekly_sessions_count: isPrevFromPastWeek ? 0 : prev?.weekly_sessions_count,
+            leaderboard_score: isPrevFromPastWeek ? 0 : prev?.leaderboard_score,
+            leaderboard_rank: isPrevFromPastWeek ? undefined : prev?.leaderboard_rank,
+            _weekly_period_id: currentPeriodId,
+          } as UserProfile;
           saveCachedUserProfile(updated);
           return updated;
         });

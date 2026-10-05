@@ -207,3 +207,44 @@ export function computeLiveLeaderboardMap(
   return resultMap;
 }
 
+/**
+ * Calculates current user's live study minutes for the weekly leaderboard, strictly
+ * isolated from prior-week cached profile data.
+ *
+ * Invariant:
+ * - serverTotalMinutes: Authoritative server current-week total (completed sessions + active session in current week).
+ * - clientTotalMinutes: Independently derived current-week total (completed sessions in current week + client live session in current week).
+ * Both represent the exact SAME current-week quantity. Math.max(serverTotalMinutes, clientTotalMinutes) reconciles
+ * short-lived network or clock lag without adding them together or allowing previous-week data to bleed through.
+ *
+ * profile.weekly_study_seconds is NEVER read or accepted as input.
+ */
+export function calculateCurrentUserLeaderboardMinutes({
+  serverTotalMinutes,
+  completedWeeklyMinutes,
+  liveActiveSecondsInWeek,
+  isSessionActive,
+}: {
+  serverTotalMinutes: number;
+  completedWeeklyMinutes: number;
+  liveActiveSecondsInWeek: number;
+  isSessionActive: boolean;
+}): {
+  clientTotalMinutes: number;
+  displayedTotalMinutes: number;
+} {
+  const userLiveMinutesInCurrentWeek = isSessionActive
+    ? Math.floor(Math.max(0, liveActiveSecondsInWeek) / 60)
+    : 0;
+  const clientTotalMinutes = Math.max(0, completedWeeklyMinutes) + userLiveMinutesInCurrentWeek;
+
+  const displayedTotalMinutes = isSessionActive
+    ? Math.max(Math.max(0, serverTotalMinutes), clientTotalMinutes)
+    : Math.max(0, serverTotalMinutes);
+
+  return {
+    clientTotalMinutes,
+    displayedTotalMinutes,
+  };
+}
+

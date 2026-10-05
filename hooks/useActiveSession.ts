@@ -8,6 +8,7 @@ import {
   calculateMemberElapsedStudySeconds,
   isMemberTimerCalibrating,
   MAX_SESSION_STUDY_SECONDS,
+  getLeaderboardPeriodId,
 } from "@/lib/time/format";
 import {
   calculateBreakStatus,
@@ -1118,10 +1119,15 @@ export function useActiveSession(
       setBlocks([]);
       setElapsedStudySeconds(0);
       dismissedBreakExpiryRef.current = true;
-      const currentWeekly = profileRef.current?.weekly_study_seconds ?? 0;
+
+      const serverNow = getServerNow();
+      const currentPeriodId = getLeaderboardPeriodId(serverNow);
+      const isProfileFromPastWeek =
+        (profileRef.current as any)?._weekly_period_id !== currentPeriodId;
+      const currentWeekly = isProfileFromPastWeek ? 0 : (profileRef.current?.weekly_study_seconds ?? 0);
       const updatedWeekly = currentWeekly + totalActiveSeconds;
       const currentTotalSessions = (profileRef.current?.total_sessions_count ?? 0) + 1;
-      const currentWeeklySessions = (profileRef.current?.weekly_sessions_count ?? 0) + 1;
+      const currentWeeklySessions = isProfileFromPastWeek ? 1 : ((profileRef.current?.weekly_sessions_count ?? 0) + 1);
 
       const optimisticFinishDetails: Partial<UserProfile> = {
         current_status: "offline",
@@ -1133,7 +1139,8 @@ export function useActiveSession(
         weekly_study_seconds: updatedWeekly,
         total_sessions_count: currentTotalSessions,
         weekly_sessions_count: currentWeeklySessions,
-      };
+        _weekly_period_id: currentPeriodId,
+      } as any;
       if (profileRef.current) {
         Object.assign(profileRef.current, optimisticFinishDetails);
       }
@@ -1190,7 +1197,8 @@ export function useActiveSession(
             weekly_study_seconds: updatedWeekly,
             total_sessions_count: currentTotalSessions,
             weekly_sessions_count: currentWeeklySessions,
-          };
+            _weekly_period_id: currentPeriodId,
+          } as any;
           if (profileRef.current) {
             Object.assign(profileRef.current, confirmedDetails);
           }

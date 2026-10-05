@@ -210,7 +210,14 @@ describe("useStudyHistory Hook", () => {
   });
 
   it("groups lapsed goals under the day they were created (created_at), NOT when expired", async () => {
-    const lapsedTestUserId = "user-lapsed-test-unique";
+    // Deterministically freeze system time to Tuesday 05:00 UTC (10:30 AM IST)
+    // Goal created on Monday at 08:00 AM UTC (21 hours earlier), expires Tuesday at 04:00 AM UTC (1 hour earlier)
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const fixedTuesday = new Date("2026-10-06T05:00:00.000Z");
+    vi.setSystemTime(fixedTuesday);
+
+    try {
+      const lapsedTestUserId = "user-lapsed-test-unique";
     // Goal created on Monday at 08:00 AM, expires on Tuesday at 04:00 AM (serverNow is Tuesday 05:00 AM)
     const mondayCreatedIso = new Date(Date.now() - 21 * 3600 * 1000).toISOString();
     const tuesdayExpiresIso = new Date(Date.now() - 1 * 3600 * 1000).toISOString();
@@ -270,6 +277,9 @@ describe("useStudyHistory Hook", () => {
     expect(allLapsedWindows[0].lapsedTasks).toHaveLength(1);
     expect(allLapsedWindows[0].lapsedTasks[0].id).toBe("t1");
     expect(allLapsedWindows[0].completedTasksCount).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   describe("deduplicateStudySessions Resilience", () => {
