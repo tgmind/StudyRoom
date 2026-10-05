@@ -367,14 +367,19 @@ export async function POST(request: NextRequest) {
       if (status === "rejected" && sub) {
         const studentEmail = sub.email || (sub.contact?.includes("@") ? sub.contact : "");
         if (studentEmail) {
-          sendUserPaymentRejectedEmail({
-            name: sub.name || "Student",
-            email: studentEmail,
-            utr: sub.utr,
-            reason: notes || "Payment reference could not be verified against bank records.",
-          }).catch((mailErr) => {
+          try {
+            await Promise.race([
+              sendUserPaymentRejectedEmail({
+                name: sub.name || "Student",
+                email: studentEmail,
+                utr: sub.utr,
+                reason: notes || "Payment reference could not be verified against bank records.",
+              }),
+              new Promise((resolve) => setTimeout(resolve, 5000)),
+            ]);
+          } catch (mailErr) {
             console.warn("[Admin Submissions] Failed to dispatch rejection email:", mailErr);
-          });
+          }
         }
       }
     }

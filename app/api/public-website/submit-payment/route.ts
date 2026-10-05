@@ -166,26 +166,34 @@ export async function POST(request: NextRequest) {
     inMemorySubmissions.unshift(memorySubmission);
     if (inMemorySubmissions.length > 500) inMemorySubmissions.pop();
 
-    // 5. Asynchronous, Non-Blocking Email Notifications
+    // 5. Reliable Email Notifications (Awaited with safety timeout so serverless runtime doesn't freeze)
     const submittedTimestamp = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
-    Promise.allSettled([
-      sendAdminPaymentNotification({
-        name: trimmedName,
-        email: trimmedEmail,
-        phone: normalizedPhone || "N/A",
-        utr: trimmedUtr,
-        amount: Number(amount) || 20,
-        submittedAt: submittedTimestamp,
-      }),
-      sendUserPaymentPendingEmail({
-        name: trimmedName,
-        email: trimmedEmail,
-        phone: normalizedPhone || undefined,
-        utr: trimmedUtr,
-      }),
-    ]).catch((emailErr) => {
-      console.warn("[Submit Payment] Async email alert dispatch warning:", emailErr);
-    });
+    try {
+      const emailPromise = Promise.allSettled([
+        sendAdminPaymentNotification({
+          name: trimmedName,
+          email: trimmedEmail,
+          phone: normalizedPhone || "N/A",
+          utr: trimmedUtr,
+          amount: Number(amount) || 20,
+          submittedAt: submittedTimestamp,
+        }),
+        sendUserPaymentPendingEmail({
+          name: trimmedName,
+          email: trimmedEmail,
+          phone: normalizedPhone || undefined,
+          utr: trimmedUtr,
+        }),
+      ]);
+
+      // Ensure execution completes on serverless (Netlify/AWS Lambda) with a 6-second safety timeout
+      await Promise.race([
+        emailPromise,
+        new Promise((resolve) => setTimeout(resolve, 6000)),
+      ]);
+    } catch (emailErr) {
+      console.warn("[Submit Payment] Email alert dispatch warning:", emailErr);
+    }
 
     // 6. Build response and set HttpOnly claim secret cookie
     const response = NextResponse.json({

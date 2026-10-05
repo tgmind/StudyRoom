@@ -134,5 +134,31 @@ describe("Email Alerts Generation Unit Tests", () => {
     expect(res1.success).toBe(true);
     expect(res2.success).toBe(true);
   }, 20000);
+
+  it("dispatches admin payment notification to both admin emails successfully", async () => {
+    const { sendAdminPaymentNotification } = await import("@/lib/email/mailer");
+    const res = await sendAdminPaymentNotification({
+      name: "Pooja Patel",
+      email: "pooja@example.com",
+      phone: "+919876543210",
+      utr: "426819204812",
+      amount: 20,
+      submittedAt: "05/10/2026, 6:14:20 pm",
+    });
+    expect(res.success).toBe(true);
+    expect(res.messageId).toBeDefined();
+  });
+
+  it("dispatches student payment pending acknowledgement successfully", async () => {
+    const { sendUserPaymentPendingEmail } = await import("@/lib/email/mailer");
+    const res = await sendUserPaymentPendingEmail({
+      name: "Pooja Patel",
+      email: "pooja@example.com",
+      phone: "+919876543210",
+      utr: "426819204812",
+    });
+    expect(res.success).toBe(true);
+    expect(res.messageId).toBeDefined();
+  });
 });
 

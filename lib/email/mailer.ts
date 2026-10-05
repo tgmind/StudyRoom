@@ -180,97 +180,142 @@ export async function dispatchEmailPayload({
     const defaultReplyTo = replyTo || process.env.ALERT_GMAIL_USER?.trim() || "studyaliveapp@gmail.com";
 
     // -------------------------------------------------------------
-    // PRIMARY: Resend Transactional Engine
+    // PROVIDER ROUTING & EXECUTION ENGINE
     // -------------------------------------------------------------
     const resendKey = process.env.RESEND_API_KEY?.trim();
-    if (resendKey) {
+    const from = process.env.ALERT_FROM_EMAIL?.trim() || "StudyRoom <onboarding@resend.dev>";
+    const isResendSandbox = from.includes("resend.dev");
+    const RESEND_SANDBOX_OWNER = "thoughtfulmindg@gmail.com";
+
+    // Helper: Resend API Dispatcher
+    const executeResend = async (): Promise<SendAlertResult> => {
+      if (!resendKey) throw new Error("RESEND_API_KEY is not configured.");
       const { count, canSend } = getDailyResendUsage();
       if (!canSend) {
-        console.warn(
-          `[Mailer] Resend free tier daily safety limit reached (${count}/${MAX_DAILY_RESEND_FREE_TIER}). Automatically routing via Gmail SMTP for zero-cost lifelong delivery.`
+        throw new Error(
+          `Resend free tier daily safety limit reached (${count}/${MAX_DAILY_RESEND_FREE_TIER}).`
         );
-      } else {
-        try {
-          const from = process.env.ALERT_FROM_EMAIL?.trim() || "StudyRoom <onboarding@resend.dev>";
+      }
 
-          const res = await fetch("https://api.resend.com/emails", {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${resendKey}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              from,
-              to: recipients,
-              reply_to: defaultReplyTo,
-              subject,
-              text,
-              html,
-              headers: {
-                "List-Unsubscribe": `<mailto:${defaultReplyTo}?subject=Unsubscribe>, <${appUrl}/settings>`,
-                "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-                "Auto-Submitted": "auto-generated",
-                "X-Entity-Ref-ID": entityRefId,
-                ...extraHeaders,
-              },
-            }),
-          });
+      const res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${resendKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from,
+          to: recipients,
+          reply_to: defaultReplyTo,
+          subject,
+          text,
+          html,
+          headers: {
+            "List-Unsubscribe": `<mailto:${defaultReplyTo}?subject=Unsubscribe>, <${appUrl}/settings>`,
+            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+            "Auto-Submitted": "auto-generated",
+            "X-Entity-Ref-ID": entityRefId,
+            ...extraHeaders,
+          },
+        }),
+      });
 
-          const resData = await res.json();
-          if (res.ok && resData?.id) {
-            incrementDailyResendUsage();
-            return {
-              success: true,
-              messageId: resData.id,
-              provider: "resend",
-            };
-          }
+      const resData = await res.json().catch(() => ({}));
+      if (res.ok && resData?.id) {
+        incrementDailyResendUsage();
+        return {
+          success: true,
+          messageId: resData.id,
+          provider: "resend",
+        };
+      }
 
-          console.warn(
-            `[Mailer] Resend dispatch returned (${res.status}: ${resData?.message || "error"}). Falling back seamlessly to hardened Gmail SMTP.`
-          );
-        } catch (resendErr) {
-          console.warn(
-            "[Mailer] Resend network dispatch failed. Falling back seamlessly to Gmail SMTP:",
-            resendErr
-          );
+      throw new Error(`Resend API returned ${res.status}: ${resData?.message || "error"}`);
+    };
+
+    // Helper: Authenticated Gmail SMTP Dispatcher
+    const executeGmail = async (): Promise<SendAlertResult> => {
+      const user = process.env.ALERT_GMAIL_USER!.trim();
+      const fromName = process.env.ALERT_FROM_NAME?.trim() || "StudyRoom";
+      const transporter = getTransporter();
+
+      const randomHex = Math.random().toString(36).substring(2, 10);
+      const customMessageId = `<studyroom.${Date.now()}.${randomHex}@studyaliveapp.gmail.com>`;
+
+      const info = await transporter.sendMail({
+        from: `"${fromName}" <${user}>`,
+        to: recipients.join(", "),
+        replyTo: defaultReplyTo,
+        subject,
+        text,
+        html,
+        messageId: customMessageId,
+        headers: {
+          "X-Entity-Ref-ID": entityRefId,
+          "List-Unsubscribe": `<mailto:${user}?subject=Unsubscribe>, <${appUrl}/settings>`,
+          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+          "Auto-Submitted": "auto-generated",
+          "Precedence": "bulk",
+          "X-Auto-Response-Suppress": "OOF, AutoReply",
+          ...extraHeaders,
+        },
+      });
+
+      return {
+        success: true,
+        messageId: info.messageId || customMessageId,
+        provider: "gmail",
+      };
+    };
+
+    // Routing Logic:
+    // When ALERT_FROM_EMAIL uses resend.dev (testing sandbox), Resend strictly only allows sending
+    // to the verified account owner (thoughtfulmindg@gmail.com). For all other recipients or
+    // multi-recipient admin broadcasts, route to Gmail SMTP to guarantee instant delivery.
+    const canDeliverViaResend = Boolean(
+      resendKey &&
+      (!isResendSandbox || (recipients.length === 1 && recipients[0].toLowerCase() === RESEND_SANDBOX_OWNER))
+    );
+
+    if (canDeliverViaResend) {
+      try {
+        return await executeResend();
+      } catch (resendErr: any) {
+        console.warn(
+          "[Mailer] Resend dispatch failed. Falling back seamlessly to Gmail SMTP:",
+          resendErr?.message || resendErr
+        );
+        if (config.hasGmail) {
+          return await executeGmail();
         }
+        throw resendErr;
       }
     }
 
-    // -------------------------------------------------------------
-    // FALLBACK / SECONDARY: Hardened Gmail SMTP
-    // -------------------------------------------------------------
-    const user = process.env.ALERT_GMAIL_USER!.trim();
-    const fromName = process.env.ALERT_FROM_NAME?.trim() || "StudyRoom";
-    const transporter = getTransporter();
+    // Default primary for multi-recipient and external student alerts: Gmail SMTP
+    if (config.hasGmail) {
+      try {
+        return await executeGmail();
+      } catch (gmailErr: any) {
+        console.warn(
+          "[Mailer] Gmail SMTP dispatch failed. Falling back to Resend:",
+          gmailErr?.message || gmailErr
+        );
+        if (resendKey) {
+          return await executeResend();
+        }
+        throw gmailErr;
+      }
+    }
 
-    const randomHex = Math.random().toString(36).substring(2, 10);
-    const customMessageId = `<studyroom.${Date.now()}.${randomHex}@studyaliveapp.gmail.com>`;
-
-    const info = await transporter.sendMail({
-      from: `"${fromName}" <${user}>`,
-      to: recipients.join(", "),
-      replyTo: defaultReplyTo,
-      subject,
-      text,
-      html,
-      messageId: customMessageId,
-      headers: {
-        "X-Entity-Ref-ID": entityRefId,
-        "List-Unsubscribe": `<mailto:${user}?subject=Unsubscribe>, <${appUrl}/settings>`,
-        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-        "Auto-Submitted": "auto-generated",
-        "Precedence": "bulk",
-        "X-Auto-Response-Suppress": "OOF, AutoReply",
-        ...extraHeaders,
-      },
-    });
+    // Last resort fallback
+    if (resendKey) {
+      return await executeResend();
+    }
 
     return {
-      success: true,
-      messageId: info.messageId || customMessageId,
-      provider: "gmail",
+      success: false,
+      error: "No available email provider could deliver the message.",
     };
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : "Unknown error sending email";
