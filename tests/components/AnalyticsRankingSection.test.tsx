@@ -58,10 +58,10 @@ describe("AnalyticsRankingSection & Observatory Visualizers", () => {
         score: 59.6,
       },
     ],
-    low_performers: [
+    consistency_rhythm_matrix: [
       {
         rank: 1,
-        user_id: "user-low-1",
+        user_id: "user-top-1",
         display_name: "Pooja",
         avatar_url: null,
         total_study_minutes: 240,
@@ -71,7 +71,7 @@ describe("AnalyticsRankingSection & Observatory Visualizers", () => {
       },
       {
         rank: 2,
-        user_id: "user-low-2",
+        user_id: "user-top-2",
         display_name: "Karan",
         avatar_url: null,
         total_study_minutes: 350,
@@ -268,10 +268,98 @@ describe("AnalyticsRankingSection & Observatory Visualizers", () => {
     it("handles empty consistency data gracefully", () => {
       const emptyRankings: GlobalAnalyticsRankings = {
         ...mockRankings,
-        low_performers: [],
+        consistency_rhythm_matrix: [],
       };
 
       render(<AnalyticsRankingSection rankings={emptyRankings} />);
+      fireEvent.click(screen.getByRole("tab", { name: /Consistency/i }));
+
+      expect(
+        screen.getByText(
+          "No student consistency records for this period."
+        )
+      ).toBeDefined();
+    });
+
+    it("historical snapshot with only low_performers does NOT display low performers as consistency ranking", () => {
+      // Historical snapshot containing ONLY legacy low_performers and NO consistency_rhythm_matrix
+      const historicalLegacyRankings: GlobalAnalyticsRankings = {
+        ...mockRankings,
+        consistency_rhythm_matrix: undefined,
+        low_performers: [
+          {
+            rank: 1,
+            user_id: "user-legacy-low",
+            display_name: "LegacyLowStudent",
+            avatar_url: null,
+            total_study_minutes: 60,
+            daily_average_minutes: 8.5,
+            active_study_days: 1,
+            score: 10.0,
+          },
+        ],
+      };
+
+      render(<AnalyticsRankingSection rankings={historicalLegacyRankings} />);
+      fireEvent.click(screen.getByRole("tab", { name: /Consistency/i }));
+
+      // MUST NOT display the low performer under the Top Consistent Students ranking
+      expect(screen.queryByText("LegacyLowStudent")).toBeNull();
+      // MUST gracefully display the safe empty/unavailable state
+      expect(
+        screen.getByText(
+          "No student consistency records for this period."
+        )
+      ).toBeDefined();
+    });
+
+    it("historical snapshot with both fields renders consistency_rhythm_matrix and ignores low_performers", () => {
+      const dualFieldRankings: GlobalAnalyticsRankings = {
+        ...mockRankings,
+        consistency_rhythm_matrix: [
+          {
+            rank: 1,
+            user_id: "user-consistent-hero",
+            display_name: "ConsistentHero",
+            avatar_url: null,
+            total_study_minutes: 2400,
+            daily_average_minutes: 342.8,
+            active_study_days: 7,
+            score: 99.0,
+          },
+        ],
+        low_performers: [
+          {
+            rank: 1,
+            user_id: "user-stale-low",
+            display_name: "StaleLowStudent",
+            avatar_url: null,
+            total_study_minutes: 30,
+            daily_average_minutes: 4.2,
+            active_study_days: 1,
+            score: 5.0,
+          },
+        ],
+      };
+
+      render(<AnalyticsRankingSection rankings={dualFieldRankings} />);
+      fireEvent.click(screen.getByRole("tab", { name: /Consistency/i }));
+
+      // MUST render the canonical consistent hero
+      expect(screen.getByText("ConsistentHero")).toBeDefined();
+      expect(screen.getByText("7 / 7")).toBeDefined();
+      // MUST NOT render the stale low performer
+      expect(screen.queryByText("StaleLowStudent")).toBeNull();
+    });
+
+    it("snapshot with neither field gracefully renders empty/unavailable state", () => {
+      const neitherFieldRankings: GlobalAnalyticsRankings = {
+        ...mockRankings,
+        consistency_rhythm_matrix: undefined,
+        low_performers: undefined,
+      };
+
+      render(<AnalyticsRankingSection rankings={neitherFieldRankings} />);
       fireEvent.click(screen.getByRole("tab", { name: /Consistency/i }));
 
       expect(

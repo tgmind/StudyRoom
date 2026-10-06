@@ -178,10 +178,15 @@ export interface GoalChaserEntry {
 
 export interface GlobalAnalyticsRankings {
   most_studying: MostStudyingEntry[];
-  low_performers: LowPerformerEntry[];
   consistency_rhythm_matrix?: ConsistencyEntry[];
   achiever_winners: AchieverWinnerEntry[];
   goal_chasers: GoalChaserEntry[];
+  /**
+   * @deprecated Legacy field from deprecated "Students Needing Consistency Boost" concept.
+   * Preserved ONLY for historical snapshot JSON deserialization.
+   * Never treat or render this field as top consistent students.
+   */
+  low_performers?: LowPerformerEntry[];
 }
 
 export interface GlobalCommunityStats {

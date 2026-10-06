@@ -93,7 +93,7 @@ export const AnalyticsRankingSection = memo(function AnalyticsRankingSection({
         )}
         {activeLens === "consistency_boost" && (
           <ConsistencyRhythmMatrix
-            entries={rankings.low_performers || []}
+            entries={rankings.consistency_rhythm_matrix || []}
             currentUserId={currentUserId}
           />
         )}

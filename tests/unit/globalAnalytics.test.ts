@@ -94,21 +94,24 @@ describe("Global Analytics Architecture & Calculation Tests", () => {
       expect(entries[2].id).toBe("u1");
     });
 
-    it("breaks ties in Low Performers using daily average ASC, total minutes ASC, then display_name ASC", () => {
+    it("breaks ties in Consistency Ranking using active_study_days DESC, total_study_minutes DESC, score DESC, display_name ASC, user_id ASC", () => {
       const entries = [
-        { id: "u1", display_name: "David", daily_avg: 10, total_mins: 70 },
-        { id: "u2", display_name: "Aaron", daily_avg: 10, total_mins: 70 },
-        { id: "u3", display_name: "Chloe", daily_avg: 5, total_mins: 35 },
+        { id: "u1", display_name: "David", active_study_days: 6, total_study_minutes: 600, score: 70 },
+        { id: "u2", display_name: "Aaron", active_study_days: 6, total_study_minutes: 600, score: 70 },
+        { id: "u3", display_name: "Chloe", active_study_days: 7, total_study_minutes: 300, score: 50 },
       ];
 
       entries.sort((a, b) => {
-        if (a.daily_avg !== b.daily_avg) return a.daily_avg - b.daily_avg;
-        if (a.total_mins !== b.total_mins) return a.total_mins - b.total_mins;
-        return a.display_name.localeCompare(b.display_name);
+        if (b.active_study_days !== a.active_study_days) return b.active_study_days - a.active_study_days;
+        if (b.total_study_minutes !== a.total_study_minutes) return b.total_study_minutes - a.total_study_minutes;
+        if (b.score !== a.score) return b.score - a.score;
+        const nameCmp = a.display_name.localeCompare(b.display_name);
+        if (nameCmp !== 0) return nameCmp;
+        return a.id.localeCompare(b.id);
       });
 
-      expect(entries[0].id).toBe("u3"); // lowest daily average
-      expect(entries[1].id).toBe("u2"); // Aaron before David on equal average
+      expect(entries[0].id).toBe("u3"); // highest active days (7d beats 6d)
+      expect(entries[1].id).toBe("u2"); // Aaron before David on equal days/mins/score
       expect(entries[2].id).toBe("u1");
     });
   });
@@ -931,7 +934,7 @@ describe("Global Analytics Architecture & Calculation Tests", () => {
         },
         rankings: {
           most_studying: [],
-          low_performers: [],
+          consistency_rhythm_matrix: [],
           achiever_winners: [],
           goal_chasers: [],
         },
@@ -950,6 +953,32 @@ describe("Global Analytics Architecture & Calculation Tests", () => {
       expect(mockFinalizedPayload.celebration_period_id).toBe("2026-10-05");
       expect(mockFinalizedPayload.achiever?.source_period_id).toBe(mockFinalizedPayload.period_id);
       expect(mockFinalizedPayload.achiever?.celebration_period_id).toBe(mockFinalizedPayload.celebration_period_id);
+      expect(mockFinalizedPayload.rankings.consistency_rhythm_matrix).toBeDefined();
+    });
+
+    it("verifies newly finalized snapshot ranking schema contains consistency_rhythm_matrix and omits low_performers", () => {
+      // Build a simulated new snapshot payload from rpc_finalize_weekly_global_analytics
+      const newSnapshotRankings: GlobalAnalyticsRankings = {
+        most_studying: [],
+        consistency_rhythm_matrix: [
+          {
+            rank: 1,
+            user_id: "u-1",
+            display_name: "Consistent Leader",
+            avatar_url: null,
+            total_study_minutes: 2100,
+            daily_average_minutes: 300,
+            active_study_days: 7,
+            score: 95.0,
+          },
+        ],
+        achiever_winners: [],
+        goal_chasers: [],
+      };
+
+      expect(newSnapshotRankings.consistency_rhythm_matrix).toHaveLength(1);
+      expect(newSnapshotRankings.consistency_rhythm_matrix?.[0].active_study_days).toBe(7);
+      expect((newSnapshotRankings as any).low_performers).toBeUndefined();
     });
   });
 

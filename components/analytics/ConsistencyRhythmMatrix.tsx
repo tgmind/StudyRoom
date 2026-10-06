@@ -1,12 +1,13 @@
 "use client";
 
-import React, { memo } from "react";
-import { LowPerformerEntry } from "@/lib/supabase/types";
+import React, { memo, useMemo } from "react";
+import { ConsistencyEntry, LowPerformerEntry } from "@/lib/supabase/types";
+import { calculateConsistencyRanking } from "@/lib/analytics/consistency";
 import { formatMinutesToHours } from "@/lib/time/format";
 import { TrendingUp, Clock } from "lucide-react";
 
 interface ConsistencyRhythmMatrixProps {
-  entries: LowPerformerEntry[];
+  entries: (ConsistencyEntry | LowPerformerEntry)[];
   currentUserId?: string;
 }
 
@@ -14,7 +15,13 @@ export const ConsistencyRhythmMatrix = memo(function ConsistencyRhythmMatrix({
   entries,
   currentUserId,
 }: ConsistencyRhythmMatrixProps) {
-  if (entries.length === 0) {
+  // Enforce canonical Consistency Ranking order:
+  // Primary: active_study_days DESC, Secondary: total_study_minutes DESC, Tertiary: score DESC
+  const rankedEntries = useMemo(() => {
+    return calculateConsistencyRanking(entries);
+  }, [entries]);
+
+  if (rankedEntries.length === 0) {
     return (
       <div className="p-8 text-center rounded-3xl bg-zinc-900/40 border border-dashed border-zinc-800 text-xs text-zinc-500">
         No student consistency records for this period.
@@ -37,7 +44,7 @@ export const ConsistencyRhythmMatrix = memo(function ConsistencyRhythmMatrix({
 
       {/* Grid of Habit Stability Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {entries.map((entry) => {
+        {rankedEntries.map((entry) => {
           const isCurrent = entry.user_id === currentUserId;
           const dailyHours = (entry.daily_average_minutes / 60).toFixed(1);
           const totalHours = formatMinutesToHours(entry.total_study_minutes);

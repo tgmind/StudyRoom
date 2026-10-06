@@ -112,7 +112,7 @@ const mockPayload: GlobalAnalyticsPayload = {
         score: 79.8,
       },
     ],
-    low_performers: [
+    consistency_rhythm_matrix: [
       {
         rank: 1,
         user_id: "user-6",
