@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { AvatarUpload } from "@/components/ui/AvatarUpload";
 import { AppInfoCard } from "@/components/settings/AppInfoCard";
+import { CommunityLinksCard } from "@/components/settings/CommunityLinksCard";
 import { validateDisplayName } from "@/lib/validation/schemas";
 import {
   Settings,
@@ -242,6 +243,9 @@ export default function SettingsPage() {
             </div>
           </form>
         </div>
+
+        {/* Community & Social Channels Card */}
+        <CommunityLinksCard />
 
         {/* App Info & Version Card */}
         <AppInfoCard />

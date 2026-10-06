@@ -24,8 +24,10 @@ import {
   Coffee,
   Wifi,
   Bell,
+  Share2,
 } from "lucide-react";
 import { AdminAlertsHub } from "@/components/admin/AdminAlertsHub";
+import { AdminCommunityLinksHub } from "@/components/admin/AdminCommunityLinksHub";
 
 type StatusFilter = "all" | "studying" | "break" | "offline";
 
@@ -45,7 +47,7 @@ export default function AdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
-  const [adminSection, setAdminSection] = useState<"members" | "alerts">("members");
+  const [adminSection, setAdminSection] = useState<"members" | "alerts" | "community">("members");
   const [lastDeletedUserId, setLastDeletedUserId] = useState<string | null>(null);
   const [, setClockTick] = useState(0);
 
@@ -398,9 +400,23 @@ export default function AdminPage() {
             <Bell className="w-3.5 h-3.5 shrink-0" />
             <span>Alerts & Retention Hub</span>
           </button>
+          <button
+            type="button"
+            onClick={() => setAdminSection("community")}
+            className={`flex-1 sm:flex-initial px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center space-x-1.5 whitespace-nowrap ${
+              adminSection === "community"
+                ? "bg-emerald-600 text-white shadow-sm"
+                : "text-zinc-400 hover:text-zinc-200"
+            }`}
+          >
+            <Share2 className="w-3.5 h-3.5 shrink-0" />
+            <span>Community Links</span>
+          </button>
         </div>
 
-        {adminSection === "alerts" ? (
+        {adminSection === "community" ? (
+          <AdminCommunityLinksHub adminEmail={user.email} />
+        ) : adminSection === "alerts" ? (
           <AdminAlertsHub adminEmail={user.email} lastDeletedUserId={lastDeletedUserId} />
         ) : (
           <>

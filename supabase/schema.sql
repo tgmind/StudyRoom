@@ -3310,3 +3310,100 @@ REVOKE EXECUTE ON FUNCTION public.rpc_acknowledge_analytics_alert(TEXT, TEXT) FR
 GRANT EXECUTE ON FUNCTION public.rpc_acknowledge_analytics_alert(TEXT, TEXT) TO authenticated, service_role;
 
 
+
+-- ==============================================================================
+-- 11. COMMUNITY & SOCIAL CHANNEL LINKS CONFIGURATION
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.social_community_links (
+  id TEXT PRIMARY KEY,
+  platform TEXT NOT NULL,
+  title TEXT NOT NULL,
+  url TEXT NOT NULL,
+  action_text TEXT NOT NULL DEFAULT 'Join Now',
+  is_enabled BOOLEAN NOT NULL DEFAULT true,
+  display_order INTEGER NOT NULL DEFAULT 1,
+  icon_key TEXT NOT NULL DEFAULT 'whatsapp',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_social_links_order ON public.social_community_links(display_order ASC);
+CREATE INDEX IF NOT EXISTS idx_social_links_enabled ON public.social_community_links(is_enabled);
+
+ALTER TABLE public.social_community_links ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Active social links are viewable by all users" ON public.social_community_links;
+CREATE POLICY "Active social links are viewable by all users"
+  ON public.social_community_links
+  FOR SELECT
+  USING (
+    is_enabled = true
+    OR EXISTS (
+      SELECT 1 FROM public.users
+      WHERE users.id = auth.uid() AND users.is_admin = true
+    )
+  );
+
+DROP POLICY IF EXISTS "Only administrators can modify social links" ON public.social_community_links;
+CREATE POLICY "Only administrators can modify social links"
+  ON public.social_community_links
+  FOR ALL
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.users
+      WHERE users.id = auth.uid() AND users.is_admin = true
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.users
+      WHERE users.id = auth.uid() AND users.is_admin = true
+    )
+  );
+
+-- Atomic reorder RPC function
+CREATE OR REPLACE FUNCTION public.rpc_admin_reorder_social_links(p_items jsonb)
+RETURNS jsonb AS $$
+DECLARE
+  v_item jsonb;
+  v_id text;
+  v_order integer;
+BEGIN
+  IF NOT (
+    EXISTS (
+      SELECT 1 FROM public.users
+      WHERE users.id = auth.uid() AND users.is_admin = true
+    )
+    OR (current_setting('role', true) = 'service_role')
+  ) THEN
+    RAISE EXCEPTION 'Unauthorized: Administrator privileges required';
+  END IF;
+
+  IF p_items IS NULL OR jsonb_array_length(p_items) = 0 THEN
+    RAISE EXCEPTION 'Items array cannot be empty';
+  END IF;
+
+  FOR v_item IN SELECT * FROM jsonb_array_elements(p_items)
+  LOOP
+    v_id := v_item->>'id';
+    v_order := (v_item->>'display_order')::integer;
+
+    IF v_id IS NULL OR TRIM(v_id) = '' OR v_order IS NULL THEN
+      RAISE EXCEPTION 'Invalid reorder item payload';
+    END IF;
+
+    UPDATE public.social_community_links
+    SET display_order = v_order, updated_at = now()
+    WHERE id = v_id;
+
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'Social link not found: %', v_id;
+    END IF;
+  END LOOP;
+
+  RETURN jsonb_build_object('success', true);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+REVOKE EXECUTE ON FUNCTION public.rpc_admin_reorder_social_links(jsonb) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.rpc_admin_reorder_social_links(jsonb) TO authenticated, service_role;
