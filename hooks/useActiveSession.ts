@@ -227,8 +227,8 @@ export function useActiveSession(
         const serverOffset = getServerTimeOffset();
         const resumeTime = studyState.lastResumedAt
           ? new Date(studyState.lastResumedAt).getTime() - serverOffset
-          : new Date(studyState.sessionStartTime).getTime() - serverOffset;
-        const currentPeriod = Math.max(0, Math.floor((Date.now() - resumeTime) / 1000));
+          : ((studyState.snapshotSeconds || 0) === 0 ? new Date(studyState.sessionStartTime).getTime() - serverOffset : null);
+        const currentPeriod = resumeTime ? Math.max(0, Math.floor((Date.now() - resumeTime) / 1000)) : 0;
         return (studyState.snapshotSeconds || 0) + currentPeriod;
       }
     }
@@ -726,21 +726,21 @@ export function useActiveSession(
       if (typeof window !== "undefined") {
         try {
           localStorage.removeItem("studyroom_active_break");
-          if ((window as any).AndroidBridge?.onSessionStateResolved) {
-            if (effectiveStatus === "studying") {
-              const studyStartMs = profileRef.current?.session_start_time
-                ? new Date(profileRef.current.session_start_time).getTime() - getServerTimeOffset()
-                : Date.now();
-              const existingStudy = getActiveStudyState();
-              if (profileRef.current?.session_start_time) {
-                saveActiveStudyState({
-                  userId: profileRef.current.id,
-                  sessionStartTime: profileRef.current.session_start_time,
-                  lastResumedAt: profileRef.current.last_resumed_at || existingStudy?.lastResumedAt || undefined,
-                  snapshotSeconds: profileRef.current.active_study_seconds_snapshot ?? existingStudy?.snapshotSeconds ?? 0,
-                  focus: profileRef.current.current_focus || "",
-                });
-              }
+          if (effectiveStatus === "studying") {
+            const studyStartMs = profileRef.current?.session_start_time
+              ? new Date(profileRef.current.session_start_time).getTime() - getServerTimeOffset()
+              : Date.now();
+            const existingStudy = getActiveStudyState();
+            if (profileRef.current?.session_start_time) {
+              saveActiveStudyState({
+                userId: profileRef.current.id,
+                sessionStartTime: profileRef.current.session_start_time,
+                lastResumedAt: profileRef.current.last_resumed_at || existingStudy?.lastResumedAt || undefined,
+                snapshotSeconds: profileRef.current.active_study_seconds_snapshot ?? existingStudy?.snapshotSeconds ?? 0,
+                focus: profileRef.current.current_focus || "",
+              });
+            }
+            if ((window as any).AndroidBridge?.onSessionStateResolved) {
               (window as any).AndroidBridge.onSessionStateResolved(
                 false,
                 0,
@@ -749,8 +749,10 @@ export function useActiveSession(
                 studyStartMs,
                 profileRef.current?.current_focus || ""
               );
-            } else {
-              clearActiveStudyState();
+            }
+          } else {
+            clearActiveStudyState();
+            if ((window as any).AndroidBridge?.onSessionStateResolved) {
               (window as any).AndroidBridge.onSessionStateResolved(
                 false,
                 0,
@@ -1463,8 +1465,8 @@ export function useActiveSession(
         const serverOffset = getServerTimeOffset();
         const resumeTime = studyState.lastResumedAt
           ? new Date(studyState.lastResumedAt).getTime() - serverOffset
-          : new Date(studyState.sessionStartTime).getTime() - serverOffset;
-        const currentPeriod = Math.max(0, Math.floor((Date.now() - resumeTime) / 1000));
+          : ((studyState.snapshotSeconds || 0) === 0 ? new Date(studyState.sessionStartTime).getTime() - serverOffset : null);
+        const currentPeriod = resumeTime ? Math.max(0, Math.floor((Date.now() - resumeTime) / 1000)) : 0;
         const s = (studyState.snapshotSeconds || 0) + currentPeriod;
         return s;
       }

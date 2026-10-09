@@ -78,7 +78,11 @@ export const MemberCard = memo(function MemberCard({
     ? member.display_name.substring(0, 2).toUpperCase()
     : "??";
 
-  const isCalibrating = isStudying && (elapsedSeconds < 0 || isMemberTimerCalibrating(member));
+  const isCalibrating =
+    isStudying &&
+    (customElapsedSeconds !== undefined
+      ? customElapsedSeconds < 0
+      : (elapsedSeconds < 0 || isMemberTimerCalibrating(member)));
 
   return (
     <div

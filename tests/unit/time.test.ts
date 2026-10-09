@@ -10,6 +10,7 @@ import {
   calculateMemberOfflineHours,
   calculateMemberOfflineSeconds,
   calculateMemberLiveWeeklyStudySeconds,
+  isMemberTimerCalibrating,
 } from "@/lib/time/format";
 import { SessionBlock, UserProfile } from "@/lib/supabase/types";
 
@@ -372,6 +373,107 @@ describe("Time Formatting & Active Study Calculation", () => {
       const result = calculateMemberLiveWeeklyStudySeconds(member, now, 2700, "Asia/Kolkata");
       // Clamped to 900s (15 mins from 00:00 to 00:15 IST)
       expect(result).toBe(900);
+    });
+  });
+
+  describe("Website Timer & Snapshot Calibration Regression Tests", () => {
+    const t0 = new Date("2026-10-09T10:00:00Z");
+
+    it("correctly identifies calibration state for all profile combinations", () => {
+      // 1. Clean start: session_start_time present, no accrued snapshot (0) -> Authoritative (NOT calibrating)
+      const cleanStartMember: Partial<UserProfile> = {
+        current_status: "studying",
+        session_start_time: t0.toISOString(),
+        last_resumed_at: null,
+        active_study_seconds_snapshot: 0,
+      };
+      expect(isMemberTimerCalibrating(cleanStartMember)).toBe(false);
+
+      // 2. Accrued snapshot (> 0) with missing last_resumed_at -> CALIBRATING (lacks resume timestamp)
+      const accruedMissingResumeMember: Partial<UserProfile> = {
+        current_status: "studying",
+        session_start_time: t0.toISOString(),
+        last_resumed_at: null,
+        active_study_seconds_snapshot: 1800,
+      };
+      expect(isMemberTimerCalibrating(accruedMissingResumeMember)).toBe(true);
+
+      // 3. Accrued snapshot (> 0) with valid last_resumed_at -> Authoritative (NOT calibrating)
+      const accruedValidResumeMember: Partial<UserProfile> = {
+        current_status: "studying",
+        session_start_time: t0.toISOString(),
+        last_resumed_at: new Date(t0.getTime() + 1800 * 1000).toISOString(),
+        active_study_seconds_snapshot: 1800,
+      };
+      expect(isMemberTimerCalibrating(accruedValidResumeMember)).toBe(false);
+
+      // 4. Missing both timestamps and zero snapshot -> CALIBRATING
+      const ghostMember: Partial<UserProfile> = {
+        current_status: "studying",
+        session_start_time: null,
+        last_resumed_at: null,
+        active_study_seconds_snapshot: 0,
+      };
+      expect(isMemberTimerCalibrating(ghostMember)).toBe(true);
+
+      // 5. Invalid resume timestamp string -> CALIBRATING
+      const invalidResumeMember: Partial<UserProfile> = {
+        current_status: "studying",
+        session_start_time: t0.toISOString(),
+        last_resumed_at: "not-a-valid-date",
+        active_study_seconds_snapshot: 1800,
+      };
+      expect(isMemberTimerCalibrating(invalidResumeMember)).toBe(true);
+
+      // 6. Non-studying status (break / offline) -> Never calibrating
+      expect(isMemberTimerCalibrating({ current_status: "break" })).toBe(false);
+      expect(isMemberTimerCalibrating({ current_status: "offline" })).toBe(false);
+    });
+
+    it("calculates accurate elapsed time for studying member with valid resume timestamp and positive snapshot", () => {
+      // User studied 1800s (30m), took a break, and resumed at 10:45:00
+      const resumeTime = new Date("2026-10-09T10:45:00Z");
+      const member: Partial<UserProfile> = {
+        current_status: "studying",
+        session_start_time: t0.toISOString(),
+        last_resumed_at: resumeTime.toISOString(),
+        active_study_seconds_snapshot: 1800,
+      };
+
+      // At 10:50:00 (5m / 300s since resume)
+      const at5m = new Date("2026-10-09T10:50:00Z");
+      expect(calculateMemberElapsedStudySeconds(member, at5m)).toBe(1800 + 300); // 2100s
+    });
+
+    it("calculates accurate elapsed time for clean initial session start with zero snapshot", () => {
+      const member: Partial<UserProfile> = {
+        current_status: "studying",
+        session_start_time: t0.toISOString(),
+        last_resumed_at: null,
+        active_study_seconds_snapshot: 0,
+      };
+
+      // At 10:15:00 (15m / 900s since start)
+      const at15m = new Date("2026-10-09T10:15:00Z");
+      expect(calculateMemberElapsedStudySeconds(member, at15m)).toBe(900);
+    });
+
+    it("returns base snapshot without overcounting break time when resume timestamp is missing", () => {
+      // Session began at 10:00, paused at 10:30 with 1800s accrued.
+      // Resume timestamp is absent from profile.
+      const member: Partial<UserProfile> = {
+        current_status: "studying",
+        session_start_time: t0.toISOString(),
+        last_resumed_at: null,
+        active_study_seconds_snapshot: 1800,
+      };
+
+      // At 10:45 (15 min after break started)
+      const at1045 = new Date("2026-10-09T10:45:00Z");
+      // calculateMemberElapsedStudySeconds preserves baseSeconds (1800) and does NOT overcount break
+      expect(calculateMemberElapsedStudySeconds(member, at1045)).toBe(1800);
+      // isMemberTimerCalibrating flags it as calibrating so Tier 2 / reconciliation recovers exact time
+      expect(isMemberTimerCalibrating(member)).toBe(true);
     });
   });
 });

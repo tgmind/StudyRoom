@@ -507,6 +507,7 @@ describe("useLiveRoom Hook", () => {
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
+      expect(result.current.members).toHaveLength(2);
     });
 
     // Both are studying: rivalry is active

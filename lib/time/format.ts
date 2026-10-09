@@ -108,18 +108,16 @@ export function calculateMemberElapsedStudySeconds(
       } else {
         rawSeconds = baseSeconds;
       }
-    } else if (baseSeconds > 0) {
-      // Accrued study duration before break is preserved
-      rawSeconds = baseSeconds;
-    } else if (member.session_start_time) {
+    } else if (baseSeconds === 0 && member.session_start_time) {
       // Clean initial start fallback (calculates elapsed study from session start)
       const startMs = new Date(member.session_start_time).getTime();
       if (!isNaN(startMs)) {
         rawSeconds = Math.max(0, Math.floor((now.getTime() - startMs) / 1000));
       } else {
-        rawSeconds = baseSeconds;
+        rawSeconds = 0;
       }
     } else {
+      // Accrued study duration before break is preserved while calibrating
       rawSeconds = baseSeconds;
     }
   }
@@ -139,7 +137,15 @@ export function isMemberTimerCalibrating(
   const hasResume = Boolean(member.last_resumed_at && !isNaN(new Date(member.last_resumed_at).getTime()));
   const hasStart = Boolean(member.session_start_time && !isNaN(new Date(member.session_start_time).getTime()));
   const hasBase = typeof member.active_study_seconds_snapshot === "number" && member.active_study_seconds_snapshot > 0;
-  return !hasResume && !hasStart && !hasBase;
+
+  // Authoritative: valid resume timestamp exists for the active study period
+  if (hasResume) return false;
+
+  // Authoritative: clean initial session start with no accrued break snapshot
+  if (hasStart && !hasBase) return false;
+
+  // Calibrating: lacks authoritative resume timestamp for the current active study period
+  return true;
 }
 
 /**
