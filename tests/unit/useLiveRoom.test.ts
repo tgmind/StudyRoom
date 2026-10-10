@@ -226,9 +226,10 @@ describe("useLiveRoom Hook", () => {
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
+      expect(result.current.members).toHaveLength(1);
+      expect(result.current.members[0].weekly_sessions_count).toBe(1);
     });
 
-    expect(result.current.members).toHaveLength(1);
     const member = result.current.members[0];
     // Must track weekly session count (1 session), ignoring the 10-days-ago session
     expect(member.total_sessions_count).toBe(1);
@@ -508,6 +509,10 @@ describe("useLiveRoom Hook", () => {
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
       expect(result.current.members).toHaveLength(2);
+      const active = result.current.members.filter(
+        (m) => m.current_status === "studying" || m.current_status === "break"
+      );
+      expect(active).toHaveLength(2);
     });
 
     // Both are studying: rivalry is active

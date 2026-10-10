@@ -11,6 +11,8 @@ import { StreakHero } from "@/components/streak/StreakHero";
 import { StreakHeatmap } from "@/components/streak/StreakHeatmap";
 import { ConsistencyMetrics } from "@/components/streak/ConsistencyMetrics";
 import { DayDetailModal } from "@/components/streak/DayDetailModal";
+import { PlannerCalendarMap } from "@/components/streak/PlannerCalendarMap";
+import { useExamPlans } from "@/hooks/useExamPlans";
 import { Flame, Loader2 } from "lucide-react";
 
 export default function StreakPage() {
@@ -59,7 +61,11 @@ export default function StreakPage() {
     stats,
     selectedDay,
     setSelectedDay,
+    dailySummaries,
   } = useUserStreak(user?.id, liveActiveMinutes);
+
+  // Authoritative exam planner data for Streaks calendar visualization
+  const { plans: examPlans, loading: plannerLoading } = useExamPlans(user?.id);
 
   return (
     <div className="flex-1 flex flex-col min-h-screen pb-24 bg-[#090a0f] text-zinc-100">
@@ -110,7 +116,14 @@ export default function StreakPage() {
             {/* 3. Deep Consistency Reports & Analytics Grid */}
             <ConsistencyMetrics stats={stats} />
 
-            {/* 4. Interactive Day Detail Modal */}
+            {/* 4. Exam Preparation Timeline & Calendar Map */}
+            <PlannerCalendarMap
+              plans={examPlans}
+              loading={plannerLoading}
+              dailySummaries={dailySummaries}
+            />
+
+            {/* 5. Interactive Day Detail Modal */}
             <DayDetailModal
               day={selectedDay}
               onClose={() => setSelectedDay(null)}

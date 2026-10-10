@@ -9,6 +9,7 @@ import {
   Flame,
   Target,
   History,
+  CalendarDays,
   Settings,
   Globe,
   ChevronDown,
@@ -46,6 +47,7 @@ export const BottomNav = memo(function BottomNav({ isStudying }: BottomNavProps 
     { href: "/streak", label: "Streak", icon: Flame },
     { href: "/goals", label: "Goals", icon: Target },
     { href: "/history", label: "History", icon: History },
+    { href: "/planner", label: "Planner", icon: CalendarDays },
     { href: "/settings", label: "Settings", icon: Settings },
   ];
 
@@ -167,7 +169,7 @@ export const BottomNav = memo(function BottomNav({ isStudying }: BottomNavProps 
           <ChevronDown className="w-4 h-4" aria-hidden="true" />
         </button>
 
-        <div className="max-w-md sm:max-w-lg mx-auto flex items-center justify-around h-16 px-1">
+        <div className="max-w-md sm:max-w-xl mx-auto flex items-center justify-around h-16 px-0.5 sm:px-1 gap-0.5 sm:gap-1">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive =
@@ -183,7 +185,7 @@ export const BottomNav = memo(function BottomNav({ isStudying }: BottomNavProps 
                 tabIndex={isCollapsed ? -1 : 0}
                 aria-current={isActive ? "page" : undefined}
                 aria-label={item.label}
-                className={`group flex flex-col items-center justify-center min-w-[44px] sm:min-w-[50px] min-h-[44px] px-0.5 sm:px-2 py-1 sm:py-1.5 rounded-2xl text-[10px] font-bold transition-all duration-150 touch-manipulation select-none active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white motion-reduce:transition-none ${
+                className={`group flex flex-col items-center justify-center min-w-[36px] min-[360px]:min-w-[40px] sm:min-w-[48px] min-h-[44px] px-0.5 sm:px-2 py-1 sm:py-1.5 rounded-2xl text-[10px] font-bold transition-all duration-150 touch-manipulation select-none active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white motion-reduce:transition-none ${
                   isActive
                     ? item.href === "/streak"
                       ? "bg-white text-zinc-950 shadow-[0_2px_14px_rgba(255,255,255,0.22)] scale-105 ring-1 ring-amber-400/40"
@@ -193,7 +195,7 @@ export const BottomNav = memo(function BottomNav({ isStudying }: BottomNavProps 
               >
                 <Icon
                   aria-hidden="true"
-                  className={`w-4 h-4 mb-0.5 transition-transform duration-150 motion-reduce:transition-none ${
+                  className={`w-3.5 h-3.5 min-[360px]:w-4 min-[360px]:h-4 mb-0.5 transition-transform duration-150 motion-reduce:transition-none ${
                     isActive
                       ? item.href === "/streak"
                         ? "text-amber-500 fill-amber-500 stroke-[2.25] motion-safe:animate-pulse motion-reduce:animate-none"
@@ -204,8 +206,8 @@ export const BottomNav = memo(function BottomNav({ isStudying }: BottomNavProps 
                 <span
                   className={
                     isActive
-                      ? "text-zinc-950 font-black text-[9.5px] sm:text-[10.5px] tracking-tight truncate max-w-[52px] sm:max-w-none text-center"
-                      : "text-zinc-400 group-hover:text-zinc-200 font-bold text-[9.5px] sm:text-[10px] truncate max-w-[52px] sm:max-w-none text-center"
+                      ? "text-zinc-950 font-black text-[8.5px] min-[360px]:text-[9.5px] sm:text-[10.5px] tracking-tight truncate max-w-[42px] min-[360px]:max-w-[48px] sm:max-w-none text-center"
+                      : "text-zinc-400 group-hover:text-zinc-200 font-bold text-[8.5px] min-[360px]:text-[9.5px] sm:text-[10px] truncate max-w-[42px] min-[360px]:max-w-[48px] sm:max-w-none text-center"
                   }
                 >
                   <span className="hidden sm:inline">{item.label}</span>

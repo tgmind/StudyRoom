@@ -43,8 +43,8 @@ describe("BottomNav Component", () => {
     vi.useRealTimers();
   });
 
-  // 1 & 2: All existing navigation items render with labels and links
-  it("renders all 7 canonical navigation items with correct labels and links", () => {
+  // 1 & 2: All canonical navigation items render with labels and links
+  it("renders all 8 canonical navigation items with correct labels and links", () => {
     render(<BottomNav isStudying={false} />);
 
     const expectedItems = [
@@ -54,6 +54,7 @@ describe("BottomNav Component", () => {
       { label: "Streak", href: "/streak" },
       { label: "Goals", href: "/goals" },
       { label: "History", href: "/history" },
+      { label: "Planner", href: "/planner" },
       { label: "Settings", href: "/settings" },
     ];
 
@@ -62,6 +63,21 @@ describe("BottomNav Component", () => {
       expect(link).toBeInTheDocument();
       expect(link).toHaveAttribute("href", href);
     });
+  });
+
+  it("applies the modern high-contrast white background active indication when on /planner", () => {
+    setMockPathname("/planner");
+    render(<BottomNav isStudying={false} />);
+
+    const plannerLink = screen.getByRole("link", { name: /Planner/i });
+    expect(plannerLink).toHaveClass("bg-white");
+    expect(plannerLink).toHaveClass("text-zinc-950");
+    expect(plannerLink).toHaveAttribute("aria-current", "page");
+
+    // Other links should NOT be active
+    const settingsLink = screen.getByRole("link", { name: /Settings/i });
+    expect(settingsLink).not.toHaveClass("bg-white");
+    expect(settingsLink).not.toHaveAttribute("aria-current");
   });
 
   // 3 & 4: Correct active item receives the new high-contrast active treatment
@@ -286,11 +302,11 @@ describe("BottomNav Component", () => {
   });
 
   // 15: Exact production routes preserved
-  it("contains exactly and only the 7 production routes without placeholder items", () => {
+  it("contains exactly and only the 8 production routes without placeholder items", () => {
     render(<BottomNav isStudying={false} />);
 
     const links = screen.getAllByRole("link");
-    expect(links).toHaveLength(7);
+    expect(links).toHaveLength(8);
 
     const hrefs = links.map((link) => link.getAttribute("href"));
     expect(hrefs).toEqual([
@@ -300,6 +316,7 @@ describe("BottomNav Component", () => {
       "/streak",
       "/goals",
       "/history",
+      "/planner",
       "/settings",
     ]);
   });

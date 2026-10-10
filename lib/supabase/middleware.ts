@@ -41,7 +41,7 @@ export async function updateSession(request: NextRequest) {
   }
 
   // Protected application routes (regular users)
-  const protectedRoutes = ["/room", "/leaderboard", "/streak", "/goals", "/history", "/settings", "/guide"];
+  const protectedRoutes = ["/room", "/leaderboard", "/streak", "/goals", "/history", "/planner", "/settings", "/guide"];
   const isProtectedRoute = protectedRoutes.some((route) => pathname.startsWith(route));
   const isAdminRoute = pathname.startsWith("/admin");
   const isAuthRoute =

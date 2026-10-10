@@ -50,6 +50,45 @@ export interface DailyGoal {
   archived_at: string | null;
 }
 
+export type SlotCategory =
+  | "syllabus"
+  | "revision"
+  | "mock_tests"
+  | "practice"
+  | "custom";
+
+export interface ExamPlan {
+  id: string;
+  user_id: string;
+  exam_name: string;
+  exam_date: string; // YYYY-MM-DD
+  description?: string | null;
+  show_in_streaks: boolean;
+  is_locked: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PreparationSlot {
+  id: string;
+  plan_id: string;
+  user_id: string;
+  title: string;
+  description?: string | null;
+  start_date: string; // YYYY-MM-DD
+  end_date: string; // YYYY-MM-DD
+  category: SlotCategory | string;
+  color: string;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ExamPlanWithSlots extends ExamPlan {
+  slots: PreparationSlot[];
+}
+
 export interface CompletedSessionTask {
   id: string;
   task: string;
@@ -541,6 +580,18 @@ export interface Database {
         }>;
         Relationships: [];
       };
+      exam_plans: {
+        Row: ExamPlan;
+        Insert: Partial<ExamPlan>;
+        Update: Partial<ExamPlan>;
+        Relationships: [];
+      };
+      preparation_slots: {
+        Row: PreparationSlot;
+        Insert: Partial<PreparationSlot>;
+        Update: Partial<PreparationSlot>;
+        Relationships: [];
+      };
     };
     Views: {
       [_ in never]: never;
@@ -659,6 +710,22 @@ export interface Database {
       };
       rpc_cleanup_expired_enrollment_grants: {
         Args: Record<string, never>;
+        Returns: Json;
+      };
+      rpc_reorder_exam_plans: {
+        Args: {
+          p_plan_ids: string[];
+        };
+        Returns: Json;
+      };
+      rpc_create_exam_plan_with_slot: {
+        Args: {
+          p_exam_name: string;
+          p_exam_date: string;
+          p_description?: string | null;
+          p_show_in_streaks?: boolean;
+          p_initial_slot?: Json | null;
+        };
         Returns: Json;
       };
     };

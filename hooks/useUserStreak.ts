@@ -55,7 +55,7 @@ export function useUserStreak(userId?: string, liveActiveMinutes = 0) {
       const supabase = createClient();
       const serverNow = getServerNow();
       const currentWeekStartIso = new Date(getWeekStartTimestamp(serverNow, timezone)).toISOString();
-      const ninetyDaysAgoIso = new Date(serverNow.getTime() - 90 * 86400000).toISOString();
+      const pastStartDateIso = new Date(serverNow.getTime() - 365 * 86400000).toISOString();
 
       // 1. Fetch current week's full sessions
       const weekPromise = supabase
@@ -65,12 +65,12 @@ export function useUserStreak(userId?: string, liveActiveMinutes = 0) {
         .gte("start_time", currentWeekStartIso)
         .order("start_time", { ascending: false });
 
-      // 2. Fetch past 90 days lightweight sessions to build historical daily summaries
+      // 2. Fetch past 365 days lightweight sessions to build historical daily summaries
       const pastPromise = supabase
         .from("study_sessions")
         .select("start_time, end_time, duration_minutes")
         .eq("user_id", userId)
-        .gte("start_time", ninetyDaysAgoIso);
+        .gte("start_time", pastStartDateIso);
 
       const [weekRes, pastRes] = await Promise.all([weekPromise, pastPromise]);
 
@@ -234,6 +234,7 @@ export function useUserStreak(userId?: string, liveActiveMinutes = 0) {
     stats,
     selectedDay: activeSelectedDay,
     setSelectedDay,
+    dailySummaries: mergedSummaries,
     refreshStreak: fetchStreakData,
   };
 }
