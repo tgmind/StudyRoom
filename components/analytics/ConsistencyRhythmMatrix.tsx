@@ -5,6 +5,7 @@ import { ConsistencyEntry, LowPerformerEntry } from "@/lib/supabase/types";
 import { calculateConsistencyRanking } from "@/lib/analytics/consistency";
 import { formatMinutesToHours } from "@/lib/time/format";
 import { TrendingUp, Clock } from "lucide-react";
+import { ObservatoryAvatar } from "./ObservatoryAvatar";
 
 interface ConsistencyRhythmMatrixProps {
   entries: (ConsistencyEntry | LowPerformerEntry)[];
@@ -67,10 +68,12 @@ export const ConsistencyRhythmMatrix = memo(function ConsistencyRhythmMatrix({
                   <span className="font-mono text-xs font-black text-sky-400/90 shrink-0">
                     #{entry.rank}
                   </span>
-                  <div className="w-8 h-8 rounded-xl overflow-hidden bg-zinc-800 border border-zinc-700/80 shrink-0">
-                    <AvatarContent
+                  <div className="w-8 h-8 rounded-xl overflow-hidden bg-zinc-900 border border-zinc-700/80 shrink-0 flex items-center justify-center">
+                    <ObservatoryAvatar
                       name={entry.display_name}
                       url={entry.avatar_url}
+                      size="sm"
+                      theme="sky"
                     />
                   </div>
                   <div className="min-w-0">
@@ -156,18 +159,3 @@ export const ConsistencyRhythmMatrix = memo(function ConsistencyRhythmMatrix({
     </div>
   );
 });
-
-function AvatarContent({ name, url }: { name: string; url: string | null }) {
-  const initials = name ? name.substring(0, 2).toUpperCase() : "??";
-  if (url) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img src={url} alt={name} className="w-full h-full object-cover" />
-    );
-  }
-  return (
-    <div className="w-full h-full bg-zinc-800 flex items-center justify-center text-zinc-300 font-black text-[11px]">
-      {initials}
-    </div>
-  );
-}

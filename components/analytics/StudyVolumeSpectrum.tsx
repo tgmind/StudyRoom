@@ -4,6 +4,7 @@ import React, { memo } from "react";
 import { MostStudyingEntry } from "@/lib/supabase/types";
 import { formatMinutesToHours } from "@/lib/time/format";
 import { Flame, Clock, Calendar, Trophy } from "lucide-react";
+import { ObservatoryAvatar } from "./ObservatoryAvatar";
 
 interface StudyVolumeSpectrumProps {
   entries: MostStudyingEntry[];
@@ -107,8 +108,15 @@ function PinnacleHeroNode({
           <div className="flex items-center space-x-3 min-w-0">
             {/* Profile Avatar */}
             <div className="relative shrink-0">
-              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl p-0.5 bg-gradient-to-b from-amber-300 to-amber-600 shadow-[0_0_16px_rgba(245,158,11,0.3)] ring-2 ring-amber-400/30">
-                <AvatarContent name={entry.display_name} url={entry.avatar_url} />
+              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl p-0.5 bg-gradient-to-b from-amber-300 via-amber-400 to-amber-600 shadow-[0_0_16px_rgba(245,158,11,0.35)] ring-2 ring-amber-400/30 overflow-hidden">
+                <div className="w-full h-full rounded-[14px] overflow-hidden bg-zinc-950 flex items-center justify-center relative">
+                  <ObservatoryAvatar
+                    name={entry.display_name}
+                    url={entry.avatar_url}
+                    size="hero"
+                    theme="amber"
+                  />
+                </div>
               </div>
               <div className="absolute -bottom-1 -right-1 px-1.5 py-0.2 rounded-full bg-amber-400 text-zinc-950 text-[9px] font-black shadow border border-amber-200">
                 #1
@@ -193,8 +201,8 @@ function ComparativeVelocityCard({
         <span className="font-mono text-xs font-black text-zinc-500 shrink-0">
           #{entry.rank}
         </span>
-        <div className="w-9 h-9 rounded-xl overflow-hidden bg-zinc-800 border border-zinc-700/80 shrink-0">
-          <AvatarContent name={entry.display_name} url={entry.avatar_url} />
+        <div className="w-9 h-9 rounded-xl overflow-hidden bg-zinc-900 border border-zinc-700/80 shrink-0 flex items-center justify-center">
+          <ObservatoryAvatar name={entry.display_name} url={entry.avatar_url} size="md" theme="default" />
         </div>
         <div className="min-w-0">
           <div className="flex items-center space-x-1.5">
@@ -254,8 +262,8 @@ function CompactVelocityRow({
         <span className="font-mono text-xs font-black text-zinc-500 shrink-0">
           #{entry.rank}
         </span>
-        <div className="w-7 h-7 rounded-lg overflow-hidden bg-zinc-800 border border-zinc-700/80 shrink-0">
-          <AvatarContent name={entry.display_name} url={entry.avatar_url} />
+        <div className="w-7 h-7 rounded-lg overflow-hidden bg-zinc-900 border border-zinc-700/80 shrink-0 flex items-center justify-center">
+          <ObservatoryAvatar name={entry.display_name} url={entry.avatar_url} size="xs" theme="default" />
         </div>
         <div className="min-w-0 flex items-center space-x-2">
           <span className="text-xs font-bold text-zinc-200 truncate">
@@ -284,21 +292,6 @@ function CompactVelocityRow({
           ({totalHours})
         </span>
       </div>
-    </div>
-  );
-}
-
-function AvatarContent({ name, url }: { name: string; url: string | null }) {
-  const initials = name ? name.substring(0, 2).toUpperCase() : "??";
-  if (url) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img src={url} alt={name} className="w-full h-full object-cover" />
-    );
-  }
-  return (
-    <div className="w-full h-full bg-zinc-800 flex items-center justify-center text-zinc-300 font-black text-xs">
-      {initials}
     </div>
   );
 }

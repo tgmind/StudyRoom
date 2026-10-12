@@ -2844,7 +2844,7 @@ BEGIN
     END IF;
   END IF;
 
-  IF v_achiever_rec IS NOT NULL THEN
+  IF v_achiever_rec.user_id IS NOT NULL THEN
     INSERT INTO public.weekly_achiever_snapshots (
       celebration_period_id,
       source_period_id,
@@ -3090,7 +3090,7 @@ BEGIN
   FROM public.weekly_global_analytics_snapshots
   WHERE period_id = v_source_period_id AND is_finalized = TRUE;
 
-  IF v_snapshot IS NULL THEN
+  IF v_snapshot.period_id IS NULL THEN
     RETURN jsonb_build_object(
       'success', false,
       'is_finalized', false,
@@ -3112,7 +3112,7 @@ BEGIN
     FROM public.weekly_user_analytics_records
     WHERE period_id = v_source_period_id AND user_id = v_user_id;
 
-    IF v_user_record IS NOT NULL THEN
+    IF v_user_record.user_id IS NOT NULL THEN
       -- Extract 5th place cutoff from rankings to compute distance to Top 5
       v_top5_cutoff_mins := COALESCE(
         (v_snapshot.rankings->'most_studying'->4->>'total_study_minutes')::INTEGER,
@@ -3154,7 +3154,7 @@ BEGIN
     'week_start', v_snapshot.week_start,
     'week_end', v_snapshot.week_end,
     'finalized_at', v_snapshot.finalized_at,
-    'achiever', CASE WHEN v_achiever IS NOT NULL THEN
+    'achiever', CASE WHEN v_achiever.id IS NOT NULL THEN
       jsonb_build_object(
         'id', v_achiever.id,
         'celebration_period_id', v_celebration_period_id,

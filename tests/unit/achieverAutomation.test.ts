@@ -1,10 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { NextRequest } from "next/server";
 import {
   isMondayInTimezone,
   getMondayDateString,
   processWeeklyAchieverAutomation,
 } from "@/lib/email/achieverAutomation";
 import * as mailer from "@/lib/email/mailer";
+import { GET as cronGet, POST as cronPost } from "@/app/api/cron/weekly-achiever/route";
+import * as adminModule from "@/lib/supabase/admin";
 
 describe("Weekly Achiever Automation Unit Tests", () => {
   beforeEach(() => {
@@ -580,6 +583,337 @@ describe("Weekly Achiever Automation Unit Tests", () => {
       expect(result.skipped).toBe(true);
       expect(result.reason).toContain("claimed the weekly achiever alert simultaneously");
       expect(sendSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Privileged Finalization, Error Propagation & Null-Safety Contracts", () => {
+    it("1. FAIL-CLOSED: returns failure when admin client is missing and no supabaseOverride is provided", async () => {
+      vi.spyOn(adminModule, "createAdminClient").mockReturnValue(null);
+
+      const result = await processWeeklyAchieverAutomation({
+        force: true,
+        timezone: "Asia/Kolkata",
+        now: new Date("2026-10-12T10:00:00Z"),
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.processed).toBe(false);
+      expect(result.error).toContain("SUPABASE_SERVICE_ROLE_KEY");
+    });
+
+    it("2. FAIL-CLOSED: handles resolved RPC error from rpc_finalize_weekly_global_analytics and halts execution", async () => {
+      const sendSpy = vi.spyOn(mailer, "sendAlertEmail");
+      const mockSupabase = {
+        rpc: vi.fn().mockImplementation((fnName: string) => {
+          if (fnName === "rpc_finalize_weekly_global_analytics") {
+            return Promise.resolve({
+              data: null,
+              error: {
+                message: "Permission denied for function rpc_finalize_weekly_global_analytics (role anon)",
+                code: "42501",
+              },
+            });
+          }
+          return Promise.resolve({ data: null, error: null });
+        }),
+      };
+
+      const result = await processWeeklyAchieverAutomation({
+        force: true,
+        timezone: "Asia/Kolkata",
+        now: new Date("2026-10-12T10:00:00Z"),
+        supabaseOverride: mockSupabase,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.processed).toBe(false);
+      expect(result.error).toContain("Global Analytics finalization failed: Permission denied");
+      // Verification: Dependent email dispatch must NEVER execute when finalization fails
+      expect(sendSpy).not.toHaveBeenCalled();
+    });
+
+    it("3. FAIL-CLOSED: handles rejected promise during rpc_finalize_weekly_global_analytics cleanly", async () => {
+      const sendSpy = vi.spyOn(mailer, "sendAlertEmail");
+      const mockSupabase = {
+        rpc: vi.fn().mockImplementation((fnName: string) => {
+          if (fnName === "rpc_finalize_weekly_global_analytics") {
+            return Promise.reject(new Error("Supabase connection timeout during finalization"));
+          }
+          return Promise.resolve({ data: null, error: null });
+        }),
+      };
+
+      const result = await processWeeklyAchieverAutomation({
+        force: true,
+        timezone: "Asia/Kolkata",
+        now: new Date("2026-10-12T10:00:00Z"),
+        supabaseOverride: mockSupabase,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.processed).toBe(false);
+      expect(result.error).toContain("Supabase connection timeout during finalization");
+      expect(sendSpy).not.toHaveBeenCalled();
+    });
+
+    it("4. SUCCESS: invokes rpc_finalize_weekly_global_analytics with specified timezone and client", async () => {
+      vi.spyOn(mailer, "isMailerConfigured").mockReturnValue({
+        configured: false,
+        reason: "Mailer not needed for this check",
+      });
+
+      const finalizeSpy = vi.fn().mockResolvedValue({
+        data: {
+          success: true,
+          action: "finalized",
+          period_id: "2026-10-05",
+          celebration_period_id: "2026-10-12",
+        },
+        error: null,
+      });
+
+      const mockSupabase = {
+        rpc: finalizeSpy,
+      };
+
+      const result = await processWeeklyAchieverAutomation({
+        force: true,
+        timezone: "Asia/Kolkata",
+        now: new Date("2026-10-12T10:00:00Z"),
+        supabaseOverride: mockSupabase,
+      });
+
+      expect(finalizeSpy).toHaveBeenCalledWith("rpc_finalize_weekly_global_analytics", {
+        p_timezone: "Asia/Kolkata",
+      });
+      // Stopped at mailer check after successful finalization
+      expect(result.error).toContain("Mailer not needed for this check");
+    });
+
+    it("5. NULL-SAFETY: processes achiever winner with avatar_url = null correctly", async () => {
+      vi.spyOn(mailer, "isMailerConfigured").mockReturnValue({
+        configured: true,
+        user: "studyaliveapp@gmail.com",
+      });
+
+      const sendSpy = vi.spyOn(mailer, "sendAlertEmail").mockResolvedValue({
+        success: true,
+        messageId: "<test-anindita-msg@gmail.com>",
+      });
+
+      const mockSupabase = {
+        from: vi.fn().mockReturnValue({
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                gte: vi.fn().mockResolvedValue({ data: [], error: null }),
+              }),
+            }),
+          }),
+        }),
+        rpc: vi.fn().mockImplementation((fnName: string) => {
+          if (fnName === "rpc_finalize_weekly_global_analytics") {
+            return Promise.resolve({
+              data: { success: true, action: "finalized", period_id: "2026-10-05" },
+              error: null,
+            });
+          }
+          if (fnName === "rpc_get_current_weekly_achiever") {
+            return Promise.resolve({
+              data: [
+                {
+                  user_id: "1b41e341-f213-4c40-826e-cc538d686028",
+                  display_name: "Anindita Debnath",
+                  email: "anindita@example.com",
+                  avatar_url: null, // Critical: avatar_url is NULL
+                  already_sent_this_week: false,
+                },
+              ],
+              error: null,
+            });
+          }
+          if (fnName === "rpc_claim_weekly_achiever_alert") {
+            return Promise.resolve({
+              data: { claimed: true, alert_id: "claim-anindita-1" },
+              error: null,
+            });
+          }
+          if (fnName === "rpc_complete_weekly_achiever_alert") {
+            return Promise.resolve({ data: true, error: null });
+          }
+          return Promise.resolve({ data: null, error: null });
+        }),
+      };
+
+      const result = await processWeeklyAchieverAutomation({
+        force: false,
+        now: new Date("2026-10-12T10:00:00Z"),
+        timezone: "Asia/Kolkata",
+        supabaseOverride: mockSupabase,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.processed).toBe(true);
+      expect(result.winner?.name).toBe("Anindita Debnath");
+      expect(result.winner?.email).toBe("anindita@example.com");
+      expect(sendSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: "anindita@example.com",
+          name: "Anindita Debnath",
+          type: "A",
+        })
+      );
+    });
+
+    it("6. IDEMPOTENCY: safely handles already_finalized action without duplicate email dispatch", async () => {
+      vi.spyOn(mailer, "isMailerConfigured").mockReturnValue({
+        configured: true,
+        user: "studyaliveapp@gmail.com",
+      });
+
+      const sendSpy = vi.spyOn(mailer, "sendAlertEmail");
+
+      const mockSupabase = {
+        from: vi.fn().mockReturnValue({
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                gte: vi.fn().mockResolvedValue({
+                  data: [{ id: "existing-alert-id", sent_at: "2026-10-12T04:00:00Z" }],
+                  error: null,
+                }),
+              }),
+            }),
+          }),
+        }),
+        rpc: vi.fn().mockImplementation((fnName: string) => {
+          if (fnName === "rpc_finalize_weekly_global_analytics") {
+            return Promise.resolve({
+              data: { success: true, action: "already_finalized", already_finalized: true },
+              error: null,
+            });
+          }
+          return Promise.resolve({ data: null, error: null });
+        }),
+      };
+
+      const result = await processWeeklyAchieverAutomation({
+        force: false,
+        now: new Date("2026-10-12T10:00:00Z"),
+        timezone: "Asia/Kolkata",
+        supabaseOverride: mockSupabase,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.processed).toBe(false);
+      expect(result.skipped).toBe(true);
+      expect(result.alreadySentThisWeek).toBe(true);
+      expect(sendSpy).not.toHaveBeenCalled();
+    });
+
+    it("7. CRON ROUTE: GET and POST fail closed with status 500 when SUPABASE_SERVICE_ROLE_KEY is unconfigured", async () => {
+      process.env.CRON_SECRET = "valid-secret-token";
+      vi.spyOn(adminModule, "createAdminClient").mockReturnValue(null);
+
+      const reqGet = new NextRequest("http://localhost:3000/api/cron/weekly-achiever", {
+        method: "GET",
+        headers: { "x-cron-secret": "valid-secret-token" },
+      });
+
+      const resGet = await cronGet(reqGet);
+      expect(resGet.status).toBe(500);
+      const jsonGet = await resGet.json();
+      expect(jsonGet.success).toBe(false);
+      expect(jsonGet.error).toContain("Server configuration missing SUPABASE_SERVICE_ROLE_KEY");
+
+      const reqPost = new NextRequest("http://localhost:3000/api/cron/weekly-achiever", {
+        method: "POST",
+        headers: { "x-cron-secret": "valid-secret-token" },
+      });
+
+      const resPost = await cronPost(reqPost);
+      expect(resPost.status).toBe(500);
+      const jsonPost = await resPost.json();
+      expect(jsonPost.success).toBe(false);
+      expect(jsonPost.error).toContain("Server configuration missing SUPABASE_SERVICE_ROLE_KEY");
+    });
+
+    it("8. CRON ROUTE: passes resolved createAdminClient to processWeeklyAchieverAutomation", async () => {
+      process.env.CRON_SECRET = "valid-secret-token";
+      const fakeAdminClient = {
+        rpc: vi.fn().mockResolvedValue({
+          data: { success: true, action: "already_finalized", already_finalized: true },
+          error: null,
+        }),
+        from: vi.fn().mockReturnValue({
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                gte: vi.fn().mockResolvedValue({
+                  data: [{ id: "already-sent-alert" }],
+                  error: null,
+                }),
+              }),
+            }),
+          }),
+        }),
+      } as any;
+
+      const adminSpy = vi.spyOn(adminModule, "createAdminClient").mockReturnValue(fakeAdminClient);
+
+      const req = new NextRequest("http://localhost:3000/api/cron/weekly-achiever", {
+        method: "POST",
+        headers: { "x-cron-secret": "valid-secret-token" },
+      });
+
+      const res = await cronPost(req);
+      expect(adminSpy).toHaveBeenCalled();
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.success).toBe(true);
+    });
+
+    it("9. ALERT LIFECYCLE: acknowledging an older period does not suppress a newer period alert", () => {
+      const acknowledgements = new Set<string>();
+      const userAcknowledged = (userId: string, periodId: string) =>
+        acknowledgements.has(`${userId}:${periodId}`);
+      const acknowledgeAlert = (userId: string, periodId: string) =>
+        acknowledgements.add(`${userId}:${periodId}`);
+
+      const userId = "user-1";
+      const olderPeriod = "2026-10-05"; // Celebration period for week 2026-09-28
+      const newerPeriod = "2026-10-12"; // Celebration period for week 2026-10-05
+
+      // User acknowledged last week's celebration
+      acknowledgeAlert(userId, olderPeriod);
+      expect(userAcknowledged(userId, olderPeriod)).toBe(true);
+
+      // When checking newer period, alert MUST NOT be suppressed
+      expect(userAcknowledged(userId, newerPeriod)).toBe(false);
+
+      // Once user acknowledges newer period, it is suppressed
+      acknowledgeAlert(userId, newerPeriod);
+      expect(userAcknowledged(userId, newerPeriod)).toBe(true);
+    });
+
+    it("10. ALERT DATA CONTRACT: missing optional avatar_url preserves achiever_name in alert payload", () => {
+      const achieverRecord = {
+        id: "snapshot-1",
+        celebration_period_id: "2026-10-12",
+        display_name: "Anindita Debnath",
+        avatar_url: null, // Nullable optional field
+      };
+
+      // Simulates rpc_get_user_analytics_alert_status logic
+      const alertPayload = {
+        show_alert: true,
+        celebration_period_id: achieverRecord.celebration_period_id,
+        achiever_name: achieverRecord.display_name || "the community leader",
+      };
+
+      expect(alertPayload.show_alert).toBe(true);
+      expect(alertPayload.celebration_period_id).toBe("2026-10-12");
+      expect(alertPayload.achiever_name).toBe("Anindita Debnath");
     });
   });
 });

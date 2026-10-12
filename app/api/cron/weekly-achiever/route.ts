@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { processWeeklyAchieverAutomation } from "@/lib/email/achieverAutomation";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -59,12 +60,22 @@ async function handleRequest(request: NextRequest) {
       );
     }
 
+    const adminClient = createAdminClient();
+    if (!adminClient) {
+      console.error("[Cron Weekly Achiever] SUPABASE_SERVICE_ROLE_KEY is not configured on the server (Fail-Closed)");
+      return NextResponse.json(
+        { success: false, error: "Server configuration missing SUPABASE_SERVICE_ROLE_KEY" },
+        { status: 500 }
+      );
+    }
+
     const force = searchParams.get("force") === "true";
     const timezone = searchParams.get("timezone") || process.env.NEXT_PUBLIC_APP_TIMEZONE || "Asia/Kolkata";
 
     const result = await processWeeklyAchieverAutomation({
       force,
       timezone,
+      supabaseOverride: adminClient,
     });
 
     return NextResponse.json(result, { status: result.success ? 200 : 500 });

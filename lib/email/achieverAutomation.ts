@@ -1,6 +1,6 @@
 import { getWeekStartTimestamp } from "@/lib/time/format";
 import { isMailerConfigured, sendAlertEmail } from "@/lib/email/mailer";
-import { createClient as createServerClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export interface AchieverAutomationResult {
   success: boolean;
@@ -123,14 +123,54 @@ export async function processWeeklyAchieverAutomation(options?: {
   // Must execute independently of mailer configuration or email delivery status
   try {
     const supabaseForAnalytics = options?.supabaseOverride
-      ? (options.supabaseOverride as ReturnType<typeof createServerClient> extends Promise<infer U> ? U : unknown)
-      : await createServerClient();
+      ? (options.supabaseOverride as ReturnType<typeof createAdminClient>)
+      : createAdminClient();
+
+    if (!supabaseForAnalytics) {
+      console.error("[Weekly Automation] SUPABASE_SERVICE_ROLE_KEY unconfigured; cannot finalize Global Analytics.");
+      return {
+        success: false,
+        processed: false,
+        error: "Server configuration missing SUPABASE_SERVICE_ROLE_KEY for privileged finalization.",
+        weekKey,
+        isMonday,
+      };
+    }
+
     const rpcCaller = supabaseForAnalytics as unknown as RpcCaller;
-    await rpcCaller.rpc("rpc_finalize_weekly_global_analytics", {
+    const rpcRes = (await rpcCaller.rpc("rpc_finalize_weekly_global_analytics", {
       p_timezone: timezone,
-    });
+    })) as { data?: unknown; error?: { message: string; code?: string } | null } | undefined;
+
+    const finalizeData = rpcRes?.data;
+    const finalizeError = rpcRes?.error;
+
+    if (finalizeError) {
+      console.error("[Weekly Automation] Global Analytics finalization failed:", {
+        message: finalizeError.message,
+        code: (finalizeError as any).code,
+        timezone,
+        weekKey,
+      });
+      return {
+        success: false,
+        processed: false,
+        error: `Global Analytics finalization failed: ${finalizeError.message}`,
+        weekKey,
+        isMonday,
+      };
+    }
+
+    console.log("[Weekly Automation] Global Analytics finalized successfully for week:", weekKey, finalizeData);
   } catch (analyticsErr) {
-    console.warn("[Weekly Automation] Global Analytics finalization notice:", analyticsErr);
+    console.error("[Weekly Automation] Unexpected exception during Global Analytics finalization:", analyticsErr);
+    return {
+      success: false,
+      processed: false,
+      error: analyticsErr instanceof Error ? analyticsErr.message : "Unexpected finalization exception",
+      weekKey,
+      isMonday,
+    };
   }
 
   // 2. Check mailer configuration
@@ -147,8 +187,18 @@ export async function processWeeklyAchieverAutomation(options?: {
 
   // 3. Initialize Supabase client
   const supabase = options?.supabaseOverride
-    ? (options.supabaseOverride as ReturnType<typeof createServerClient> extends Promise<infer U> ? U : unknown)
-    : await createServerClient();
+    ? (options.supabaseOverride as ReturnType<typeof createAdminClient>)
+    : createAdminClient();
+
+  if (!supabase) {
+    return {
+      success: false,
+      processed: false,
+      error: "Server configuration missing SUPABASE_SERVICE_ROLE_KEY for achiever automation.",
+      weekKey,
+      isMonday,
+    };
+  }
 
   const rpcClient = supabase as unknown as RpcCaller;
 

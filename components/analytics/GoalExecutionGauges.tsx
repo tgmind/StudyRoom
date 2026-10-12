@@ -4,6 +4,7 @@ import React, { memo } from "react";
 import { GoalChaserEntry } from "@/lib/supabase/types";
 import { formatMinutesToHours } from "@/lib/time/format";
 import { Target, CheckCircle2, Clock } from "lucide-react";
+import { ObservatoryAvatar } from "./ObservatoryAvatar";
 
 interface GoalExecutionGaugesProps {
   entries: GoalChaserEntry[];
@@ -110,11 +111,15 @@ function PrimaryPrecisionSpotlight({
           <div className="flex items-center space-x-3.5 min-w-0">
             {/* Profile Avatar */}
             <div className="relative shrink-0">
-              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl p-0.5 bg-gradient-to-b from-emerald-300 to-emerald-600 shadow-[0_0_20px_rgba(16,185,129,0.35)] ring-2 ring-emerald-400/30">
-                <AvatarContent
-                  name={entry.display_name}
-                  url={entry.avatar_url}
-                />
+              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl p-0.5 bg-gradient-to-b from-emerald-300 via-emerald-400 to-emerald-600 shadow-[0_0_20px_rgba(16,185,129,0.35)] ring-2 ring-emerald-400/30 overflow-hidden">
+                <div className="w-full h-full rounded-[14px] overflow-hidden bg-zinc-950 flex items-center justify-center relative">
+                  <ObservatoryAvatar
+                    name={entry.display_name}
+                    url={entry.avatar_url}
+                    size="hero"
+                    theme="emerald"
+                  />
+                </div>
               </div>
               <div className="absolute -bottom-1 -right-1 px-1.5 py-0.2 rounded-full bg-emerald-400 text-zinc-950 text-[10px] font-black shadow border border-emerald-200">
                 #1
@@ -217,8 +222,8 @@ function CompactGaugeCard({
         <span className="font-mono text-xs font-black text-emerald-400/90 shrink-0">
           #{entry.rank}
         </span>
-        <div className="w-9 h-9 rounded-xl overflow-hidden bg-zinc-800 border border-zinc-700/80 shrink-0">
-          <AvatarContent name={entry.display_name} url={entry.avatar_url} />
+        <div className="w-9 h-9 rounded-xl overflow-hidden bg-zinc-900 border border-zinc-700/80 shrink-0 flex items-center justify-center">
+          <ObservatoryAvatar name={entry.display_name} url={entry.avatar_url} size="md" theme="default" />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center space-x-1.5">
@@ -264,21 +269,6 @@ function CompactGaugeCard({
           {Math.round(entry.goal_completion_pct)}%
         </span>
       </div>
-    </div>
-  );
-}
-
-function AvatarContent({ name, url }: { name: string; url: string | null }) {
-  const initials = name ? name.substring(0, 2).toUpperCase() : "??";
-  if (url) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img src={url} alt={name} className="w-full h-full object-cover" />
-    );
-  }
-  return (
-    <div className="w-full h-full bg-zinc-800 flex items-center justify-center text-zinc-300 font-black text-[11px]">
-      {initials}
     </div>
   );
 }
