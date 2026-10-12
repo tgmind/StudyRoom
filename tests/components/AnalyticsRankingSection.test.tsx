@@ -190,7 +190,7 @@ describe("AnalyticsRankingSection & Observatory Visualizers", () => {
   });
 
   describe("2. Most Studying — Study Volume Spectrum (Intensity Cascade)", () => {
-    it("renders #1 Pinnacle Hero with daily velocity, total volume, and 100% baseline bar", () => {
+    it("renders #1 Pinnacle Hero with daily velocity, total volume, and 7-day study rhythm track", () => {
       render(
         <AnalyticsRankingSection
           rankings={mockRankings}
@@ -204,7 +204,9 @@ describe("AnalyticsRankingSection & Observatory Visualizers", () => {
       expect(screen.getByText("39.6h total volume")).toBeDefined();
       expect(screen.getByText("7 of 7 active days")).toBeDefined();
       expect(screen.getByText("99.2 pts")).toBeDefined();
-      expect(screen.getByText("100% Baseline")).toBeDefined();
+      expect(screen.getByText("7-Day Study Rhythm Track")).toBeDefined();
+      expect(screen.queryByText("100% Baseline")).toBeNull();
+      expect(screen.queryByText("Velocity Target")).toBeNull();
     });
 
     it("renders #2 and #3 comparative velocity cards with proportional bars", () => {
@@ -400,6 +402,139 @@ describe("AnalyticsRankingSection & Observatory Visualizers", () => {
       expect(screen.getByText("Sanya")).toBeDefined();
       expect(screen.getByText("95%")).toBeDefined();
       expect(screen.getByText(/19\/20 tasks/i)).toBeDefined();
+    });
+  });
+
+  describe("6. Touch Swipe Gestures & 3D Page Turn Navigation", () => {
+    it("advances to next section upon right-to-left touch swipe", () => {
+      render(<AnalyticsRankingSection rankings={mockRankings} />);
+
+      const observatorySection = screen.getByLabelText(
+        "Global Analytics Observatory"
+      );
+      const cardSheet = observatorySection.querySelector(".touch-pan-y");
+      expect(cardSheet).toBeDefined();
+
+      // Initial page is Study (Page 1/4)
+      expect(screen.getByText("Top Study Velocity · #1")).toBeDefined();
+      expect(screen.getByText("Page 1/4")).toBeDefined();
+
+      // Swipe right-to-left: touchStart at x=200, move to x=100, end at x=100 (diffX = -100)
+      fireEvent.touchStart(cardSheet!, {
+        touches: [{ clientX: 200, clientY: 100 }],
+      });
+      fireEvent.touchMove(cardSheet!, {
+        touches: [{ clientX: 100, clientY: 100 }],
+      });
+      fireEvent.touchEnd(cardSheet!, {
+        changedTouches: [{ clientX: 100, clientY: 100 }],
+      });
+
+      // Moves to Consistency (Page 2/4)
+      expect(
+        screen.getByText("Top Consistent Students • 7-Day Habit Continuity")
+      ).toBeDefined();
+      expect(screen.getByText("Page 2/4")).toBeDefined();
+
+      // Swipe right-to-left again -> Achievers (Page 3/4)
+      fireEvent.touchStart(cardSheet!, {
+        touches: [{ clientX: 200, clientY: 100 }],
+      });
+      fireEvent.touchMove(cardSheet!, {
+        touches: [{ clientX: 100, clientY: 100 }],
+      });
+      fireEvent.touchEnd(cardSheet!, {
+        changedTouches: [{ clientX: 100, clientY: 100 }],
+      });
+
+      expect(
+        screen.getByText("Grand Master Achiever · #1 Hall of Fame")
+      ).toBeDefined();
+      expect(screen.getByText("Page 3/4")).toBeDefined();
+    });
+
+    it("navigates to previous section upon left-to-right touch swipe", () => {
+      render(<AnalyticsRankingSection rankings={mockRankings} />);
+
+      const observatorySection = screen.getByLabelText(
+        "Global Analytics Observatory"
+      );
+      const cardSheet = observatorySection.querySelector(".touch-pan-y");
+
+      // First click Achievers (Page 3/4)
+      fireEvent.click(screen.getByRole("tab", { name: /Achievers/i }));
+      expect(screen.getByText("Page 3/4")).toBeDefined();
+
+      // Swipe left-to-right: touchStart at x=100, move to x=200, end at x=200 (diffX = +100)
+      fireEvent.touchStart(cardSheet!, {
+        touches: [{ clientX: 100, clientY: 100 }],
+      });
+      fireEvent.touchMove(cardSheet!, {
+        touches: [{ clientX: 200, clientY: 100 }],
+      });
+      fireEvent.touchEnd(cardSheet!, {
+        changedTouches: [{ clientX: 200, clientY: 100 }],
+      });
+
+      // Moves back to Consistency (Page 2/4)
+      expect(
+        screen.getByText("Top Consistent Students • 7-Day Habit Continuity")
+      ).toBeDefined();
+      expect(screen.getByText("Page 2/4")).toBeDefined();
+    });
+
+    it("does NOT trigger page turn during vertical scrolling (deltaY > deltaX)", () => {
+      render(<AnalyticsRankingSection rankings={mockRankings} />);
+
+      const observatorySection = screen.getByLabelText(
+        "Global Analytics Observatory"
+      );
+      const cardSheet = observatorySection.querySelector(".touch-pan-y");
+
+      // Vertical scroll gesture: diffY = 150, diffX = 10
+      fireEvent.touchStart(cardSheet!, {
+        touches: [{ clientX: 100, clientY: 100 }],
+      });
+      fireEvent.touchMove(cardSheet!, {
+        touches: [{ clientX: 110, clientY: 250 }],
+      });
+      fireEvent.touchEnd(cardSheet!, {
+        changedTouches: [{ clientX: 110, clientY: 250 }],
+      });
+
+      // Remains on Study Volume (Page 1/4)
+      expect(screen.getByText("Top Study Velocity · #1")).toBeDefined();
+      expect(screen.getByText("Page 1/4")).toBeDefined();
+    });
+
+    it("supports mouse/pointer drag gestures for desktop users", () => {
+      render(<AnalyticsRankingSection rankings={mockRankings} />);
+
+      const observatorySection = screen.getByLabelText(
+        "Global Analytics Observatory"
+      );
+      const cardSheet = observatorySection.querySelector(".touch-pan-y");
+
+      // Desktop drag right-to-left
+      fireEvent.mouseDown(cardSheet!, {
+        clientX: 250,
+        clientY: 100,
+        button: 0,
+      });
+      fireEvent.mouseMove(cardSheet!, {
+        clientX: 150,
+        clientY: 100,
+      });
+      fireEvent.mouseUp(cardSheet!, {
+        clientX: 150,
+        clientY: 100,
+      });
+
+      // Transitions to Consistency
+      expect(
+        screen.getByText("Top Consistent Students • 7-Day Habit Continuity")
+      ).toBeDefined();
+      expect(screen.getByText("Page 2/4")).toBeDefined();
     });
   });
 });

@@ -17,6 +17,60 @@ import {
   Compass,
 } from "lucide-react";
 
+export interface StandingPillInfo {
+  type: "top" | "last_percentile" | "last";
+  label: string;
+  percentileValue?: number;
+}
+
+/**
+ * Computes the user standing pill representation:
+ * - "Last" in dramatic reddish style if user is the last in a cohort (> 1 students).
+ * - "Last xx%" in warning style if user is outside the top 70% (percentile > 70).
+ * - "Top xx%" in standard sky-blue style if user is in the top 70%.
+ */
+export function getStandingPillInfo(
+  rank: number,
+  totalStudents: number,
+  percentile: number
+): StandingPillInfo {
+  const safeRank = typeof rank === "number" && !isNaN(rank) ? rank : 0;
+  const safeTotal = typeof totalStudents === "number" && !isNaN(totalStudents) ? totalStudents : 0;
+  const safePercentile = typeof percentile === "number" && !isNaN(percentile) ? percentile : 0;
+
+  // 1. When user is the absolute last in a cohort with more than 1 student
+  if (safeTotal > 1 && safeRank >= safeTotal) {
+    return {
+      type: "last",
+      label: "Last",
+    };
+  }
+
+  const effectivePercentile =
+    safePercentile > 0
+      ? safePercentile
+      : safeTotal > 0 && safeRank > 0
+      ? Math.max(1, Math.min(100, Math.ceil((safeRank / safeTotal) * 100)))
+      : 100;
+
+  // 2. When user is not in the top 70% (i.e. percentile > 70)
+  if (effectivePercentile > 70) {
+    const lastPct = Math.max(1, Math.round(100 - effectivePercentile));
+    return {
+      type: "last_percentile",
+      label: `Last ${lastPct}%`,
+      percentileValue: lastPct,
+    };
+  }
+
+  // 3. User is in the top 70%
+  return {
+    type: "top",
+    label: `Top ${effectivePercentile}%`,
+    percentileValue: effectivePercentile,
+  };
+}
+
 interface UserGlobalPositionProps {
   userPosition: UserGlobalPositionType | null;
   communityStats: GlobalCommunityStats;
@@ -32,8 +86,14 @@ export const UserGlobalPosition = memo(function UserGlobalPosition({
     return (
       <section
         aria-label="Your Global Position"
-        className="w-full relative overflow-hidden rounded-3xl bg-gradient-to-b from-slate-900/90 via-slate-950/95 to-[#0b0f19] border border-sky-500/20 p-4 sm:p-5 backdrop-blur-md text-center space-y-2 shadow-lg"
+        className="w-full relative overflow-hidden rounded-3xl bg-gradient-to-b from-slate-900/90 via-slate-950/95 to-[#0b0f19] border-2 border-white p-4 sm:p-5 backdrop-blur-md text-center space-y-2 shadow-lg"
       >
+        {/* Inner thin white boundary */}
+        <div
+          data-testid="personalized-analytics-inner-border"
+          className="pointer-events-none absolute inset-1 rounded-[20px] border border-white/60 z-0"
+          aria-hidden="true"
+        />
         <div className="w-9 h-9 mx-auto rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-300">
           <Compass className="w-4 h-4" />
         </div>
@@ -51,8 +111,14 @@ export const UserGlobalPosition = memo(function UserGlobalPosition({
     return (
       <section
         aria-label="Your Global Position"
-        className="w-full relative overflow-hidden rounded-3xl bg-gradient-to-b from-slate-900/90 via-slate-950/95 to-[#0b0f19] border border-sky-500/20 p-4 sm:p-5 backdrop-blur-md space-y-2 shadow-lg"
+        className="w-full relative overflow-hidden rounded-3xl bg-gradient-to-b from-slate-900/90 via-slate-950/95 to-[#0b0f19] border-2 border-white p-4 sm:p-5 backdrop-blur-md space-y-2 shadow-lg"
       >
+        {/* Inner thin white boundary */}
+        <div
+          data-testid="personalized-analytics-inner-border"
+          className="pointer-events-none absolute inset-1 rounded-[20px] border border-white/60 z-0"
+          aria-hidden="true"
+        />
         <div className="flex items-center space-x-2 text-sky-400">
           <Compass className="w-4 h-4" />
           <h2 className="text-xs sm:text-sm font-bold uppercase tracking-wider text-zinc-300">
@@ -78,14 +144,28 @@ export const UserGlobalPosition = memo(function UserGlobalPosition({
   const isAboveStudyAvg = userPosition.delta_vs_community_study_mins >= 0;
   const isAboveGoalAvg = userPosition.delta_vs_community_goal_pct >= 0;
 
+  const standing = getStandingPillInfo(
+    userPosition.rank,
+    userPosition.total_eligible_students,
+    userPosition.percentile
+  );
+
   return (
     <section
       aria-label="Your Global Position and Benchmark Comparison"
-      className="w-full relative overflow-hidden rounded-3xl bg-gradient-to-b from-slate-900/90 via-slate-950/95 to-[#0b0f19] border border-sky-500/25 p-4 sm:p-5 shadow-[0_8px_30px_rgba(14,165,233,0.08)] backdrop-blur-md space-y-3.5"
+      className="w-full relative overflow-hidden rounded-3xl bg-gradient-to-b from-slate-900/90 via-slate-950/95 to-[#0b0f19] border-2 border-white p-4 sm:p-5 shadow-[0_8px_30px_rgba(255,255,255,0.06)] backdrop-blur-md space-y-3.5"
     >
-      {/* Ambient Cool Sky Glow */}
+      {/* Inner thin white boundary */}
       <div
-        className="pointer-events-none absolute -top-24 -right-24 w-80 h-80 bg-sky-500/10 rounded-full blur-3xl"
+        data-testid="personalized-analytics-inner-border"
+        className="pointer-events-none absolute inset-1 rounded-[20px] border border-white/60 z-0"
+        aria-hidden="true"
+      />
+      {/* Ambient Cool Glow (adapts subtly if last) */}
+      <div
+        className={`pointer-events-none absolute -top-24 -right-24 w-80 h-80 rounded-full blur-3xl transition-colors duration-500 ${
+          standing.type === "last" ? "bg-rose-500/10" : "bg-sky-500/10"
+        }`}
         aria-hidden="true"
       />
 
@@ -116,9 +196,35 @@ export const UserGlobalPosition = memo(function UserGlobalPosition({
             </span>
           </div>
 
-          <div className="px-2.5 py-1 rounded-xl bg-sky-500/15 border border-sky-500/30 text-sky-300 text-xs font-black font-mono">
-            Top {userPosition.percentile}%
-          </div>
+          {standing.type === "last" ? (
+            <div
+              data-testid="user-standing-pill"
+              aria-label="Global standing: Last"
+              className="px-2.5 py-1 rounded-xl bg-gradient-to-r from-rose-950/90 via-red-950/80 to-rose-900/90 border border-rose-500/60 text-rose-200 text-xs font-black font-mono shadow-[0_0_14px_rgba(244,63,94,0.35)] flex items-center space-x-1.5"
+            >
+              <span className="relative flex h-2 w-2 shrink-0" aria-hidden="true">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500" />
+              </span>
+              <span>Last</span>
+            </div>
+          ) : standing.type === "last_percentile" ? (
+            <div
+              data-testid="user-standing-pill"
+              aria-label={`Global standing: ${standing.label}`}
+              className="px-2.5 py-1 rounded-xl bg-gradient-to-r from-amber-500/15 to-orange-500/15 border border-orange-500/30 text-orange-300 text-xs font-black font-mono"
+            >
+              {standing.label}
+            </div>
+          ) : (
+            <div
+              data-testid="user-standing-pill"
+              aria-label={`Global standing: ${standing.label}`}
+              className="px-2.5 py-1 rounded-xl bg-sky-500/15 border border-sky-500/30 text-sky-300 text-xs font-black font-mono"
+            >
+              {standing.label}
+            </div>
+          )}
         </div>
       </div>
 

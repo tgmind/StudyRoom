@@ -1,19 +1,24 @@
 "use client";
 
-import React, { memo } from "react";
+import React, { memo, useState, useEffect, useMemo } from "react";
 import { MostStudyingEntry } from "@/lib/supabase/types";
 import { formatMinutesToHours } from "@/lib/time/format";
-import { Flame, Clock, Calendar, Trophy } from "lucide-react";
+import { Flame, Clock, Calendar, Trophy, Activity } from "lucide-react";
 import { ObservatoryAvatar } from "./ObservatoryAvatar";
+import { createClient } from "@/lib/supabase/client";
 
 interface StudyVolumeSpectrumProps {
   entries: MostStudyingEntry[];
   currentUserId?: string;
+  weekStart?: string;
+  weekEnd?: string;
 }
 
 export const StudyVolumeSpectrum = memo(function StudyVolumeSpectrum({
   entries,
   currentUserId,
+  weekStart,
+  weekEnd,
 }: StudyVolumeSpectrumProps) {
   if (entries.length === 0) {
     return (
@@ -36,6 +41,8 @@ export const StudyVolumeSpectrum = memo(function StudyVolumeSpectrum({
         <PinnacleHeroNode
           entry={top1}
           isCurrent={top1.user_id === currentUserId}
+          weekStart={weekStart}
+          weekEnd={weekEnd}
         />
       )}
 
@@ -73,12 +80,88 @@ export const StudyVolumeSpectrum = memo(function StudyVolumeSpectrum({
 function PinnacleHeroNode({
   entry,
   isCurrent,
+  weekStart,
+  weekEnd,
 }: {
   entry: MostStudyingEntry;
   isCurrent: boolean;
+  weekStart?: string;
+  weekEnd?: string;
 }) {
   const dailyHours = (entry.daily_average_minutes / 60).toFixed(1);
   const totalHours = formatMinutesToHours(entry.total_study_minutes);
+
+  const [dailyMinutes, setDailyMinutes] = useState<number[] | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    const targetWeekStart = weekStart;
+    const targetWeekEnd = weekEnd;
+    const targetUserId = entry.user_id;
+
+    if (!targetWeekStart || !targetWeekEnd || !targetUserId) {
+      return;
+    }
+
+    async function fetchDailySessions(wStart: string, wEnd: string, uId: string) {
+      try {
+        const supabase = createClient();
+        if (!supabase || typeof supabase.from !== "function") {
+          return;
+        }
+
+        const { data, error } = await supabase
+          .from("study_sessions")
+          .select("start_time, duration_minutes")
+          .eq("user_id", uId)
+          .gte("start_time", wStart)
+          .lt("start_time", wEnd);
+
+        if (error || !data || !isMounted) {
+          return;
+        }
+
+        const days = [0, 0, 0, 0, 0, 0, 0];
+        const startMs = new Date(wStart).getTime();
+
+        data.forEach((s: { start_time: string; duration_minutes: number | null }) => {
+          if (!s.start_time) return;
+          const sessionMs = new Date(s.start_time).getTime();
+          const diffDays = Math.floor((sessionMs - startMs) / (24 * 60 * 60 * 1000));
+          if (diffDays >= 0 && diffDays < 7) {
+            days[diffDays] += Math.max(0, s.duration_minutes || 0);
+          }
+        });
+
+        if (isMounted) {
+          setDailyMinutes(days);
+        }
+      } catch {
+        // Safe fallback
+      }
+    }
+
+    fetchDailySessions(targetWeekStart, targetWeekEnd, targetUserId);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [entry.user_id, weekStart, weekEnd]);
+
+  const resolvedMinutes = useMemo(() => {
+    if (dailyMinutes) return dailyMinutes;
+    const activeCount = Math.max(0, Math.min(7, entry.active_study_days || 0));
+    const avgForActive =
+      activeCount > 0
+        ? Math.round(entry.total_study_minutes / activeCount)
+        : 0;
+    return Array.from({ length: 7 }, (_, i) => (i < activeCount ? avgForActive : 0));
+  }, [dailyMinutes, entry.active_study_days, entry.total_study_minutes]);
+
+  const maxDayMinutes = useMemo(
+    () => Math.max(...resolvedMinutes, 1),
+    [resolvedMinutes]
+  );
 
   return (
     <div
@@ -157,14 +240,74 @@ function PinnacleHeroNode({
           </div>
         </div>
 
-        {/* Hero Proportional Intensity Beam (ONLY on #1) */}
-        <div className="pt-0.5 space-y-1">
-          <div className="flex items-center justify-between text-[9.5px] font-mono text-zinc-400">
-            <span>Study Velocity Intensity</span>
-            <span className="text-amber-400 font-bold">100% Baseline</span>
+        {/* 7-Day Slotted Rhythm Track */}
+        <div className="pt-1.5 space-y-2">
+          {/* Header Row */}
+          <div className="flex items-center gap-1.5 text-xs text-zinc-300 font-semibold tracking-wide">
+            <Activity className="w-3.5 h-3.5 text-amber-400" />
+            <span>7-Day Study Rhythm Track</span>
           </div>
-          <div className="w-full h-1.5 rounded-full bg-zinc-950 overflow-hidden">
-            <div className="h-full rounded-full bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.5)] w-full" />
+
+          {/* Slotted multi-segment rhythm progress bar */}
+          <div className="w-full h-2.5 sm:h-3 rounded-full bg-black/60 p-[2px] border border-amber-500/20 shadow-inner flex gap-1">
+            {resolvedMinutes.map((mins, idx) => {
+              const isPeak = mins === maxDayMinutes && mins > 0;
+              const dayName = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"][idx];
+              const hoursLabel = (mins / 60).toFixed(1);
+
+              let slotStyle = "bg-zinc-900/90 border border-dashed border-zinc-800/80";
+              if (mins > 0) {
+                if (isPeak) {
+                  slotStyle =
+                    "bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.65)]";
+                } else if (mins >= 360) {
+                  slotStyle =
+                    "bg-gradient-to-r from-amber-500 to-amber-400 shadow-[0_0_6px_rgba(245,158,11,0.35)]";
+                } else if (mins >= 180) {
+                  slotStyle = "bg-gradient-to-r from-amber-600 to-amber-500";
+                } else {
+                  slotStyle = "bg-gradient-to-r from-amber-700/80 to-amber-600/70";
+                }
+              }
+
+              return (
+                <div
+                  key={idx}
+                  className={`flex-1 h-full first:rounded-l-full last:rounded-r-full transition-all duration-300 relative ${slotStyle}`}
+                  title={`${dayName}: ${hoursLabel}h ${isPeak ? "(Peak Focus)" : mins === 0 ? "(Rest Day)" : ""}`}
+                />
+              );
+            })}
+          </div>
+
+          {/* 7-Column Daily Micro-Grid */}
+          <div className="grid grid-cols-7 gap-1 pt-0.5 text-center font-mono">
+            {resolvedMinutes.map((mins, idx) => {
+              const isPeak = mins === maxDayMinutes && mins > 0;
+              const dayFull = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][idx];
+              const dayShort = ["M", "T", "W", "T", "F", "S", "S"][idx];
+              const hoursStr = (mins / 60).toFixed(1);
+
+              return (
+                <div key={idx} className="flex flex-col items-center">
+                  <span className="text-[9px] sm:text-[10px] text-zinc-400 font-medium">
+                    <span className="hidden sm:inline">{dayFull}</span>
+                    <span className="sm:hidden">{dayShort}</span>
+                  </span>
+                  <span
+                    className={`text-[8.5px] sm:text-[10px] font-bold tabular-nums leading-tight ${
+                      mins > 0
+                        ? isPeak
+                          ? "text-amber-300 font-black"
+                          : "text-zinc-200"
+                        : "text-zinc-600"
+                    }`}
+                  >
+                    {mins > 0 ? `${hoursStr}h` : "0h"}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>

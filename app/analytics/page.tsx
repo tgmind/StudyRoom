@@ -145,6 +145,8 @@ export default function GlobalAnalyticsPage() {
             <AnalyticsRankingSection
               rankings={analytics.rankings}
               currentUserId={user?.id}
+              weekStart={analytics.week_start}
+              weekEnd={analytics.week_end}
             />
           </>
         ) : null}
