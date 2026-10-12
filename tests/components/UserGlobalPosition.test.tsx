@@ -232,7 +232,7 @@ describe("UserGlobalPosition Component UI Rendering", () => {
     ).toBeDefined();
   });
 
-  it("renders double-walled white boundary with thick outer border and thin inner border", () => {
+  it("renders single thin inner white boundary with outer border removed", () => {
     const userTopPosition: UserGlobalPositionType = {
       user_id: "user-4",
       rank: 4,
@@ -259,14 +259,14 @@ describe("UserGlobalPosition Component UI Rendering", () => {
       />
     );
 
-    // Outer boundary on section: thick white border
+    // Outer boundary on section: removed
     const section = screen.getByRole("region", {
       name: "Your Global Position and Benchmark Comparison",
     });
-    expect(section.className).toContain("border-2");
-    expect(section.className).toContain("border-white");
+    expect(section.className).not.toContain("border-2");
+    expect(section.className).not.toContain("border-white");
 
-    // Inner boundary: thin white border with concentric radius
+    // Inner boundary: thin white border with concentric radius preserved
     const innerBorder = screen.getByTestId("personalized-analytics-inner-border");
     expect(innerBorder).toBeDefined();
     expect(innerBorder.className).toContain("border");

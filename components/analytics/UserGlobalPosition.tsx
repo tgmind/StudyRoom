@@ -86,7 +86,7 @@ export const UserGlobalPosition = memo(function UserGlobalPosition({
     return (
       <section
         aria-label="Your Global Position"
-        className="w-full relative overflow-hidden rounded-3xl bg-gradient-to-b from-slate-900/90 via-slate-950/95 to-[#0b0f19] border-2 border-white p-4 sm:p-5 backdrop-blur-md text-center space-y-2 shadow-lg"
+        className="w-full relative overflow-hidden rounded-3xl bg-gradient-to-b from-slate-900/90 via-slate-950/95 to-[#0b0f19] p-4 sm:p-5 backdrop-blur-md text-center space-y-2 shadow-lg"
       >
         {/* Inner thin white boundary */}
         <div
@@ -111,7 +111,7 @@ export const UserGlobalPosition = memo(function UserGlobalPosition({
     return (
       <section
         aria-label="Your Global Position"
-        className="w-full relative overflow-hidden rounded-3xl bg-gradient-to-b from-slate-900/90 via-slate-950/95 to-[#0b0f19] border-2 border-white p-4 sm:p-5 backdrop-blur-md space-y-2 shadow-lg"
+        className="w-full relative overflow-hidden rounded-3xl bg-gradient-to-b from-slate-900/90 via-slate-950/95 to-[#0b0f19] p-4 sm:p-5 backdrop-blur-md space-y-2 shadow-lg"
       >
         {/* Inner thin white boundary */}
         <div
@@ -153,7 +153,7 @@ export const UserGlobalPosition = memo(function UserGlobalPosition({
   return (
     <section
       aria-label="Your Global Position and Benchmark Comparison"
-      className="w-full relative overflow-hidden rounded-3xl bg-gradient-to-b from-slate-900/90 via-slate-950/95 to-[#0b0f19] border-2 border-white p-4 sm:p-5 shadow-[0_8px_30px_rgba(255,255,255,0.06)] backdrop-blur-md space-y-3.5"
+      className="w-full relative overflow-hidden rounded-3xl bg-gradient-to-b from-slate-900/90 via-slate-950/95 to-[#0b0f19] p-4 sm:p-5 shadow-[0_8px_30px_rgba(255,255,255,0.04)] backdrop-blur-md space-y-3.5"
     >
       {/* Inner thin white boundary */}
       <div
