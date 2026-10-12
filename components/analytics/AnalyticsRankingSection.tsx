@@ -190,7 +190,7 @@ export const AnalyticsRankingSection = memo(function AnalyticsRankingSection({
   return (
     <section
       aria-label="Global Analytics Observatory"
-      className="relative w-full pt-3 pb-8 sm:pb-10 pr-3 sm:pr-4 transition-all duration-300"
+      className="relative w-full pt-3 pb-4 sm:pb-6 pr-3 sm:pr-4 transition-all duration-300"
     >
       {/* Scoped Apple Page Turn CSS Animations with GPU Acceleration */}
       <style>{`
@@ -462,6 +462,11 @@ export const AnalyticsRankingSection = memo(function AnalyticsRankingSection({
           </div>
         </div>
       </div>
+
+      {/* Subtle white text in the background below the card */}
+      <p className="mt-9 sm:mt-11 text-center text-xs text-white/40 font-medium tracking-wide select-none pointer-events-none">
+        Swipe Horizontally to flip the page.
+      </p>
     </section>
   );
 });

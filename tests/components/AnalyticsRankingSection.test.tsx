@@ -536,5 +536,13 @@ describe("AnalyticsRankingSection & Observatory Visualizers", () => {
       ).toBeDefined();
       expect(screen.getByText("Page 2/4")).toBeDefined();
     });
+
+    it("renders subtle background swipe guidance text below the card", () => {
+      render(<AnalyticsRankingSection rankings={mockRankings} />);
+
+      expect(
+        screen.getByText("Swipe Horizontally to flip the page.")
+      ).toBeDefined();
+    });
   });
 });
