@@ -26,14 +26,14 @@ def resolveKeystore() {
 
 android {
     namespace = "com.studyroom.app"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.studyroom.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 18
-        versionName = project.findProperty("versionName") ?: "1.0.17"
+        versionCode = 19
+        versionName = project.findProperty("versionName") ?: "1.0.18"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -87,4 +87,8 @@ dependencies {
     implementation("androidx.core:core-splashscreen:1.0.1")
     implementation("androidx.webkit:webkit:1.11.0")
     implementation("androidx.activity:activity:1.9.1")
+    implementation("androidx.core:core:1.17.0")
+
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
 }

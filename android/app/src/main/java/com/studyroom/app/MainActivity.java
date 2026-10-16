@@ -702,7 +702,7 @@ public class MainActivity extends AppCompatActivity {
         try {
             return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
         } catch (Exception e) {
-            return "1.0.17";
+            return "1.0.18";
         }
     }
 
