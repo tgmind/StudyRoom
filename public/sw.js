@@ -134,30 +134,35 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // HTML / App Navigation Routes: Stale-While-Revalidate with resilient offline fallback
+  // HTML / App Navigation Routes: Network-First with 3s timeout and clean offline fallback
+  // Invariant: Never caches private/authenticated HTML in CacheStorage to prevent cross-account leaks
   if (event.request.mode === "navigate" || event.request.headers.get("accept")?.includes("text/html")) {
     event.respondWith(
-      caches.match(event.request).then((cachedResponse) => {
-        const fetchPromise = fetch(event.request)
-          .then((networkResponse) => {
-            if (networkResponse && networkResponse.status === 200) {
-              const responseToCache = networkResponse.clone();
-              caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
-            }
-            return networkResponse;
-          })
-          .catch(async () => {
-            if (cachedResponse) return cachedResponse;
-            const roomFallback = await caches.match("/room");
-            if (roomFallback) return roomFallback;
-            const rootFallback = await caches.match("/");
-            if (rootFallback) return rootFallback;
-            return caches.match(OFFLINE_URL);
-          });
+      (async () => {
+        try {
+          // 3-second network timeout to prevent infinite hanging on degraded mobile networks / Lie-Fi
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 3000);
 
-        // Instant startup: return cached app shell immediately (< 50ms) if present, revalidating in background
-        return cachedResponse || fetchPromise;
-      })
+          const networkResponse = await fetch(event.request, {
+            signal: controller.signal,
+          });
+          clearTimeout(timeoutId);
+
+          if (networkResponse) {
+            return networkResponse;
+          }
+          throw new Error("Empty network response");
+        } catch (fetchErr) {
+          // Network failure or timeout: serve neutral precached offline fallback
+          const offlineFallback = await caches.match(OFFLINE_URL);
+          if (offlineFallback) return offlineFallback;
+          return new Response("You are offline. Please reconnect.", {
+            status: 503,
+            headers: { "Content-Type": "text/plain" },
+          });
+        }
+      })()
     );
     return;
   }

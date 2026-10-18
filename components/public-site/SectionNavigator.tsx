@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { ListFilter, ChevronUp, ChevronDown, Compass } from "lucide-react";
 
 interface SectionItem {
@@ -20,22 +20,25 @@ export function SectionNavigator({ priceInr = 50 }: SectionNavigatorProps) {
 
   const price = typeof priceInr === "number" && !isNaN(priceInr) ? priceInr : 50;
 
-  const sections: SectionItem[] = [
-    { id: "top", number: "00", label: "Overview" },
-    { id: "what-is", number: "01", label: "What is Study Room" },
-    { id: "why-us", number: "02", label: "Why Study Room" },
-    { id: "how-it-works", number: "03", label: "How It Works" },
-    { id: "features", number: "04", label: "Core Features" },
-    { id: "live-timer", number: "05", label: "Live Study Timer" },
-    { id: "realtime-sync", number: "06", label: "Realtime Architecture" },
-    { id: "goals-tracking", number: "07", label: "20-Hour Goals & Streaks" },
-    { id: "member-status", number: "08", label: "Member Status System" },
-    { id: "rivalry", number: "09", label: "Rivalry Arena" },
-    { id: "rules", number: "10", label: "Rules & Conditions" },
-    { id: "who-can-join", number: "11", label: "Who Can Join" },
-    { id: "membership", number: "12", label: `Membership & ₹${price} Payment` },
-    { id: "faq", number: "13", label: "FAQ" },
-  ];
+  const sections: SectionItem[] = useMemo(
+    () => [
+      { id: "top", number: "00", label: "Overview" },
+      { id: "what-is", number: "01", label: "What is Study Room" },
+      { id: "why-us", number: "02", label: "Why Study Room" },
+      { id: "how-it-works", number: "03", label: "How It Works" },
+      { id: "features", number: "04", label: "Core Features" },
+      { id: "live-timer", number: "05", label: "Live Study Timer" },
+      { id: "realtime-sync", number: "06", label: "Realtime Architecture" },
+      { id: "goals-tracking", number: "07", label: "20-Hour Goals & Streaks" },
+      { id: "member-status", number: "08", label: "Member Status System" },
+      { id: "rivalry", number: "09", label: "Rivalry Arena" },
+      { id: "rules", number: "10", label: "Rules & Conditions" },
+      { id: "who-can-join", number: "11", label: "Who Can Join" },
+      { id: "membership", number: "12", label: `Membership & ₹${price} Payment` },
+      { id: "faq", number: "13", label: "FAQ" },
+    ],
+    [price]
+  );
 
   useEffect(() => {
     const handleScroll = () => {

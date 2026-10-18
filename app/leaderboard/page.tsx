@@ -25,8 +25,10 @@ type RpcCaller = {
   rpc: (name: string, params?: Record<string, unknown>) => Promise<{ data: unknown; error: Error | null }>;
 };
 
+export const LEADERBOARD_CACHE_TTL_MS = 60000; // 60 seconds TTL
+
 // Module-level SWR memory cache to make Rankings tab switching instantaneous (0ms)
-// Period-scoped to prevent previous-week stale data from flashing or persisting across reset boundaries
+// Period-scoped and TTL-bounded to prevent previous-week stale data from flashing or persisting across reset boundaries
 type LeaderboardCache = {
   periodId: string;
   entries: LeaderboardEntry[];
@@ -34,14 +36,52 @@ type LeaderboardCache = {
 };
 let cachedLeaderboardState: LeaderboardCache | null = null;
 
+function computeLiveActiveSecondsInWeek(
+  profile: any,
+  serverNow: Date,
+  timezone: string
+): number {
+  if (!profile || (profile.current_status !== "studying" && profile.current_status !== "break")) {
+    return 0;
+  }
+  const isBreakExpired =
+    profile.current_status === "break" && profile.break_started_at
+      ? (serverNow.getTime() - new Date(profile.break_started_at).getTime()) >= 3600 * 1000
+      : false;
+
+  let elapsedSeconds = 0;
+  if (isBreakExpired) {
+    elapsedSeconds = profile.active_study_seconds_snapshot ?? 0;
+  } else {
+    elapsedSeconds = calculateMemberElapsedStudySeconds(profile, serverNow);
+  }
+
+  if (elapsedSeconds > 0) {
+    const currentWeekStartMs = getWeekStartTimestamp(serverNow, timezone);
+    const startIso = profile.session_start_time || profile.last_resumed_at;
+    if (startIso) {
+      const startMs = new Date(startIso).getTime();
+      if (!isNaN(startMs) && startMs < currentWeekStartMs) {
+        const secondsInCurrentWeek = Math.max(0, Math.floor((serverNow.getTime() - currentWeekStartMs) / 1000));
+        elapsedSeconds = Math.min(elapsedSeconds, secondsInCurrentWeek);
+      }
+    }
+    return elapsedSeconds;
+  }
+  return 0;
+}
+
 export default function LeaderboardPage() {
   const { user, profile } = useAuth();
   const timezone = process.env.NEXT_PUBLIC_APP_TIMEZONE || "Asia/Kolkata";
   const currentPeriodId = getLeaderboardPeriodId(getServerNow(), timezone);
-  const initialCachedEntries =
-    cachedLeaderboardState && cachedLeaderboardState.periodId === currentPeriodId
-      ? cachedLeaderboardState.entries
-      : [];
+  const nowMs = Date.now();
+  const isCacheFresh =
+    cachedLeaderboardState !== null &&
+    cachedLeaderboardState.periodId === currentPeriodId &&
+    nowMs - cachedLeaderboardState.fetchedAt < LEADERBOARD_CACHE_TTL_MS;
+
+  const initialCachedEntries = isCacheFresh ? cachedLeaderboardState!.entries : [];
 
   const [entries, setEntries] = useState<LeaderboardEntry[]>(initialCachedEntries);
   const [loading, setLoading] = useState(initialCachedEntries.length === 0);
@@ -50,7 +90,16 @@ export default function LeaderboardPage() {
 
   const supabase = createClient();
   const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const firstScheduleCallTimeRef = useRef<number | null>(null);
   const activePeriodIdRef = useRef<string>(currentPeriodId);
+  const userCompletedWeeklyMinutesRef = useRef<number>(0);
+  const userBaseServerMinutesRef = useRef<number>(0);
+  const maxGroupCompletedTasksRef = useRef<number>(15);
+  const weeklyStreaksByUserRef = useRef<Map<string, number>>(new Map());
+  const profileRef = useRef(profile);
+  profileRef.current = profile;
+  const userIdRef = useRef(user?.id);
+  userIdRef.current = user?.id;
 
   const fetchLeaderboard = useCallback(
     async (isBackground = false) => {
@@ -105,33 +154,7 @@ export default function LeaderboardPage() {
 
         // Calculate current user's live study seconds strictly within current week
         // NEVER read profile.weekly_study_seconds here to prevent cross-week contamination
-        let liveActiveSecondsInWeek = 0;
-        if (user?.id && (profile?.current_status === "studying" || profile?.current_status === "break")) {
-          const isBreakExpired =
-            profile.current_status === "break" && profile.break_started_at
-              ? (serverNow.getTime() - new Date(profile.break_started_at).getTime()) >= 3600 * 1000
-              : false;
-
-          let elapsedSeconds = 0;
-          if (isBreakExpired) {
-            elapsedSeconds = profile.active_study_seconds_snapshot ?? 0;
-          } else {
-            elapsedSeconds = calculateMemberElapsedStudySeconds(profile, serverNow);
-          }
-
-          if (elapsedSeconds > 0) {
-            const currentWeekStartMs = getWeekStartTimestamp(serverNow, timezone);
-            const startIso = profile.session_start_time || profile.last_resumed_at;
-            if (startIso) {
-              const startMs = new Date(startIso).getTime();
-              if (!isNaN(startMs) && startMs < currentWeekStartMs) {
-                const secondsInCurrentWeek = Math.max(0, Math.floor((serverNow.getTime() - currentWeekStartMs) / 1000));
-                elapsedSeconds = Math.min(elapsedSeconds, secondsInCurrentWeek);
-              }
-            }
-            liveActiveSecondsInWeek = elapsedSeconds;
-          }
-        }
+        const liveActiveSecondsInWeek = computeLiveActiveSecondsInWeek(profile, serverNow, timezone);
 
         const userCompletedWeeklyMinutes = (sessionsByUser.get(user?.id || "") || []).reduce(
           (acc, s) => acc + (s.duration_minutes || 0),
@@ -231,6 +254,12 @@ export default function LeaderboardPage() {
           return a.display_name.localeCompare(b.display_name);
         });
 
+        const currentUserRawEntry = filtered.find((e) => e.user_id === user?.id);
+        userCompletedWeeklyMinutesRef.current = userCompletedWeeklyMinutes;
+        userBaseServerMinutesRef.current = currentUserRawEntry?.total_study_minutes || 0;
+        maxGroupCompletedTasksRef.current = maxGroupCompletedTasks;
+        weeklyStreaksByUserRef.current = weeklyStreaksByUser;
+
         cachedLeaderboardState = {
           periodId,
           entries: recalculatedEntries,
@@ -263,10 +292,11 @@ export default function LeaderboardPage() {
   );
 
   useEffect(() => {
-    // Initial fetch: if cached entries exist for the current period, fetch in background without showing spinner
+    // Initial fetch: if fresh cached entries exist for current period, fetch in background without showing spinner
     const hasValidCache =
       cachedLeaderboardState !== null &&
-      cachedLeaderboardState.periodId === getLeaderboardPeriodId(getServerNow(), timezone);
+      cachedLeaderboardState.periodId === getLeaderboardPeriodId(getServerNow(), timezone) &&
+      Date.now() - cachedLeaderboardState.fetchedAt < LEADERBOARD_CACHE_TTL_MS;
     fetchLeaderboard(hasValidCache);
 
     const checkPeriodAndRefresh = (isBackground = true) => {
@@ -280,12 +310,29 @@ export default function LeaderboardPage() {
       }
     };
 
-    // Debounced background refresh to honor the lag-free realtime promise
+    // Debounced background refresh with maxWait ceiling (1500ms) to prevent starvation under high concurrent event volume
     const scheduleRefresh = () => {
+      const now = Date.now();
+      if (!firstScheduleCallTimeRef.current) {
+        firstScheduleCallTimeRef.current = now;
+      }
+
+      // If continuous events have delayed execution past maxWait (1500ms), force immediate execution
+      if (now - firstScheduleCallTimeRef.current >= 1500) {
+        if (refreshTimerRef.current) {
+          clearTimeout(refreshTimerRef.current);
+          refreshTimerRef.current = null;
+        }
+        firstScheduleCallTimeRef.current = null;
+        checkPeriodAndRefresh(true);
+        return;
+      }
+
       if (refreshTimerRef.current) {
         clearTimeout(refreshTimerRef.current);
       }
       refreshTimerRef.current = setTimeout(() => {
+        firstScheduleCallTimeRef.current = null;
         checkPeriodAndRefresh(true);
       }, 300);
     };
@@ -296,6 +343,89 @@ export default function LeaderboardPage() {
         checkPeriodAndRefresh(true);
       }
     }, 20000);
+
+    // 10-second ticker to dynamically update the current user's live study minutes on their leaderboard card
+    const liveMinutesTicker = setInterval(() => {
+      const currentProfile = profileRef.current;
+      const currentUserId = userIdRef.current;
+      if (
+        document.visibilityState !== "visible" ||
+        !currentUserId ||
+        (currentProfile?.current_status !== "studying" && currentProfile?.current_status !== "break")
+      ) {
+        return;
+      }
+
+      const serverNow = getServerNow();
+      const liveActiveSeconds = computeLiveActiveSecondsInWeek(currentProfile, serverNow, timezone);
+      const isCurrentStudying = true;
+
+      setEntries((prevEntries) => {
+        if (!prevEntries || prevEntries.length === 0) return prevEntries;
+        const userEntryIndex = prevEntries.findIndex((e) => e.user_id === currentUserId);
+        if (userEntryIndex === -1) return prevEntries;
+
+        const currentEntry = prevEntries[userEntryIndex];
+        const { displayedTotalMinutes } = calculateCurrentUserLeaderboardMinutes({
+          serverTotalMinutes: userBaseServerMinutesRef.current,
+          completedWeeklyMinutes: userCompletedWeeklyMinutesRef.current,
+          liveActiveSecondsInWeek: liveActiveSeconds,
+          isSessionActive: isCurrentStudying,
+        });
+
+        // Only re-sort and trigger React state update if the minute value actually changed
+        if (displayedTotalMinutes === currentEntry.total_study_minutes) {
+          return prevEntries;
+        }
+
+        const maxGroupStudyMinutes = Math.max(
+          1,
+          ...prevEntries.map((e) => (e.user_id === currentUserId ? displayedTotalMinutes : e.total_study_minutes || 0))
+        );
+
+        const updatedEntries = prevEntries.map((e) => {
+          if (e.user_id !== currentUserId) {
+            const completed = e.completed_tasks ?? (e.goal_completion_pct > 0 ? 1 : 0);
+            const total = e.total_tasks ?? (e.goal_completion_pct > 0 ? 1 : 0);
+            const { composite_score } = calculateLeaderboardScore(
+              e.total_study_minutes || 0,
+              maxGroupStudyMinutes,
+              completed,
+              total,
+              e.streak_days || 0,
+              maxGroupCompletedTasksRef.current
+            );
+            return { ...e, score: composite_score };
+          }
+
+          const completed = e.completed_tasks ?? (e.goal_completion_pct > 0 ? 1 : 0);
+          const total = e.total_tasks ?? (e.goal_completion_pct > 0 ? 1 : 0);
+          const streak = weeklyStreaksByUserRef.current.get(currentUserId) ?? e.streak_days ?? 0;
+          const { composite_score } = calculateLeaderboardScore(
+            displayedTotalMinutes,
+            maxGroupStudyMinutes,
+            completed,
+            total,
+            streak,
+            maxGroupCompletedTasksRef.current
+          );
+
+          return {
+            ...e,
+            total_study_minutes: displayedTotalMinutes,
+            score: composite_score,
+          };
+        });
+
+        updatedEntries.sort((a, b) => {
+          if (b.score !== a.score) return b.score - a.score;
+          if (b.total_study_minutes !== a.total_study_minutes) return b.total_study_minutes - a.total_study_minutes;
+          return a.display_name.localeCompare(b.display_name);
+        });
+
+        return updatedEntries;
+      });
+    }, 10000);
 
     // Listen to real-time events on study_sessions, daily_goals, and users
     const channel = supabase
@@ -337,7 +467,9 @@ export default function LeaderboardPage() {
       if (refreshTimerRef.current) {
         clearTimeout(refreshTimerRef.current);
       }
+      firstScheduleCallTimeRef.current = null;
       clearInterval(liveInterval);
+      clearInterval(liveMinutesTicker);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", handleFocus);
       window.removeEventListener("online", handleOnline);

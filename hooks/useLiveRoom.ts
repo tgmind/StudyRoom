@@ -165,6 +165,11 @@ export function useLiveRoom(currentUserId?: string) {
   const fetchGenRef = useRef<number>(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const debouncedFetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debouncedFetchFirstCallTimeRef = useRef<number>(0);
+  const lastSecondaryFetchTimeRef = useRef<number>(0);
+  const isSecondaryFetchingRef = useRef<boolean>(false);
+  const secondaryDeferredRef = useRef<boolean>(false);
+  const secondaryDeferredTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const backoffDelayRef = useRef<number>(1000);
   const lifecycleRef = useRef<ChannelLifecycleState>("idle");
   const createAndSubscribeChannelRef = useRef<(force?: boolean) => void>(() => {});
@@ -363,20 +368,34 @@ export function useLiveRoom(currentUserId?: string) {
       // Concurrently fetches study_sessions (past 24h & peak hours), leaderboard,
       // and rivalry events in background. Updates secondary statistical fields
       // WITHOUT touching active timer or session states.
+      // Coalesced with a 3s cooldown and trailing deferred flush to protect DB.
       // =====================================================================
-      const serverNow = getServerNow();
-      const cutoffTime = serverNow.getTime() - 24 * 60 * 60 * 1000;
-      const weekStartTime = getWeekStartTimestamp(serverNow);
-      const maxSessionDurationMs = 4 * 3600 * 1000; // 4h safety buffer for max session duration crossing week boundary
-      const oldestRequiredTime = new Date(
-        Math.min(cutoffTime, weekStartTime - maxSessionDurationMs, serverNow.getTime() - 4 * 86400000)
-      ).toISOString();
+      const nowMs = Date.now();
+      const timeSinceLastSecondary = nowMs - lastSecondaryFetchTimeRef.current;
+      const shouldRunSecondary =
+        !isSecondaryFetchingRef.current &&
+        (timeSinceLastSecondary >= 3000 || lastSecondaryFetchTimeRef.current === 0);
 
-      let rpcPromise: PromiseLike<{ data: unknown; error: { message: string } | null }> | null = null;
-      try {
-        const res = (supabase as unknown as RpcCaller).rpc("rpc_get_leaderboard", {
-          p_timezone: process.env.NEXT_PUBLIC_APP_TIMEZONE || "Asia/Kolkata",
-        });
+      let secondaryPromise: Promise<void> | null = null;
+
+      if (shouldRunSecondary) {
+        lastSecondaryFetchTimeRef.current = nowMs;
+        isSecondaryFetchingRef.current = true;
+        secondaryDeferredRef.current = false;
+
+        const serverNow = getServerNow();
+        const cutoffTime = serverNow.getTime() - 24 * 60 * 60 * 1000;
+        const weekStartTime = getWeekStartTimestamp(serverNow);
+        const maxSessionDurationMs = 4 * 3600 * 1000; // 4h safety buffer for max session duration crossing week boundary
+        const oldestRequiredTime = new Date(
+          Math.min(cutoffTime, weekStartTime - maxSessionDurationMs, serverNow.getTime() - 4 * 86400000)
+        ).toISOString();
+
+        let rpcPromise: PromiseLike<{ data: unknown; error: { message: string } | null }> | null = null;
+        try {
+          const res = (supabase as unknown as RpcCaller).rpc("rpc_get_leaderboard", {
+            p_timezone: process.env.NEXT_PUBLIC_APP_TIMEZONE || "Asia/Kolkata",
+          });
         if (res && typeof res.then === "function") {
           rpcPromise = res;
         }
@@ -562,7 +581,31 @@ export function useLiveRoom(currentUserId?: string) {
         }
 
         recordDiagEvent("secondary_enrichment_finished", { timestamp: Date.now() }, Date.now() - fetchStartMs);
+      })
+      .finally(() => {
+        isSecondaryFetchingRef.current = false;
+        if (secondaryDeferredRef.current) {
+          secondaryDeferredRef.current = false;
+          if (!secondaryDeferredTimerRef.current) {
+            const elapsedSinceStart = Date.now() - lastSecondaryFetchTimeRef.current;
+            const remainingCooldown = Math.max(100, 3000 - elapsedSinceStart);
+            secondaryDeferredTimerRef.current = setTimeout(() => {
+              secondaryDeferredTimerRef.current = null;
+              fetchMembersRef.current();
+            }, remainingCooldown);
+          }
+        }
       });
+    } else {
+      secondaryDeferredRef.current = true;
+      if (!secondaryDeferredTimerRef.current) {
+        const waitTime = Math.max(100, 3000 - timeSinceLastSecondary);
+        secondaryDeferredTimerRef.current = setTimeout(() => {
+          secondaryDeferredTimerRef.current = null;
+          fetchMembersRef.current();
+        }, waitTime);
+      }
+    }
 
       // Background auto-stop expired sessions check
       if (data) {
@@ -598,7 +641,9 @@ export function useLiveRoom(currentUserId?: string) {
         }
       }
 
-      await secondaryPromise;
+      if (secondaryPromise) {
+        await secondaryPromise;
+      }
     } catch (err) {
       console.error("Failed to fetch group members:", err);
       setError(err instanceof Error ? err.message : "Failed to load group members");
@@ -749,13 +794,28 @@ export function useLiveRoom(currentUserId?: string) {
   }, []);
 
   const triggerDebouncedFetch = useCallback(() => {
+    const now = Date.now();
+    if (!debouncedFetchFirstCallTimeRef.current) {
+      debouncedFetchFirstCallTimeRef.current = now;
+    }
+
+    const elapsedSinceFirst = now - debouncedFetchFirstCallTimeRef.current;
+    const maxWait = 2000;
+
     if (debouncedFetchTimerRef.current) {
       clearTimeout(debouncedFetchTimerRef.current);
+      debouncedFetchTimerRef.current = null;
     }
+
+    // Spread concurrent client requests over 500ms to 1300ms window with uniform randomized jitter
+    const jitter = Math.floor(Math.random() * 800);
+    const delay = Math.max(50, Math.min(500 + jitter, Math.max(50, maxWait - elapsedSinceFirst)));
+
     debouncedFetchTimerRef.current = setTimeout(() => {
       debouncedFetchTimerRef.current = null;
+      debouncedFetchFirstCallTimeRef.current = 0;
       fetchMembersRef.current();
-    }, 500);
+    }, delay);
   }, []);
   triggerDebouncedFetchRef.current = triggerDebouncedFetch;
 
@@ -816,7 +876,7 @@ export function useLiveRoom(currentUserId?: string) {
     } else {
       ensureRoomChannelRef.current(true);
     }
-  }, [applyProfileUpdate]);
+  }, [applyProfileUpdate, supabase]);
 
   // Helper to aggregate present unique user IDs across all connected tabs/clients
   const syncPresence = useCallback((presenceState: Record<string, any[]>) => {
@@ -1001,14 +1061,6 @@ export function useLiveRoom(currentUserId?: string) {
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "study_sessions" },
-        () => {
-          if (channelGenRef.current !== thisGen) return;
-          triggerDebouncedFetchRef.current?.();
-        }
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "daily_goals" },
         () => {
           if (channelGenRef.current !== thisGen) return;
           triggerDebouncedFetchRef.current?.();
@@ -1207,7 +1259,7 @@ export function useLiveRoom(currentUserId?: string) {
     }
 
     createAndSubscribeChannelRef.current(forceRecreate);
-  }, []);
+  }, [supabase]);
 
   ensureRoomChannelRef.current = ensureRoomChannel;
 
@@ -1310,6 +1362,10 @@ export function useLiveRoom(currentUserId?: string) {
       if (debouncedFetchTimerRef.current) {
         clearTimeout(debouncedFetchTimerRef.current);
         debouncedFetchTimerRef.current = null;
+      }
+      if (secondaryDeferredTimerRef.current) {
+        clearTimeout(secondaryDeferredTimerRef.current);
+        secondaryDeferredTimerRef.current = null;
       }
       if (channelRef.current) {
         const ch = channelRef.current;

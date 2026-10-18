@@ -1347,8 +1347,10 @@ export function useActiveSession(
   // 3-HOUR MAXIMUM SESSION LIMIT MONITOR
   // -----------------------------------------------------------------------
   useEffect(() => {
-    if (currentStatus !== "studying" && currentStatus !== "break") {
-      hasTriggeredTenMinWarningRef.current = false;
+    if (currentStatus !== "studying") {
+      if (currentStatus !== "break") {
+        hasTriggeredTenMinWarningRef.current = false;
+      }
       return;
     }
 

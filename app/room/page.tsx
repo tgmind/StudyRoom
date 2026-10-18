@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useLiveRoom } from "@/hooks/useLiveRoom";
 import { useActiveSession, requestNotificationPermission } from "@/hooks/useActiveSession";
@@ -145,54 +145,56 @@ export default function RoomPage() {
   };
 
   // Reconcile members with current user's authoritative session state
-  const currentUserInMembers = (members || []).some((m) => m.id === user?.id);
-  const baseMembersList = currentUserInMembers || !user || !effectiveProfile
-    ? (members || [])
-    : [...(members || []), { ...effectiveProfile, is_present: isRoomPresent, weekly_study_seconds: 0, weekly_sessions_count: 0 }];
+  const reconciledMembers = useMemo(() => {
+    const currentUserInMembers = (members || []).some((m) => m.id === user?.id);
+    const baseMembersList = currentUserInMembers || !user || !effectiveProfile
+      ? (members || [])
+      : [...(members || []), { ...effectiveProfile, is_present: isRoomPresent, weekly_study_seconds: 0, weekly_sessions_count: 0 }];
 
-  const reconciledMembers = baseMembersList.map((m) => {
-    if (user && m.id === user.id) {
-      return {
-        // 1. Base room statistics are IMMUTABLE from Phase 2 / study_sessions query:
-        ...m,
-        weekly_study_seconds: m.weekly_study_seconds ?? 0,
-        weekly_sessions_count: m.weekly_sessions_count ?? 0,
-        total_sessions_count: m.total_sessions_count ?? 0,
-        past_24h_study_seconds: m.past_24h_study_seconds ?? 0,
-        leaderboard_score: m.leaderboard_score,
-        leaderboard_rank: m.leaderboard_rank,
-        streak_days: m.streak_days,
-        completed_tasks: m.completed_tasks,
-        total_tasks: m.total_tasks,
-        total_study_minutes: m.total_study_minutes,
+    return baseMembersList.map((m) => {
+      if (user && m.id === user.id) {
+        return {
+          // 1. Base room statistics are IMMUTABLE from Phase 2 / study_sessions query:
+          ...m,
+          weekly_study_seconds: m.weekly_study_seconds ?? 0,
+          weekly_sessions_count: m.weekly_sessions_count ?? 0,
+          total_sessions_count: m.total_sessions_count ?? 0,
+          past_24h_study_seconds: m.past_24h_study_seconds ?? 0,
+          leaderboard_score: m.leaderboard_score,
+          leaderboard_rank: m.leaderboard_rank,
+          streak_days: m.streak_days,
+          completed_tasks: m.completed_tasks,
+          total_tasks: m.total_tasks,
+          total_study_minutes: m.total_study_minutes,
 
-        // 2. Identity fields from profile:
-        display_name: effectiveProfile?.display_name || m.display_name,
-        avatar_url: effectiveProfile?.avatar_url ?? m.avatar_url,
-        has_achiever_badge: effectiveProfile?.has_achiever_badge ?? m.has_achiever_badge,
+          // 2. Identity fields from profile:
+          display_name: effectiveProfile?.display_name || m.display_name,
+          avatar_url: effectiveProfile?.avatar_url ?? m.avatar_url,
+          has_achiever_badge: effectiveProfile?.has_achiever_badge ?? m.has_achiever_badge,
 
-        // 3. Authoritative Live Presence from useActiveSession:
-        current_status: status,
-        session_start_time:
-          status === "studying"
-            ? (effectiveProfile?.session_start_time || m.session_start_time || new Date().toISOString())
-            : (status === "break" ? (effectiveProfile?.session_start_time || m.session_start_time) : null),
-        last_resumed_at:
-          status === "studying"
-            ? (effectiveProfile?.last_resumed_at || m.last_resumed_at || effectiveProfile?.session_start_time || m.session_start_time)
-            : null,
-        break_started_at: status === "break" ? (breakStartedAt || effectiveProfile?.break_started_at || m.break_started_at) : null,
-        active_study_seconds_snapshot:
-          status === "studying"
-            ? (effectiveProfile?.active_study_seconds_snapshot ?? m.active_study_seconds_snapshot ?? 0)
-            : (status === "break"
-                ? (effectiveProfile?.active_study_seconds_snapshot ?? m.active_study_seconds_snapshot ?? elapsedStudySeconds)
-                : 0),
-        is_present: isRoomPresent,
-      };
-    }
-    return m;
-  });
+          // 3. Authoritative Live Presence from useActiveSession:
+          current_status: status,
+          session_start_time:
+            status === "studying"
+              ? (effectiveProfile?.session_start_time || m.session_start_time || new Date().toISOString())
+              : (status === "break" ? (effectiveProfile?.session_start_time || m.session_start_time) : null),
+          last_resumed_at:
+            status === "studying"
+              ? (effectiveProfile?.last_resumed_at || m.last_resumed_at || effectiveProfile?.session_start_time || m.session_start_time)
+              : null,
+          break_started_at: status === "break" ? (breakStartedAt || effectiveProfile?.break_started_at || m.break_started_at) : null,
+          active_study_seconds_snapshot:
+            status === "studying"
+              ? (effectiveProfile?.active_study_seconds_snapshot ?? m.active_study_seconds_snapshot ?? 0)
+              : (status === "break"
+                  ? (effectiveProfile?.active_study_seconds_snapshot ?? m.active_study_seconds_snapshot ?? 0)
+                  : 0),
+          is_present: isRoomPresent,
+        };
+      }
+      return m;
+    });
+  }, [members, user, effectiveProfile, isRoomPresent, status, breakStartedAt]);
 
   return (
     <div className="flex-1 flex flex-col min-h-screen pb-24 bg-[#090a0f] text-zinc-100">

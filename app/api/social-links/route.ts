@@ -37,7 +37,7 @@ export async function GET() {
       { links },
       {
         headers: {
-          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+          "Cache-Control": "public, max-age=30, s-maxage=60, stale-while-revalidate=120",
         },
       }
     );
