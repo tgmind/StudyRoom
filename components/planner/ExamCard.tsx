@@ -150,7 +150,7 @@ export const ExamCard = memo(function ExamCard({
         isDragging
           ? "border-amber-400/80 opacity-60 scale-[0.99] shadow-2xl"
           : isExpanded
-          ? "border-zinc-500/80 shadow-2xl ring-1 ring-white/10 mb-6 sm:mb-7"
+          ? "border-zinc-500/80 shadow-2xl ring-1 ring-white/10 mb-5 sm:mb-6"
           : `${theme.cardBorder} shadow-lg mb-0`
       }`}
     >
@@ -396,7 +396,7 @@ export const ExamCard = memo(function ExamCard({
 
         {/* EXPANDED WORKSPACE SECTIONS */}
         {isExpanded && (
-          <div className="pt-3.5 border-t border-white/10 space-y-3.5 animate-in fade-in-50 duration-200">
+          <div className="pt-3.5 border-t border-white/10 space-y-3.5 animate-in fade-in-50 duration-200 pb-3 sm:pb-4">
             {/* SECTION 1: EXAM DETAILS */}
             <div className="rounded-xl bg-black/40 border border-white/10 p-3.5 sm:p-4 space-y-2.5">
               <div className="flex items-center justify-between">
@@ -573,28 +573,26 @@ export const ExamCard = memo(function ExamCard({
             />
           </div>
         )}
-
-        {/* Large Up Arrow Collapse Button on Bottom Margin (similar to Bottom Navigation Panel) */}
-        {isExpanded && (
-          <button
-            type="button"
-            onClick={() => {
-              setIsExpanded(false);
-              if (typeof cardRef.current?.scrollIntoView === "function") {
-                cardRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
-              }
-            }}
-            aria-label="Collapse plan"
-            title="Collapse plan"
-            data-testid="collapse-plan-bottom-button"
-            className="absolute -bottom-4.5 sm:-bottom-5 left-1/2 -translate-x-1/2 z-20 flex items-center justify-center p-1 rounded-full cursor-pointer group/collapse focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 motion-reduce:transition-none"
-          >
-            <span className="relative flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white text-zinc-950 shadow-[0_4px_16px_rgba(0,0,0,0.6),_0_0_14px_rgba(255,255,255,0.45)] border border-white/90 backdrop-blur-md transition-all duration-200 group-hover/collapse:scale-110 group-hover/collapse:shadow-[0_4px_22px_rgba(255,255,255,0.7)] active:scale-95">
-              <ChevronUp className="w-5 h-5 sm:w-5.5 sm:h-5.5 text-zinc-950 stroke-[3]" aria-hidden="true" />
-            </span>
-          </button>
-        )}
       </div>
+
+      {/* Large Up Arrow Collapse Button Overlapping the Bottom Border of the Card */}
+      {isExpanded && (
+        <button
+          type="button"
+          onClick={() => {
+            setIsExpanded(false);
+            if (typeof cardRef.current?.scrollIntoView === "function") {
+              cardRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
+            }
+          }}
+          aria-label="Collapse plan"
+          title="Collapse plan"
+          data-testid="collapse-plan-bottom-button"
+          className="absolute bottom-0 translate-y-1/2 left-1/2 -translate-x-1/2 z-20 flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white text-zinc-950 shadow-[0_4px_16px_rgba(0,0,0,0.6),_0_0_14px_rgba(255,255,255,0.45)] border border-white/90 backdrop-blur-md transition-all duration-200 hover:scale-110 hover:shadow-[0_4px_22px_rgba(255,255,255,0.7)] active:scale-95 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 motion-reduce:transition-none"
+        >
+          <ChevronUp className="w-5 h-5 text-zinc-950 stroke-[3]" aria-hidden="true" />
+        </button>
+      )}
     </div>
   );
 });

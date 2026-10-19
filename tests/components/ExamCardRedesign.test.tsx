@@ -124,10 +124,14 @@ describe("ExamCard Redesign", () => {
     // Expand
     fireEvent.click(screen.getByRole("button", { name: /Expand plan/i }));
 
-    // Bottom collapse button is rendered over the bottom margin
+    // Bottom collapse button is rendered overlapping the card bottom border
     const bottomCollapseBtn = screen.getByTestId("collapse-plan-bottom-button");
     expect(bottomCollapseBtn).toBeInTheDocument();
     expect(bottomCollapseBtn).toHaveAttribute("aria-label", "Collapse plan");
+    expect(bottomCollapseBtn.className).toContain("bottom-0");
+    expect(bottomCollapseBtn.className).toContain("translate-y-1/2");
+    expect(bottomCollapseBtn.className).toContain("left-1/2");
+    expect(bottomCollapseBtn.className).toContain("-translate-x-1/2");
 
     // Click bottom collapse button
     fireEvent.click(bottomCollapseBtn);
