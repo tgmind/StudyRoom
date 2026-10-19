@@ -114,4 +114,27 @@ describe("ExamCard Redesign", () => {
 
     expect(defaultProps.onMoveDown).toHaveBeenCalled();
   });
+
+  it("renders large up arrow button at bottom margin when expanded and collapses on click", () => {
+    render(<ExamCard {...defaultProps} />);
+
+    // Initially not expanded: bottom collapse button is not rendered
+    expect(screen.queryByTestId("collapse-plan-bottom-button")).not.toBeInTheDocument();
+
+    // Expand
+    fireEvent.click(screen.getByRole("button", { name: /Expand plan/i }));
+
+    // Bottom collapse button is rendered over the bottom margin
+    const bottomCollapseBtn = screen.getByTestId("collapse-plan-bottom-button");
+    expect(bottomCollapseBtn).toBeInTheDocument();
+    expect(bottomCollapseBtn).toHaveAttribute("aria-label", "Collapse plan");
+
+    // Click bottom collapse button
+    fireEvent.click(bottomCollapseBtn);
+
+    // Collapses: expanded sections disappear and bottom button disappears
+    expect(screen.queryByText("Exam Details")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("collapse-plan-bottom-button")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Expand plan/i })).toBeInTheDocument();
+  });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { memo, useState } from "react";
+import React, { memo, useState, useRef } from "react";
 import { ExamPlanWithSlots, PreparationSlot } from "@/lib/supabase/types";
 import {
   calculateExamCountdown,
@@ -121,6 +121,7 @@ export const ExamCard = memo(function ExamCard({
   isDragging = false,
 }: ExamCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const cardRef = useRef<HTMLDivElement>(null);
 
   const countdown = calculateExamCountdown(plan.exam_date);
   const coverage = calculateScheduleCoverage(plan.exam_date, plan.slots);
@@ -140,26 +141,29 @@ export const ExamCard = memo(function ExamCard({
 
   return (
     <div
+      ref={cardRef}
       draggable={!plan.is_locked && Boolean(onDragStart)}
       onDragStart={onDragStart}
       onDragOver={onDragOver}
       onDrop={onDrop}
-      className={`group relative rounded-2xl border transition-all duration-200 backdrop-blur-md overflow-hidden ${theme.cardBg} ${
+      className={`group relative rounded-2xl border transition-all duration-200 backdrop-blur-md ${theme.cardBg} ${
         isDragging
           ? "border-amber-400/80 opacity-60 scale-[0.99] shadow-2xl"
           : isExpanded
-          ? "border-zinc-500/80 shadow-2xl ring-1 ring-white/10"
-          : `${theme.cardBorder} shadow-lg`
+          ? "border-zinc-500/80 shadow-2xl ring-1 ring-white/10 mb-6 sm:mb-7"
+          : `${theme.cardBorder} shadow-lg mb-0`
       }`}
     >
-      {/* Ambient background glow graphic */}
-      <div
-        className={`absolute -top-14 -right-14 w-48 h-48 rounded-full blur-3xl pointer-events-none transition-opacity duration-300 opacity-60 group-hover:opacity-90 ${theme.glow}`}
-      />
+      {/* Ambient background glow graphic contained inside rounded bounds */}
+      <div className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none">
+        <div
+          className={`absolute -top-14 -right-14 w-48 h-48 rounded-full blur-3xl transition-opacity duration-300 opacity-60 group-hover:opacity-90 ${theme.glow}`}
+        />
+      </div>
 
       {/* Top Accent Strip with Deterministic Theme Palette */}
       <div
-        className={`h-1.5 w-full transition-colors ${
+        className={`h-1.5 w-full rounded-t-2xl transition-colors ${
           plan.is_locked
             ? "bg-amber-500/70"
             : countdown.status === "today"
@@ -568,6 +572,27 @@ export const ExamCard = memo(function ExamCard({
               onDeleteSlot={(slot) => onDeleteSlot(plan, slot)}
             />
           </div>
+        )}
+
+        {/* Large Up Arrow Collapse Button on Bottom Margin (similar to Bottom Navigation Panel) */}
+        {isExpanded && (
+          <button
+            type="button"
+            onClick={() => {
+              setIsExpanded(false);
+              if (typeof cardRef.current?.scrollIntoView === "function") {
+                cardRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
+              }
+            }}
+            aria-label="Collapse plan"
+            title="Collapse plan"
+            data-testid="collapse-plan-bottom-button"
+            className="absolute -bottom-4.5 sm:-bottom-5 left-1/2 -translate-x-1/2 z-20 flex items-center justify-center p-1 rounded-full cursor-pointer group/collapse focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 motion-reduce:transition-none"
+          >
+            <span className="relative flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white text-zinc-950 shadow-[0_4px_16px_rgba(0,0,0,0.6),_0_0_14px_rgba(255,255,255,0.45)] border border-white/90 backdrop-blur-md transition-all duration-200 group-hover/collapse:scale-110 group-hover/collapse:shadow-[0_4px_22px_rgba(255,255,255,0.7)] active:scale-95">
+              <ChevronUp className="w-5 h-5 sm:w-5.5 sm:h-5.5 text-zinc-950 stroke-[3]" aria-hidden="true" />
+            </span>
+          </button>
         )}
       </div>
     </div>
