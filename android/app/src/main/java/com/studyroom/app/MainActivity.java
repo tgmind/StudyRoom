@@ -69,6 +69,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean isActivityVisible = false;
     private boolean isResumePending = false;
     private boolean isBreakPending = false;
+    private long lastNetworkAvailableTime = 0;
 
     private final BroadcastReceiver sessionLimitReceiver = new BroadcastReceiver() {
         @Override
@@ -671,11 +672,27 @@ public class MainActivity extends AppCompatActivity {
                 @Override
                 public void onAvailable(@NonNull Network network) {
                     runOnUiThread(() -> {
-                        if (offlineContainer.getVisibility() == View.VISIBLE) {
+                        long now = android.os.SystemClock.elapsedRealtime();
+                        if (now - lastNetworkAvailableTime < 1000) {
+                            return;
+                        }
+                        lastNetworkAvailableTime = now;
+
+                        String currentUrl = (webView != null) ? webView.getUrl() : null;
+                        String currentTitle = (webView != null) ? webView.getTitle() : null;
+                        boolean isExplicitOfflineUrl = currentUrl != null && (currentUrl.endsWith("/offline.html") || currentUrl.endsWith("/offline"));
+                        boolean isShowingOfflineWeb = isExplicitOfflineUrl
+                                || (currentTitle != null && (currentTitle.equals("StudyRoom — Offline") || currentTitle.equalsIgnoreCase("offline")));
+
+                        if (offlineContainer.getVisibility() == View.VISIBLE || isShowingOfflineWeb) {
                             offlineContainer.setVisibility(View.GONE);
                             if (webView != null) {
                                 webView.setVisibility(View.VISIBLE);
-                                webView.reload();
+                                if (isExplicitOfflineUrl) {
+                                    webView.loadUrl(baseUrl + "/room");
+                                } else {
+                                    webView.reload();
+                                }
                             }
                         } else if (webView != null) {
                             webView.evaluateJavascript(
@@ -702,7 +719,7 @@ public class MainActivity extends AppCompatActivity {
         try {
             return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
         } catch (Exception e) {
-            return "1.0.18";
+            return "1.0.19";
         }
     }
 

@@ -144,6 +144,8 @@ export function useLiveRoom(currentUserId?: string) {
   const [loading, setLoading] = useState<boolean>(true);
   const [isReconciling, setIsReconciling] = useState<boolean>(false);
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
+  const [hasInitialSnapshot, setHasInitialSnapshot] = useState(false);
+  const hasInitialSnapshotRef = useRef(false);
   const [connectionState, setConnectionState] = useState<RealtimeConnectionState>("connecting");
   const [presentUserIds, setPresentUserIds] = useState<Set<string>>(() => new Set());
   const [error, setError] = useState<string | null>(null);
@@ -163,6 +165,7 @@ export function useLiveRoom(currentUserId?: string) {
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const channelGenRef = useRef<number>(0);
   const fetchGenRef = useRef<number>(0);
+  const inFlightFetchCountRef = useRef<number>(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const debouncedFetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const debouncedFetchFirstCallTimeRef = useRef<number>(0);
@@ -240,8 +243,12 @@ export function useLiveRoom(currentUserId?: string) {
   }, [currentUserId]);
 
   const fetchMembers = useCallback(async () => {
+    if (lifecycleRef.current === "disposed") {
+      return;
+    }
     const fetchStartMs = Date.now();
     const thisFetchGen = ++fetchGenRef.current;
+    inFlightFetchCountRef.current++;
     setIsReconciling(true);
     try {
       setError(null);
@@ -359,6 +366,8 @@ export function useLiveRoom(currentUserId?: string) {
 
         const liveSorted = sortMembers(filterAdmin(liveMembers), currentUserIdRef.current);
         setMembers(liveSorted);
+        hasInitialSnapshotRef.current = true;
+        setHasInitialSnapshot(true);
         setLoading(false);
         recordDiagEvent("critical_live_snapshot_rendered", { count: liveSorted.length }, Date.now() - fetchStartMs);
       }
@@ -403,7 +412,7 @@ export function useLiveRoom(currentUserId?: string) {
         // Graceful fallback
       }
 
-      const secondaryPromise = Promise.allSettled([
+      secondaryPromise = Promise.allSettled([
         supabase
           .from("study_sessions")
           .select("user_id, duration_minutes, end_time, start_time")
@@ -648,10 +657,13 @@ export function useLiveRoom(currentUserId?: string) {
       console.error("Failed to fetch group members:", err);
       setError(err instanceof Error ? err.message : "Failed to load group members");
     } finally {
-      if (thisFetchGen === fetchGenRef.current) {
-        setIsReconciling(false);
+      inFlightFetchCountRef.current = Math.max(0, inFlightFetchCountRef.current - 1);
+      if ((lifecycleRef.current as string) !== "disposed") {
+        if (inFlightFetchCountRef.current === 0 || thisFetchGen === fetchGenRef.current) {
+          setIsReconciling(false);
+        }
+        setLoading(false);
       }
-      setLoading(false);
     }
   }, [supabase, updateActiveWinEvent]);
 
@@ -1373,6 +1385,8 @@ export function useLiveRoom(currentUserId?: string) {
         destroyChannel(ch, true);
       }
       lifecycleRef.current = "disposed";
+      const genRef = fetchGenRef;
+      genRef.current++;
     };
   }, [supabase, destroyChannel]);
 
@@ -1471,6 +1485,7 @@ export function useLiveRoom(currentUserId?: string) {
     loading,
     isReconciling,
     isRealtimeConnected,
+    hasInitialSnapshot,
     connectionState,
     isRoomPresent,
     presentUserIds,

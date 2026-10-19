@@ -42,6 +42,7 @@ android/local.properties
 local.properties
 *.apk
 *.aab
+*.sha256
 *token*.txt
 
 # local documentation (excluded from repository / github pushes)

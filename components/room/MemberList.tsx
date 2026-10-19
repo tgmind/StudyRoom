@@ -41,6 +41,8 @@ interface MemberListProps {
   connectionState?: "connecting" | "connected" | "reconnecting" | "offline";
   syncStatus?: SessionSyncStatus;
   isReconciling?: boolean;
+  hasInitialSnapshot?: boolean;
+  roomError?: string | null;
   winEvents?: RivalryWinEvent[] | null;
   winEvent?: RivalryWinEvent | null;
   onRivalryWin?: (event: RivalryWinEvent) => void;
@@ -53,6 +55,8 @@ export const MemberList = memo(function MemberList({
   currentUserElapsedSeconds,
   isLoading = false,
   isRealtimeConnected = true,
+  hasInitialSnapshot = true,
+  roomError = null,
   connectionState,
   syncStatus,
   isReconciling = false,
@@ -576,25 +580,19 @@ export const MemberList = memo(function MemberList({
 
             {(() => {
               const isOnline = typeof navigator === "undefined" || navigator.onLine;
-              const isTrulyConnected =
-                isRealtimeConnected &&
-                (connectionState === "connected" || (!connectionState && isRealtimeConnected)) &&
-                isOnline &&
-                !isLoading &&
-                !isReconciling;
               const isNoNetwork = !isOnline;
               const isOffline =
-                isNoNetwork || connectionState === "offline" || (!connectionState && !isRealtimeConnected);
-              const isReconnecting = !isOffline && connectionState === "reconnecting";
-              const isConnecting = !isOffline && !isReconnecting && connectionState === "connecting";
-              const isSyncing = !isOffline && !isReconnecting && !isConnecting && (isLoading || Boolean(isReconciling));
-              const isLive = isTrulyConnected && !isSyncing && !isConnecting;
+                isNoNetwork || connectionState === "offline" || (!connectionState && !isRealtimeConnected && !isOnline);
+              const isReconnecting = !isNoNetwork && connectionState === "reconnecting";
+              const isConnecting = !isNoNetwork && !isOffline && !isReconnecting && (connectionState === "connecting" || (!isRealtimeConnected && !isOffline));
+              const isSyncing = !isNoNetwork && !isOffline && !isReconnecting && !isConnecting && (isLoading || Boolean(isReconciling) || !hasInitialSnapshot);
+              const isLive = !isNoNetwork && !isOffline && !isReconnecting && !isConnecting && !isSyncing && isRealtimeConnected && hasInitialSnapshot && !roomError && syncStatus !== "error";
 
               return (
                 <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-[10px] font-bold text-zinc-300 shadow-sm shrink-0">
                   <span
                     className={`w-1.5 h-1.5 rounded-full ${
-                      isOffline
+                      isNoNetwork || isOffline
                         ? "bg-zinc-500"
                         : isReconnecting
                         ? "bg-amber-400 animate-pulse"
@@ -602,7 +600,9 @@ export const MemberList = memo(function MemberList({
                         ? "bg-sky-400 animate-pulse"
                         : isSyncing
                         ? "bg-blue-400 animate-pulse"
-                        : "bg-fuchsia-400 animate-pulse"
+                        : isLive
+                        ? "bg-fuchsia-400 animate-pulse"
+                        : "bg-sky-400 animate-pulse"
                     }`}
                   />
                   <span>

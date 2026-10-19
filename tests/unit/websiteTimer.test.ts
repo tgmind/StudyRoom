@@ -349,6 +349,80 @@ describe("Website Timer Resilience & Web Browser Lifecycle (No AndroidBridge)", 
     act(() => {
       vi.advanceTimersByTime(2000);
     });
-    expect(result.current.elapsedStudySeconds).toBe(2101);
+    expect(result.current.elapsedStudySeconds).toBe(2102);
+  });
+
+  it("restores non-zero elapsedStudySeconds immediately when profile hydrates from null with current_status studying (preventing 00:00:00 freeze)", async () => {
+    const t0 = new Date("2026-10-09T10:00:00Z");
+    const currentTime = new Date("2026-10-09T10:20:00Z"); // 20m / 1200s elapsed
+    vi.setSystemTime(currentTime);
+
+    // Initial render with null profile (simulating AuthProvider initial loading state)
+    const { result, rerender } = renderHook(
+      ({ prof }: { prof: UserProfile | null }) =>
+        useActiveSession(prof, undefined, undefined, "connected", false),
+      { initialProps: { prof: null as UserProfile | null } }
+    );
+
+    // When profile is null, initial elapsed seconds is 0
+    expect(result.current.elapsedStudySeconds).toBe(0);
+
+    // Server profile resolves with active studying session
+    const hydratedProfile: UserProfile = {
+      id: "web-user-hydrated",
+      display_name: "Hydrated User",
+      current_status: "studying",
+      session_start_time: t0.toISOString(),
+      last_resumed_at: t0.toISOString(),
+      active_study_seconds_snapshot: 0,
+      state_version: 1,
+    } as UserProfile;
+
+    // Rerender with hydrated profile
+    act(() => {
+      rerender({ prof: hydratedProfile });
+    });
+
+    // Elapsed study seconds must immediately reflect 1200s instead of remaining frozen at 0
+    expect(result.current.elapsedStudySeconds).toBe(1200);
+
+    // Advances next second
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(result.current.elapsedStudySeconds).toBe(1201);
+  });
+
+  it("prevents 00:00:00 freeze when profile is calibrating and server blocks are empty via Tier 5 safe profile fallback anchor", async () => {
+    const t0 = new Date("2026-10-09T10:00:00Z");
+    const currentTime = new Date("2026-10-09T10:35:00Z");
+    vi.setSystemTime(currentTime);
+
+    // Profile has accrued break snapshot (1800s) but lacks last_resumed_at -> isMemberTimerCalibrating is true
+    const calibratingProfile: UserProfile = {
+      id: "calibrating-user-empty-blocks",
+      display_name: "Calibrating Student",
+      current_status: "studying",
+      session_start_time: t0.toISOString(),
+      last_resumed_at: null,
+      active_study_seconds_snapshot: 1800,
+      state_version: 2,
+    } as UserProfile;
+
+    expect(isMemberTimerCalibrating(calibratingProfile)).toBe(true);
+
+    const { result } = renderHook(() =>
+      useActiveSession(calibratingProfile, undefined, undefined, "connected", false)
+    );
+
+    // Tier 5 safe fallback anchor preserves the 1800s accrued snapshot rather than freezing at 00:00:00
+    expect(result.current.elapsedStudySeconds).toBe(1800);
+
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
+
+    // Continues holding the non-zero accrued baseline while calibrating
+    expect(result.current.elapsedStudySeconds).toBe(1800);
   });
 });

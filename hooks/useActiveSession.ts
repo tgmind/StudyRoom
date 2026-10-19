@@ -493,6 +493,23 @@ export function useActiveSession(
     }
   }, [currentStatus, profile?.active_study_seconds_snapshot, profile]);
 
+  // Immediate elapsed study seconds sync when studying (Auth & Profile Hydration Restoration)
+  useEffect(() => {
+    if (currentStatus === "studying" && profile) {
+      const calculated = calculateMemberElapsedStudySeconds(profile, getServerNow());
+      if (calculated > 0) {
+        lastAuthoritativeElapsedRef.current = calculated;
+        setElapsedStudySeconds(calculated);
+      }
+    }
+  }, [
+    currentStatus,
+    profile?.session_start_time,
+    profile?.last_resumed_at,
+    profile?.active_study_seconds_snapshot,
+    profile,
+  ]);
+
   // -----------------------------------------------------------------------
   // RESTORATION ON MOUNT: Check disk for active session (Closed-App Support)
   // -----------------------------------------------------------------------
@@ -823,6 +840,14 @@ export function useActiveSession(
           lastAuthoritativeElapsedRef.current = s;
         } else {
           const s = calculateActiveStudySeconds(fetchedBlocks, serverNow);
+          setElapsedStudySeconds(s);
+          lastAuthoritativeElapsedRef.current = s;
+        }
+      } else if (profile.current_status === "studying") {
+        // Fallback when session_blocks is empty: anchor elapsed study seconds from profile
+        const serverNow = getServerNow();
+        const s = calculateMemberElapsedStudySeconds(profile, serverNow);
+        if (s > 0) {
           setElapsedStudySeconds(s);
           lastAuthoritativeElapsedRef.current = s;
         }
@@ -1476,6 +1501,15 @@ export function useActiveSession(
       if (lastAuthoritativeElapsedRef.current > 0) {
         return lastAuthoritativeElapsedRef.current;
       }
+      // Tier 5: Safe Profile Fallback Anchor (Prevents 00:00:00 freeze!)
+      // If user is marked studying on server, calculate best possible elapsed time from session start or snapshot
+      if (p && p.current_status === "studying") {
+        const fallbackSeconds = calculateMemberElapsedStudySeconds(p, now);
+        if (fallbackSeconds > 0) {
+          lastAuthoritativeElapsedRef.current = fallbackSeconds;
+          return fallbackSeconds;
+        }
+      }
       return 0;
     };
 
@@ -1497,7 +1531,7 @@ export function useActiveSession(
       document.removeEventListener("visibilitychange", handleVisibility);
       window.removeEventListener("focus", handleVisibility);
     };
-  }, [currentStatus, localStatusOverride]);
+  }, [currentStatus, localStatusOverride, profile?.id, profile?.session_start_time, profile?.last_resumed_at, profile?.active_study_seconds_snapshot]);
 
   // -----------------------------------------------------------------------
   // -----------------------------------------------------------------------

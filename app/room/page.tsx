@@ -33,6 +33,8 @@ export default function RoomPage() {
     broadcastStatusChange,
     isRoomPresent,
     isReconciling: roomReconciling,
+    hasInitialSnapshot,
+    error: roomError,
   } = useLiveRoom(user?.id);
 
   // Own profile is always the canonical source for session state.
@@ -263,6 +265,8 @@ export default function RoomPage() {
             isLoading={roomLoading}
             isReconciling={roomReconciling}
             isRealtimeConnected={isRealtimeConnected}
+            hasInitialSnapshot={hasInitialSnapshot}
+            roomError={roomError}
             connectionState={connectionState}
             syncStatus={syncStatus}
             winEvent={activeWinEvent}

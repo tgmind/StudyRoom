@@ -134,15 +134,16 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // HTML / App Navigation Routes: Network-First with 3s timeout and clean offline fallback
+  // HTML / App Navigation Routes: Network-First with 10s timeout and clean offline fallback
   // Invariant: Never caches private/authenticated HTML in CacheStorage to prevent cross-account leaks
   if (event.request.mode === "navigate" || event.request.headers.get("accept")?.includes("text/html")) {
     event.respondWith(
       (async () => {
         try {
-          // 3-second network timeout to prevent infinite hanging on degraded mobile networks / Lie-Fi
+          // 10-second network timeout to accommodate mobile cold starts (DNS, TLS, edge latency)
+          // while preventing infinite hanging on total network drops
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 3000);
+          const timeoutId = setTimeout(() => controller.abort(), 10000);
 
           const networkResponse = await fetch(event.request, {
             signal: controller.signal,

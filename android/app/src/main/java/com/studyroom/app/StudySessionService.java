@@ -327,9 +327,11 @@ public class StudySessionService extends Service {
 
         // 1. Official Android 16+ Live Updates (Status-Bar Chip & Promoted Ongoing Notification Request)
         try {
-            // Official AndroidX NotificationCompat API (backed by EXTRA_REQUEST_PROMOTED_ONGOING)
-            builder.setRequestPromotedOngoing(true);
-            builder.setShortCriticalText(isBreak ? "Break" : "Study");
+            // Attempt reflection in case running against newer AndroidX NotificationCompat library
+            java.lang.reflect.Method m1 = builder.getClass().getMethod("setRequestPromotedOngoing", boolean.class);
+            m1.invoke(builder, true);
+            java.lang.reflect.Method m2 = builder.getClass().getMethod("setShortCriticalText", CharSequence.class);
+            m2.invoke(builder, isBreak ? "Break" : "Study");
         } catch (Throwable t) {
             Log.d(TAG, "NotificationCompat promotion request skipped: " + t.getMessage());
             // Fallback to documented extra keys if running on earlier AndroidX library

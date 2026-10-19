@@ -50,8 +50,75 @@
 <body>
   <div class="card">
     <h1>You are Offline</h1>
-    <p>StudyRoom requires a network connection for live group synchronization. Please check your connection and try again.</p>
-    <button onclick="window.location.reload()">Retry Connection</button>
+    <p id="offline-desc">StudyRoom requires a network connection for live group synchronization. Please check your connection and try again.</p>
+    <button onclick="sessionStorage.removeItem('sr_offline_reloads'); window.location.reload()">Retry Connection</button>
   </div>
+  <script>
+    (function() {
+      var isRecovering = false;
+      function recover() {
+        if (isRecovering) return;
+        var count = parseInt(sessionStorage.getItem('sr_offline_reloads') || '0', 10);
+        if (count >= 3) {
+          var desc = document.getElementById('offline-desc');
+          if (desc) {
+            desc.textContent = 'Connection is taking longer to respond. Please tap "Retry Connection" once your network or server is restored.';
+          }
+          return;
+        }
+        isRecovering = true;
+        sessionStorage.setItem('sr_offline_reloads', (count + 1).toString());
+
+        var path = window.location.pathname || '';
+        if (path.endsWith('offline.html') || path.endsWith('/offline')) {
+          window.location.replace('/room');
+        } else {
+          window.location.reload();
+        }
+      }
+
+      // Instant event-driven recovery when browser reports online
+      window.addEventListener('online', recover);
+
+      // Recovery on document focus / foreground
+      document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'visible' && navigator.onLine) {
+          recover();
+        }
+      });
+      window.addEventListener('focus', function() {
+        if (navigator.onLine) recover();
+      });
+
+      // Autonomous active network reachability ping with exponential backoff (2s, 4s, 8s, 16s)
+      // Note: Reaches origin for network reachability only. Application and channel sync health
+      // are managed authoritatively by useLiveRoom.
+      var delays = [2000, 4000, 8000, 16000];
+      var delayIdx = 0;
+      function pollConnectivity() {
+        if (navigator.onLine) {
+          fetch('/favicon.ico?_t=' + Date.now(), { method: 'HEAD', cache: 'no-store' })
+            .then(function(res) {
+              if (res.ok || res.status < 500) {
+                recover();
+              } else {
+                scheduleNext();
+              }
+            })
+            .catch(function() {
+              scheduleNext();
+            });
+        } else {
+          scheduleNext();
+        }
+      }
+      function scheduleNext() {
+        var delay = delays[delayIdx] || 16000;
+        if (delayIdx < delays.length - 1) delayIdx++;
+        setTimeout(pollConnectivity, delay);
+      }
+      scheduleNext();
+    })();
+  </script>
 </body>
 </html>

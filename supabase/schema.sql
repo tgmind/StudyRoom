@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS public.users (
   has_achiever_badge BOOLEAN NOT NULL DEFAULT FALSE,
   is_admin BOOLEAN NOT NULL DEFAULT FALSE,
   last_break_expired_study_seconds INTEGER DEFAULT NULL,
-  pending_goal_session_id UUID REFERENCES public.study_sessions(id) ON DELETE SET NULL,
+  pending_goal_session_id UUID DEFAULT NULL,
   pending_goal_seconds INTEGER DEFAULT NULL,
   pending_goal_reason TEXT DEFAULT NULL,
   last_offline_at TIMESTAMPTZ,
@@ -41,7 +41,7 @@ ALTER TABLE public.users ADD COLUMN IF NOT EXISTS break_started_at TIMESTAMPTZ;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS active_study_seconds_snapshot INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_break_expired_study_seconds INTEGER DEFAULT NULL;
-ALTER TABLE public.users ADD COLUMN IF NOT EXISTS pending_goal_session_id UUID REFERENCES public.study_sessions(id) ON DELETE SET NULL;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS pending_goal_session_id UUID;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS pending_goal_seconds INTEGER DEFAULT NULL;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS pending_goal_reason TEXT DEFAULT NULL;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_offline_at TIMESTAMPTZ;
@@ -184,6 +184,18 @@ CREATE INDEX IF NOT EXISTS idx_study_sessions_start_time ON public.study_session
 CREATE INDEX IF NOT EXISTS idx_study_sessions_end_time ON public.study_sessions(end_time);
 CREATE INDEX IF NOT EXISTS idx_study_sessions_sibling_id ON public.study_sessions(sibling_session_id);
 CREATE INDEX IF NOT EXISTS idx_study_sessions_split_part ON public.study_sessions(split_part);
+
+-- Foreign key from users to study_sessions (added after study_sessions exists)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'fk_users_pending_goal_session'
+  ) THEN
+    ALTER TABLE public.users
+      ADD CONSTRAINT fk_users_pending_goal_session
+      FOREIGN KEY (pending_goal_session_id) REFERENCES public.study_sessions(id) ON DELETE SET NULL;
+  END IF;
+END $$;
 
 -- ------------------------------------------------------------
 -- 5. SESSION BLOCKS TABLE (Active Study vs Break Tracking)
