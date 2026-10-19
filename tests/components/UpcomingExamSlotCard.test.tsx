@@ -554,7 +554,7 @@ describe("UpcomingExamSlotCard Component & Calculations", () => {
     expect(heading.className).toContain("truncate");
   });
 
-  it("23. The Planner navigation link routes to /planner", () => {
+  it("23. The Planner navigation link routes to /planner and is isolated to the exam name", () => {
     const plan = createMockPlan("p1", "SSC CGL", "2027-07-01");
     vi.spyOn(useExamPlansModule, "useExamPlans").mockReturnValue({
       plans: [plan],
@@ -575,9 +575,16 @@ describe("UpcomingExamSlotCard Component & Calculations", () => {
     });
 
     render(<UpcomingExamSlotCard userId="user-123" isTimerActive={false} />);
-    const link = screen.getByRole("link");
+    const links = screen.getAllByRole("link");
+    expect(links).toHaveLength(1);
+    const link = links[0];
     expect(link).toHaveAttribute("href", "/planner");
     expect(link).toHaveAttribute("aria-label");
+    expect(link).toHaveTextContent("SSC CGL");
+
+    // Container card is a div (not a link), preventing accidental touches
+    const container = screen.getByTestId("upcoming-exam-slot-card-container");
+    expect(container.querySelector("div.select-none")).toBeInTheDocument();
   });
 
   it("24. Empty states return null and leave no unwanted gaps", () => {

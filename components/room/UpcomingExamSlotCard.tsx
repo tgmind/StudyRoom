@@ -248,17 +248,13 @@ export const UpcomingExamSlotCard = memo(function UpcomingExamSlotCard({
       aria-hidden={isTimerActive}
       data-testid="upcoming-exam-slot-card-container"
     >
-      <Link
-        href="/planner"
-        className="group relative block w-full rounded-2xl bg-gradient-to-br from-[#101b38] via-[#161f42]/90 to-[#0b1021] border border-indigo-500/35 hover:border-indigo-400/60 shadow-lg backdrop-blur-md transition-all duration-200 overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 cursor-pointer"
-        aria-label={`Upcoming exam: ${nearestExam.exam_name}, ${
-          isToday ? "Exam is today" : `${countdown.daysRemaining} days remaining`
-        }. View in Planner`}
+      <div
+        className="relative block w-full rounded-2xl bg-gradient-to-br from-[#101b38] via-[#161f42]/90 to-[#0b1021] border border-indigo-500/35 shadow-lg backdrop-blur-md overflow-hidden select-none"
       >
         {/* Subtle Ambient background glow graphic */}
         <div
           aria-hidden="true"
-          className="absolute -top-10 -right-10 w-36 h-36 rounded-full blur-2xl pointer-events-none bg-indigo-500/15 group-hover:bg-indigo-500/25 transition-colors duration-300"
+          className="absolute -top-10 -right-10 w-36 h-36 rounded-full blur-2xl pointer-events-none bg-indigo-500/15"
         />
 
         {/* Top Accent Strip */}
@@ -288,11 +284,20 @@ export const UpcomingExamSlotCard = memo(function UpcomingExamSlotCard({
               </div>
 
               <div className="min-w-0 flex-1 space-y-0.5">
-                <div className="flex items-center space-x-1.5 min-w-0">
-                  <h3 className="text-sm sm:text-base font-black text-white tracking-tight truncate group-hover:text-indigo-200 transition-colors">
-                    {nearestExam.exam_name}
-                  </h3>
-                  <ArrowUpRight className="w-3.5 h-3.5 text-zinc-500 group-hover:text-indigo-300 transition-all shrink-0" />
+                <div className="flex items-center min-w-0">
+                  <Link
+                    href="/planner"
+                    className="group/title inline-flex items-center space-x-1.5 min-w-0 max-w-full rounded-md py-0.5 pr-1.5 -ml-0.5 pl-0.5 hover:bg-white/[0.06] transition-all cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+                    title={`View ${nearestExam.exam_name} in Planner`}
+                    aria-label={`Upcoming exam: ${nearestExam.exam_name}, ${
+                      isToday ? "Exam is today" : `${countdown.daysRemaining} days remaining`
+                    }. View in Planner`}
+                  >
+                    <h3 className="text-sm sm:text-base font-black text-white tracking-tight truncate group-hover/title:text-indigo-200 transition-colors underline decoration-transparent hover:decoration-indigo-400/60 underline-offset-4">
+                      {nearestExam.exam_name}
+                    </h3>
+                    <ArrowUpRight className="w-3.5 h-3.5 text-indigo-400/80 group-hover/title:text-indigo-200 group-hover/title:translate-x-0.5 group-hover/title:-translate-y-0.5 transition-all shrink-0" />
+                  </Link>
                 </div>
 
                 <div className="flex items-center space-x-1.5 text-[11px] sm:text-xs text-zinc-400 font-medium">
@@ -432,7 +437,7 @@ export const UpcomingExamSlotCard = memo(function UpcomingExamSlotCard({
             </div>
           )}
         </div>
-      </Link>
+      </div>
     </div>
   );
 });
