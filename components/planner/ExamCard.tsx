@@ -356,41 +356,43 @@ export const ExamCard = memo(function ExamCard({
             )}
           </div>
 
-          {/* Footer of card: Unassigned note (left) & Expand button moved to bottom right over margin */}
+          {/* Footer of card: Unassigned note (left) & Expand button when collapsed */}
           <div className="flex items-center justify-between gap-2 pt-0.5">
             <div className="min-w-0 flex-1">
               {coverage.hasGaps ? (
-                <p className="text-[10px] sm:text-[11px] text-zinc-400 flex items-center space-x-1 truncate">
-                  <AlertCircle className="w-3 h-3 text-zinc-400 shrink-0" />
-                  <span>{coverage.gapDaysCount} unassigned preparation days remaining before exam</span>
+                <p className="text-[10px] sm:text-[11px] text-zinc-400 flex items-center space-x-1.5 leading-snug">
+                  <AlertCircle className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                  <span className={isExpanded ? "break-normal" : "truncate"}>
+                    {coverage.gapDaysCount} unassigned preparation {coverage.gapDaysCount === 1 ? "day" : "days"} remaining before exam
+                  </span>
                 </p>
               ) : coverage.scheduledDays > 0 ? (
-                <p className="text-[10px] sm:text-[11px] text-emerald-400 flex items-center space-x-1 truncate">
-                  <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
-                  <span>All preparation days slotted before exam</span>
+                <p className="text-[10px] sm:text-[11px] text-emerald-400 flex items-center space-x-1.5 leading-snug">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span className={isExpanded ? "break-normal" : "truncate"}>
+                    All preparation days slotted before exam
+                  </span>
                 </p>
               ) : (
-                <p className="text-[10px] sm:text-[11px] text-zinc-500 italic truncate">
+                <p className="text-[10px] sm:text-[11px] text-zinc-500 italic">
                   No preparation slots defined yet
                 </p>
               )}
             </div>
 
-            {/* Expand/Collapse Arrow Button on Bottom Right */}
-            <button
-              type="button"
-              onClick={() => setIsExpanded((prev) => !prev)}
-              aria-label={isExpanded ? "Collapse plan" : "Expand plan"}
-              aria-expanded={isExpanded}
-              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-black/40 hover:bg-black/60 text-zinc-200 hover:text-white border border-white/10 transition-all cursor-pointer select-none shrink-0 shadow-sm text-xs font-bold"
-            >
-              <span>{isExpanded ? "Less" : "Details"}</span>
-              {isExpanded ? (
-                <ChevronUp className="w-3.5 h-3.5" />
-              ) : (
+            {/* Expand "Details" Button (only shown when collapsed) */}
+            {!isExpanded && (
+              <button
+                type="button"
+                onClick={() => setIsExpanded(true)}
+                aria-label="Expand plan"
+                aria-expanded={false}
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-black/40 hover:bg-black/60 text-zinc-200 hover:text-white border border-white/10 transition-all cursor-pointer select-none shrink-0 shadow-sm text-xs font-bold"
+              >
+                <span>Details</span>
                 <ChevronDown className="w-3.5 h-3.5" />
-              )}
-            </button>
+              </button>
+            )}
           </div>
         </div>
 

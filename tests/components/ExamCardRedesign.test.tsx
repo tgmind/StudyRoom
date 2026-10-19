@@ -133,6 +133,10 @@ describe("ExamCard Redesign", () => {
     expect(bottomCollapseBtn.className).toContain("left-1/2");
     expect(bottomCollapseBtn.className).toContain("-translate-x-1/2");
 
+    // "Details" / "Less" button at the top row is not rendered when expanded
+    expect(screen.queryByRole("button", { name: /Expand plan/i })).not.toBeInTheDocument();
+    expect(screen.queryByText("Less")).not.toBeInTheDocument();
+
     // Click bottom collapse button
     fireEvent.click(bottomCollapseBtn);
 
