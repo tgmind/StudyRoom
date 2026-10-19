@@ -1,17 +1,25 @@
 "use client";
 
 import React, { memo } from "react";
-import { Plus, CalendarDays, Sparkles } from "lucide-react";
+import { Plus, CalendarDays, Sparkles, LayoutDashboard } from "lucide-react";
 
 interface PlannerHeaderProps {
   onCreateClick: () => void;
   activeExamsCount: number;
+  showRoomUpcomingCard?: boolean;
+  onToggleShowRoomUpcomingCard?: () => void;
+  isPreferenceUpdating?: boolean;
 }
 
 export const PlannerHeader = memo(function PlannerHeader({
   onCreateClick,
   activeExamsCount,
+  showRoomUpcomingCard = true,
+  onToggleShowRoomUpcomingCard,
+  isPreferenceUpdating = false,
 }: PlannerHeaderProps) {
+  const isEnabled = showRoomUpcomingCard !== false;
+
   return (
     <div className="relative rounded-2xl bg-zinc-950/80 border border-zinc-800/90 p-3 sm:p-3.5 shadow-xl backdrop-blur-md overflow-hidden">
       {/* Subtle dual-accent background glow */}
@@ -52,6 +60,62 @@ export const PlannerHeader = memo(function PlannerHeader({
           <span>Create Exam Plan</span>
         </button>
       </div>
+
+      {/* Cross-Device Preference: Show Upcoming Exam in Main Room */}
+      {onToggleShowRoomUpcomingCard && (
+        <div className="relative mt-3 pt-2.5 border-t border-zinc-800/80 flex items-center justify-between gap-3">
+          <div className="flex items-center space-x-2.5 min-w-0 flex-1">
+            <div
+              className={`p-1.5 rounded-lg border text-xs shrink-0 transition-colors ${
+                isEnabled
+                  ? "bg-indigo-500/15 border-indigo-500/30 text-indigo-300"
+                  : "bg-zinc-800/50 border-zinc-700/50 text-zinc-500"
+              }`}
+            >
+              <LayoutDashboard className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center space-x-2">
+                <span className="text-xs sm:text-[13px] font-bold text-zinc-200 truncate">
+                  Show Upcoming Target in Room
+                </span>
+                <span
+                  data-testid="room-card-toggle-status"
+                  className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-extrabold uppercase tracking-wider shrink-0 transition-colors ${
+                    isEnabled
+                      ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30"
+                      : "bg-zinc-800 text-zinc-400 border border-zinc-700"
+                  }`}
+                >
+                  {isEnabled ? "ON" : "OFF"}
+                </span>
+              </div>
+              <p className="text-[10.5px] sm:text-xs text-zinc-400 truncate mt-0.5">
+                Display nearest upcoming exam & active phase above the study timer in Room
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            disabled={isPreferenceUpdating}
+            onClick={onToggleShowRoomUpcomingCard}
+            className={`relative inline-flex h-5 w-9 sm:h-5.5 sm:w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-50 select-none ${
+              isEnabled ? "bg-amber-500" : "bg-zinc-700"
+            }`}
+            role="switch"
+            aria-checked={isEnabled}
+            aria-label="Toggle upcoming exam card on Room page"
+            data-testid="toggle-room-upcoming-card-button"
+          >
+            <span
+              className={`pointer-events-none inline-block h-4 w-4 sm:h-4.5 sm:w-4.5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                isEnabled ? "translate-x-4 sm:translate-x-4.5" : "translate-x-0"
+              }`}
+            />
+          </button>
+        </div>
+      )}
     </div>
   );
 });

@@ -205,9 +205,24 @@ describe("PlannerPage Component", () => {
     const expandBtn = screen.getByRole("button", { name: /Expand plan/i });
     fireEvent.click(expandBtn);
 
-    const switchBtn = screen.getByRole("switch");
-    fireEvent.click(switchBtn);
+    const streaksSwitch = screen
+      .getAllByRole("switch")
+      .find((s) => s.getAttribute("data-testid") !== "toggle-room-upcoming-card-button");
+    expect(streaksSwitch).toBeDefined();
+    fireEvent.click(streaksSwitch!);
 
     expect(mockToggleStreaksVisibility).toHaveBeenCalledWith("plan-1", true);
+  });
+
+  it("renders room upcoming card toggle in PlannerHeader and toggles preference on click", () => {
+    render(<PlannerPage />);
+
+    expect(screen.getByText("Show Upcoming Target in Room")).toBeInTheDocument();
+    expect(screen.getByTestId("room-card-toggle-status")).toHaveTextContent("ON");
+
+    const toggleBtn = screen.getByTestId("toggle-room-upcoming-card-button");
+    expect(toggleBtn).toHaveAttribute("aria-checked", "true");
+
+    fireEvent.click(toggleBtn);
   });
 });

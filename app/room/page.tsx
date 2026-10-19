@@ -13,6 +13,7 @@ import { SessionGoalUpdateModal } from "@/components/session/SessionGoalUpdateMo
 import { CreateGoalModal } from "@/components/goals/CreateGoalModal";
 import { TenMinuteWarningBanner } from "@/components/session/TenMinuteWarningBanner";
 import { GlobalAnalyticsAlert } from "@/components/analytics/GlobalAnalyticsAlert";
+import { UpcomingExamSlotCard } from "@/components/room/UpcomingExamSlotCard";
 import { getServerNow } from "@/lib/time/clockSync";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 
@@ -234,6 +235,12 @@ export default function RoomPage() {
 
         {/* Monday Global Analytics Notification Card */}
         <GlobalAnalyticsAlert userId={user?.id} />
+
+        {/* Upcoming Exam & Active Preparation Slot Card */}
+        <UpcomingExamSlotCard
+          userId={user?.id}
+          isTimerActive={status === "studying" || status === "break"}
+        />
 
         {/* Session Controller Panel */}
         <section aria-label="Session Controller">

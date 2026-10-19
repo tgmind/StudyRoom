@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useExamPlans } from "@/hooks/useExamPlans";
+import { useUpcomingExamCardPreference } from "@/hooks/useUpcomingExamCardPreference";
 import { TopHeader } from "@/components/navigation/TopHeader";
 import { BottomNav } from "@/components/navigation/BottomNav";
 import { PlannerHeader } from "@/components/planner/PlannerHeader";
@@ -34,6 +35,12 @@ export default function PlannerPage() {
     updateSlot,
     deleteSlot,
   } = useExamPlans(user?.id);
+
+  const {
+    showRoomUpcomingCard,
+    toggleShowRoomUpcomingCard,
+    isUpdating: isPreferenceUpdating,
+  } = useUpcomingExamCardPreference();
 
   // Modals state
   const [isCreateExamOpen, setIsCreateExamOpen] = useState(false);
@@ -134,6 +141,9 @@ export default function PlannerPage() {
         <PlannerHeader
           onCreateClick={() => setIsCreateExamOpen(true)}
           activeExamsCount={insights.activeExamsCount}
+          showRoomUpcomingCard={showRoomUpcomingCard}
+          onToggleShowRoomUpcomingCard={toggleShowRoomUpcomingCard}
+          isPreferenceUpdating={isPreferenceUpdating}
         />
 
         {/* Global Hook Error Banner */}
