@@ -62,9 +62,14 @@ describe("Weekly Achiever Automation Unit Tests", () => {
       reason: "Missing ALERT_GMAIL_USER",
     });
 
+    const mockSupabase = {
+      rpc: vi.fn().mockResolvedValue({ data: { success: true }, error: null }),
+    };
+
     const result = await processWeeklyAchieverAutomation({
       force: true,
       timezone: "Asia/Kolkata",
+      supabaseOverride: mockSupabase,
     });
 
     expect(result.success).toBe(false);

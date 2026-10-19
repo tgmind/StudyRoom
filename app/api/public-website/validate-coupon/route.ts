@@ -15,6 +15,16 @@ export async function POST(request: NextRequest) {
 
     const result = await validateCouponCode(code);
 
+    if (result.isError) {
+      return NextResponse.json(
+        {
+          valid: false,
+          message: "Service temporarily unavailable. Please try again later.",
+        },
+        { status: 503 }
+      );
+    }
+
     if (!result.valid || !result.coupon) {
       return NextResponse.json(
         {

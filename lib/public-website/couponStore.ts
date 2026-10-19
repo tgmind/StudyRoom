@@ -1,42 +1,19 @@
 import { PublicCoupon, ReferralEnrollment } from "./types";
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-// Default seed coupons for instant development / fallback
-export const inMemoryCoupons: PublicCoupon[] = [
-  {
-    id: "cpn_seed_referral100",
-    code: "REFERRAL100",
-    discountPercent: 100,
-    isActive: true,
-    maxUses: 1000,
-    usedCount: 0,
-    note: "Official StudyRoom launch referral coupon",
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "cpn_seed_study100",
-    code: "STUDY100",
-    discountPercent: 100,
-    isActive: true,
-    maxUses: 500,
-    usedCount: 0,
-    note: "Peer study group 100% scholarship code",
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "cpn_seed_vip100",
-    code: "VIP100",
-    discountPercent: 100,
-    isActive: true,
-    maxUses: null,
-    usedCount: 0,
-    note: "VIP community partner pass",
-    createdAt: new Date().toISOString(),
-  },
-];
+const isTestEnvironment = process.env.NODE_ENV === "test" || process.env.VITEST === "true";
 
+// In-memory store exclusively for isolated unit testing
+export const inMemoryCoupons: PublicCoupon[] = [];
 export const inMemoryReferrals: ReferralEnrollment[] = [];
+
+/**
+ * Reset in-memory test store (utility for unit tests)
+ */
+export function resetTestStore(): void {
+  inMemoryCoupons.length = 0;
+  inMemoryReferrals.length = 0;
+}
 
 /**
  * Authoritatively find a coupon by code (case-insensitive)
@@ -45,38 +22,50 @@ export async function findCouponByCode(code: string): Promise<PublicCoupon | nul
   const normalized = String(code || "").trim().toUpperCase();
   if (!normalized) return null;
 
-  // Try fetching from Supabase first
+  let adminClient: any = null;
   try {
-    const supabase = await createClient();
-    const { data, error } = await (supabase as any)
+    adminClient = createAdminClient();
+  } catch (err) {
+    if (isTestEnvironment) {
+      const foundInTest = inMemoryCoupons.find((c) => c.code.toUpperCase() === normalized);
+      return foundInTest ? { ...foundInTest } : null;
+    }
+    throw err;
+  }
+
+  if (adminClient) {
+    const { data, error } = await adminClient
       .from("public_coupons")
       .select("*")
       .ilike("code", normalized)
       .maybeSingle();
 
-    if (!error) {
-      if (data) {
-        return {
-          id: data.id,
-          code: data.code,
-          discountPercent: data.discount_percent ?? 100,
-          isActive: Boolean(data.is_active),
-          maxUses: data.max_uses,
-          usedCount: data.used_count ?? 0,
-          note: data.note,
-          createdAt: data.created_at,
-        };
-      }
-      // Authoritative database result: the record does not exist
-      return null;
+    if (error) {
+      console.error("[findCouponByCode] Database error:", error.message);
+      throw new Error(`Database error fetching coupon: ${error.message}`);
     }
-  } catch {
-    // Database connection failure or table not migrated yet; fallback to in-memory store
+
+    if (data) {
+      return {
+        id: data.id,
+        code: data.code,
+        discountPercent: data.discount_percent ?? 100,
+        isActive: Boolean(data.is_active),
+        maxUses: data.max_uses,
+        usedCount: data.used_count ?? 0,
+        note: data.note,
+        createdAt: data.created_at,
+      };
+    }
+    return null;
   }
 
-  // Fallback to in-memory (only when database is unreachable/unmigrated)
-  const found = inMemoryCoupons.find((c) => c.code.toUpperCase() === normalized);
-  return found || null;
+  if (isTestEnvironment) {
+    const found = inMemoryCoupons.find((c) => c.code.toUpperCase() === normalized);
+    return found ? { ...found } : null;
+  }
+
+  throw new Error("Server configuration error: Database client unavailable.");
 }
 
 /**
@@ -86,9 +75,21 @@ export async function validateCouponCode(code: string): Promise<{
   valid: boolean;
   coupon?: PublicCoupon;
   errorMessage?: string;
+  isError?: boolean;
 }> {
-  const coupon = await findCouponByCode(code);
   const genericError = "Invalid or inactive coupon code.";
+  let coupon: PublicCoupon | null;
+
+  try {
+    coupon = await findCouponByCode(code);
+  } catch (err: any) {
+    console.error("[validateCouponCode] Operational failure:", err?.message || err);
+    return {
+      valid: false,
+      errorMessage: "Service temporarily unavailable. Please try again later.",
+      isError: true,
+    };
+  }
 
   if (!coupon) {
     return { valid: false, errorMessage: genericError };
@@ -162,6 +163,10 @@ export async function recordReferralEnrollment(params: {
   };
 
   // Increment in-memory coupon count & record enrollment
+  const inMemoryRecord = inMemoryCoupons.find((c) => c.code.toUpperCase() === coupon.code.toUpperCase());
+  if (inMemoryRecord) {
+    inMemoryRecord.usedCount += 1;
+  }
   coupon.usedCount += 1;
   inMemoryReferrals.unshift(enrollment);
   if (inMemoryReferrals.length > 500) {
@@ -169,26 +174,35 @@ export async function recordReferralEnrollment(params: {
   }
 
   // Update Supabase if available
+  let adminClient: any = null;
   try {
-    const supabase = createAdminClient() || (await createClient());
-    // Insert enrollment
-    await (supabase as any).from("public_referral_enrollments").insert({
-      id: enrollmentId,
-      coupon_code: coupon.code,
-      name: trimmedName,
-      referred_by: trimmedReferredBy,
-      agreement_accepted: true,
-      status: "active",
-    });
+    adminClient = createAdminClient();
+  } catch (err) {
+    if (isTestEnvironment) {
+      return { success: true, enrollmentId };
+    }
+    throw err;
+  }
 
-    // Increment coupon usage in DB
-    await (supabase as any)
-      .from("public_coupons")
-      .update({ used_count: coupon.usedCount })
-      .ilike("code", coupon.code);
-  } catch (dbErr) {
-    if (process.env.NODE_ENV !== "test") {
-      console.warn("Could not record referral enrollment in DB, retained in memory:", dbErr);
+  if (adminClient) {
+    try {
+      await adminClient.from("public_referral_enrollments").insert({
+        id: enrollmentId,
+        coupon_code: coupon.code,
+        name: trimmedName,
+        referred_by: trimmedReferredBy,
+        agreement_accepted: true,
+        status: "active",
+      });
+
+      await adminClient
+        .from("public_coupons")
+        .update({ used_count: coupon.usedCount })
+        .ilike("code", coupon.code);
+    } catch (dbErr) {
+      if (!isTestEnvironment) {
+        console.warn("[recordReferralEnrollment] Could not record referral enrollment in DB:", dbErr);
+      }
     }
   }
 
@@ -199,14 +213,28 @@ export async function recordReferralEnrollment(params: {
  * Admin: Get all coupons
  */
 export async function getAllCoupons(): Promise<PublicCoupon[]> {
+  let adminClient: any = null;
   try {
-    const supabase = createAdminClient() || (await createClient());
-    const { data, error } = await (supabase as any)
+    adminClient = createAdminClient();
+  } catch (err) {
+    if (isTestEnvironment) {
+      return [...inMemoryCoupons];
+    }
+    throw err;
+  }
+
+  if (adminClient) {
+    const { data, error } = await adminClient
       .from("public_coupons")
       .select("*")
       .order("created_at", { ascending: false });
 
-    if (!error && Array.isArray(data)) {
+    if (error) {
+      console.error("[getAllCoupons] Database query failed:", error.message);
+      throw new Error(`Failed to fetch coupons from database: ${error.message}`);
+    }
+
+    if (Array.isArray(data)) {
       return data.map((d: any) => ({
         id: d.id,
         code: d.code,
@@ -215,12 +243,49 @@ export async function getAllCoupons(): Promise<PublicCoupon[]> {
         maxUses: d.max_uses,
         usedCount: d.used_count ?? 0,
         note: d.note,
-        createdAt: d.created_at,
+        createdAt: d.created_at, // FIXED: was data.created_at
       }));
     }
-  } catch {}
+    return [];
+  }
 
-  return inMemoryCoupons;
+  if (isTestEnvironment) {
+    return [...inMemoryCoupons];
+  }
+
+  throw new Error("Server configuration error: Database client unavailable.");
+}
+
+function saveCouponToTestMemory(
+  normalizedCode: string,
+  coupon: {
+    discountPercent?: number;
+    isActive?: boolean;
+    maxUses?: number | null;
+    note?: string;
+  }
+): PublicCoupon {
+  const existing = inMemoryCoupons.find((c) => c.code.toUpperCase() === normalizedCode);
+  if (existing) {
+    if (coupon.isActive !== undefined) existing.isActive = Boolean(coupon.isActive);
+    if (coupon.discountPercent !== undefined) existing.discountPercent = coupon.discountPercent;
+    if (coupon.maxUses !== undefined) existing.maxUses = coupon.maxUses;
+    if (coupon.note !== undefined) existing.note = coupon.note;
+    return { ...existing };
+  }
+
+  const resultCoupon: PublicCoupon = {
+    id: `cpn_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+    code: normalizedCode,
+    discountPercent: coupon.discountPercent !== undefined ? coupon.discountPercent : 100,
+    isActive: coupon.isActive !== undefined ? Boolean(coupon.isActive) : true,
+    maxUses: coupon.maxUses !== undefined ? coupon.maxUses : null,
+    usedCount: 0,
+    note: coupon.note || "",
+    createdAt: new Date().toISOString(),
+  };
+  inMemoryCoupons.unshift(resultCoupon);
+  return { ...resultCoupon };
 }
 
 /**
@@ -233,68 +298,168 @@ export async function saveCoupon(coupon: {
   maxUses?: number | null;
   note?: string;
 }): Promise<PublicCoupon> {
-  const normalizedCode = coupon.code.trim().toUpperCase();
-  const existing = inMemoryCoupons.find((c) => c.code.toUpperCase() === normalizedCode);
-
-  let resultCoupon: PublicCoupon;
-  if (existing) {
-    existing.isActive = coupon.isActive !== undefined ? coupon.isActive : existing.isActive;
-    if (coupon.discountPercent !== undefined) existing.discountPercent = coupon.discountPercent;
-    if (coupon.maxUses !== undefined) existing.maxUses = coupon.maxUses;
-    if (coupon.note !== undefined) existing.note = coupon.note;
-    resultCoupon = existing;
-  } else {
-    resultCoupon = {
-      id: `cpn_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      code: normalizedCode,
-      discountPercent: coupon.discountPercent ?? 100,
-      isActive: coupon.isActive ?? true,
-      maxUses: coupon.maxUses ?? null,
-      usedCount: 0,
-      note: coupon.note || "",
-      createdAt: new Date().toISOString(),
-    };
-    inMemoryCoupons.unshift(resultCoupon);
+  const normalizedCode = String(coupon.code || "").trim().toUpperCase();
+  if (!normalizedCode || normalizedCode.length < 2 || normalizedCode.length > 50) {
+    throw new Error("Invalid coupon code. Must be 2-50 characters.");
   }
 
-  // Update DB with admin client
-  const adminClient = createAdminClient();
-  if (adminClient) {
-    const { error } = await (adminClient as any).from("public_coupons").upsert(
-      {
-        id: resultCoupon.id,
-        code: resultCoupon.code,
-        discount_percent: resultCoupon.discountPercent,
-        is_active: resultCoupon.isActive,
-        max_uses: resultCoupon.maxUses,
-        note: resultCoupon.note,
-      },
-      { onConflict: "code" }
-    );
-    if (error) {
-      console.error("Database error saving coupon:", error);
-      throw new Error(`Database error saving coupon: ${error.message}`);
+  if (coupon.discountPercent !== undefined) {
+    if (
+      typeof coupon.discountPercent !== "number" ||
+      isNaN(coupon.discountPercent) ||
+      coupon.discountPercent < 1 ||
+      coupon.discountPercent > 100
+    ) {
+      throw new Error("Discount percent must be an integer between 1 and 100.");
     }
-  } else if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NODE_ENV !== "test") {
-    throw new Error("Server configuration error: SUPABASE_SERVICE_ROLE_KEY is required for admin database mutations.");
   }
 
-  return resultCoupon;
+  if (coupon.maxUses !== undefined && coupon.maxUses !== null) {
+    if (
+      typeof coupon.maxUses !== "number" ||
+      isNaN(coupon.maxUses) ||
+      !Number.isInteger(coupon.maxUses) ||
+      coupon.maxUses < 1
+    ) {
+      throw new Error("Maximum uses must be a positive integer or null.");
+    }
+  }
+
+  let adminClient: any = null;
+  try {
+    adminClient = createAdminClient();
+  } catch (err) {
+    if (isTestEnvironment) {
+      return saveCouponToTestMemory(normalizedCode, coupon);
+    }
+    throw err;
+  }
+
+  if (adminClient) {
+    // 1. Check if coupon already exists in DB
+    const { data: existing, error: selectErr } = await adminClient
+      .from("public_coupons")
+      .select("*")
+      .ilike("code", normalizedCode)
+      .maybeSingle();
+
+    if (selectErr) {
+      console.error("[saveCoupon] Error querying existing coupon:", selectErr.message);
+      throw new Error(`Database error querying coupon: ${selectErr.message}`);
+    }
+
+    if (existing) {
+      // Non-destructive UPDATE: only update explicitly provided fields
+      const updatePayload: Record<string, any> = {};
+      if (coupon.isActive !== undefined) {
+        updatePayload.is_active = Boolean(coupon.isActive);
+      }
+      if (coupon.discountPercent !== undefined) {
+        updatePayload.discount_percent = coupon.discountPercent;
+      }
+      if (coupon.maxUses !== undefined) {
+        updatePayload.max_uses = coupon.maxUses;
+      }
+      if (coupon.note !== undefined) {
+        updatePayload.note = String(coupon.note);
+      }
+
+      let updatedRow = existing;
+      if (Object.keys(updatePayload).length > 0) {
+        const { data: updated, error: updateErr } = await adminClient
+          .from("public_coupons")
+          .update(updatePayload)
+          .eq("id", existing.id)
+          .select()
+          .single();
+
+        if (updateErr) {
+          console.error("[saveCoupon] Error updating coupon:", updateErr.message);
+          throw new Error(`Database error updating coupon: ${updateErr.message}`);
+        }
+        updatedRow = updated;
+      }
+
+      return {
+        id: updatedRow.id,
+        code: updatedRow.code,
+        discountPercent: updatedRow.discount_percent ?? 100,
+        isActive: Boolean(updatedRow.is_active),
+        maxUses: updatedRow.max_uses,
+        usedCount: updatedRow.used_count ?? 0,
+        note: updatedRow.note,
+        createdAt: updatedRow.created_at,
+      };
+    } else {
+      // Explicit CREATION
+      const newCouponRecord = {
+        id: `cpn_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        code: normalizedCode,
+        discount_percent: coupon.discountPercent !== undefined ? coupon.discountPercent : 100,
+        is_active: coupon.isActive !== undefined ? Boolean(coupon.isActive) : true,
+        max_uses: coupon.maxUses !== undefined ? coupon.maxUses : null,
+        used_count: 0,
+        note: coupon.note !== undefined ? String(coupon.note) : "",
+      };
+
+      const { data: inserted, error: insertErr } = await adminClient
+        .from("public_coupons")
+        .insert(newCouponRecord)
+        .select()
+        .single();
+
+      if (insertErr) {
+        console.error("[saveCoupon] Error inserting coupon:", insertErr.message);
+        throw new Error(`Database error saving coupon: ${insertErr.message}`);
+      }
+
+      return {
+        id: inserted.id,
+        code: inserted.code,
+        discountPercent: inserted.discount_percent ?? 100,
+        isActive: Boolean(inserted.is_active),
+        maxUses: inserted.max_uses,
+        usedCount: inserted.used_count ?? 0,
+        note: inserted.note,
+        createdAt: inserted.created_at,
+      };
+    }
+  }
+
+  if (isTestEnvironment) {
+    return saveCouponToTestMemory(normalizedCode, coupon);
+  }
+
+  throw new Error("Server configuration error: SUPABASE_SERVICE_ROLE_KEY is required for admin database mutations.");
 }
 
 /**
  * Admin: Get all referral enrollments
  */
 export async function getAllReferralEnrollments(): Promise<ReferralEnrollment[]> {
+  let adminClient: any = null;
   try {
-    const supabase = createAdminClient() || (await createClient());
-    const { data, error } = await (supabase as any)
+    adminClient = createAdminClient();
+  } catch (err) {
+    if (isTestEnvironment) {
+      return [...inMemoryReferrals];
+    }
+    throw err;
+  }
+
+  if (adminClient) {
+    const { data, error } = await adminClient
       .from("public_referral_enrollments")
       .select("*")
       .order("submitted_at", { ascending: false })
       .limit(100);
 
-    if (!error && Array.isArray(data)) {
+    if (error) {
+      console.error("[getAllReferralEnrollments] DB error:", error.message);
+      throw new Error(`Failed to fetch referral enrollments: ${error.message}`);
+    }
+
+    if (Array.isArray(data)) {
       return data.map((d: any) => ({
         id: d.id,
         couponCode: d.coupon_code,
@@ -305,9 +470,14 @@ export async function getAllReferralEnrollments(): Promise<ReferralEnrollment[]>
         status: d.status || "active",
       }));
     }
-  } catch {}
+    return [];
+  }
 
-  return inMemoryReferrals;
+  if (isTestEnvironment) {
+    return [...inMemoryReferrals];
+  }
+
+  throw new Error("Server configuration error: Database client unavailable.");
 }
 
 /**
@@ -319,46 +489,59 @@ export async function deleteCoupon(code: string): Promise<boolean> {
     throw new Error("Coupon code is required to delete.");
   }
 
-  const adminClient = createAdminClient();
+  let adminClient: any = null;
+  try {
+    adminClient = createAdminClient();
+  } catch (err) {
+    if (isTestEnvironment) {
+      const idx = inMemoryCoupons.findIndex((c) => c.code.toUpperCase() === normalized);
+      if (idx !== -1) inMemoryCoupons.splice(idx, 1);
+      return true;
+    }
+    throw err;
+  }
+
   if (adminClient) {
     // Step 1: Explicitly deactivate first so that any concurrent validation requests immediately reject the coupon
-    const { error: deactivateError } = await (adminClient as any)
+    const { error: deactivateError } = await adminClient
       .from("public_coupons")
       .update({ is_active: false })
       .ilike("code", normalized);
 
     if (deactivateError) {
-      console.error("Database error deactivating coupon prior to deletion:", deactivateError);
+      console.error("[deleteCoupon] Database error deactivating coupon prior to deletion:", deactivateError.message);
       throw new Error(`Database error deactivating coupon: ${deactivateError.message}`);
     }
 
     // Step 2: Permanently delete the coupon record from the database
-    const { data, error: deleteError } = await (adminClient as any)
+    const { error: deleteError } = await adminClient
       .from("public_coupons")
       .delete()
-      .ilike("code", normalized)
-      .select();
+      .ilike("code", normalized);
 
     if (deleteError) {
-      console.error("Database error deleting coupon:", deleteError);
+      console.error("[deleteCoupon] Database error deleting coupon:", deleteError.message);
       throw new Error(`Database error deleting coupon: ${deleteError.message}`);
     }
-  } else if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NODE_ENV !== "test") {
-    throw new Error("Server configuration error: SUPABASE_SERVICE_ROLE_KEY is required for admin database mutations.");
+
+    // Remove from in-memory test store if present
+    const idx = inMemoryCoupons.findIndex((c) => c.code.toUpperCase() === normalized);
+    if (idx !== -1) {
+      inMemoryCoupons.splice(idx, 1);
+    }
+
+    return true;
   }
 
-  // Update in-memory store: mark inactive first, then remove
-  const found = inMemoryCoupons.find((c) => c.code.toUpperCase() === normalized);
-  if (found) {
-    found.isActive = false;
+  if (isTestEnvironment) {
+    const idx = inMemoryCoupons.findIndex((c) => c.code.toUpperCase() === normalized);
+    if (idx !== -1) {
+      inMemoryCoupons.splice(idx, 1);
+    }
+    return true;
   }
 
-  const idx = inMemoryCoupons.findIndex((c) => c.code.toUpperCase() === normalized);
-  if (idx !== -1) {
-    inMemoryCoupons.splice(idx, 1);
-  }
-
-  return true;
+  throw new Error("Server configuration error: SUPABASE_SERVICE_ROLE_KEY is required for admin database mutations.");
 }
 
 /**
@@ -370,50 +553,78 @@ export async function deleteReferralEnrollment(id: string): Promise<boolean> {
     throw new Error("Referral enrollment ID is required to delete.");
   }
 
-  const adminClient = createAdminClient();
+  let adminClient: any = null;
+  try {
+    adminClient = createAdminClient();
+  } catch (err) {
+    if (isTestEnvironment) {
+      const idx = inMemoryReferrals.findIndex((r) => r.id === cleanId);
+      if (idx !== -1) inMemoryReferrals.splice(idx, 1);
+      return true;
+    }
+    throw err;
+  }
+
   if (adminClient) {
-    const { data, error } = await (adminClient as any)
+    const { error } = await adminClient
       .from("public_referral_enrollments")
       .delete()
-      .eq("id", cleanId)
-      .select();
+      .eq("id", cleanId);
 
     if (error) {
-      console.error("Database error deleting referral enrollment:", error);
+      console.error("[deleteReferralEnrollment] Database error:", error.message);
       throw new Error(`Database error deleting referral enrollment: ${error.message}`);
     }
-  } else if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NODE_ENV !== "test") {
-    throw new Error("Server configuration error: SUPABASE_SERVICE_ROLE_KEY is required for admin database mutations.");
+
+    const idx = inMemoryReferrals.findIndex((r) => r.id === cleanId);
+    if (idx !== -1) inMemoryReferrals.splice(idx, 1);
+
+    return true;
   }
 
-  const idx = inMemoryReferrals.findIndex((r) => r.id === cleanId);
-  if (idx !== -1) {
-    inMemoryReferrals.splice(idx, 1);
+  if (isTestEnvironment) {
+    const idx = inMemoryReferrals.findIndex((r) => r.id === cleanId);
+    if (idx !== -1) inMemoryReferrals.splice(idx, 1);
+    return true;
   }
 
-  return true;
+  throw new Error("Server configuration error: SUPABASE_SERVICE_ROLE_KEY is required for admin database mutations.");
 }
 
 /**
  * Admin: Clear all referral enrollments (Hard Delete with Verification)
  */
 export async function clearAllReferralEnrollments(): Promise<boolean> {
-  const adminClient = createAdminClient();
-  if (adminClient) {
-    const { data, error } = await (adminClient as any)
-      .from("public_referral_enrollments")
-      .delete()
-      .neq("id", "")
-      .select();
-
-    if (error) {
-      console.error("Database error clearing referral enrollments:", error);
-      throw new Error(`Database error clearing referral enrollments: ${error.message}`);
+  let adminClient: any = null;
+  try {
+    adminClient = createAdminClient();
+  } catch (err) {
+    if (isTestEnvironment) {
+      inMemoryReferrals.length = 0;
+      return true;
     }
-  } else if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NODE_ENV !== "test") {
-    throw new Error("Server configuration error: SUPABASE_SERVICE_ROLE_KEY is required for admin database mutations.");
+    throw err;
   }
 
-  inMemoryReferrals.length = 0;
-  return true;
+  if (adminClient) {
+    const { error } = await adminClient
+      .from("public_referral_enrollments")
+      .delete()
+      .neq("id", "");
+
+    if (error) {
+      console.error("[clearAllReferralEnrollments] Database error:", error.message);
+      throw new Error(`Database error clearing referral enrollments: ${error.message}`);
+    }
+
+    inMemoryReferrals.length = 0;
+    return true;
+  }
+
+  if (isTestEnvironment) {
+    inMemoryReferrals.length = 0;
+    return true;
+  }
+
+  throw new Error("Server configuration error: SUPABASE_SERVICE_ROLE_KEY is required for admin database mutations.");
 }

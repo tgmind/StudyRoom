@@ -88,8 +88,8 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
-    } else {
-      // In-memory fallback for local development or mock environments
+    } else if (process.env.NODE_ENV === "test" || process.env.VITEST === "true") {
+      // In-memory fallback for isolated unit testing
       const recordResult = await recordReferralEnrollment({
         couponCode: trimmedCode,
         name: trimmedName,
@@ -103,6 +103,11 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
+    } else {
+      return NextResponse.json(
+        { error: "Server configuration error: Database service unavailable." },
+        { status: 500 }
+      );
     }
 
     // 4. Set HttpOnly cookie and return OTP to user

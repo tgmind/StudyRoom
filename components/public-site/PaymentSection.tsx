@@ -509,7 +509,7 @@ export function PaymentSection({ membership, branding, onOpenUtrModal }: Payment
                           setCouponInput(e.target.value.toUpperCase());
                           setCouponError(null);
                         }}
-                        placeholder="e.g. REFERRAL100"
+                        placeholder="Enter coupon code"
                         className="w-full sm:flex-1 min-w-0 rounded-xl border border-blue-200 bg-slate-50/70 px-3.5 py-2.5 text-xs sm:text-sm font-bold uppercase tracking-wider text-[#071a3a] placeholder:normal-case placeholder:font-normal placeholder:text-slate-400 outline-none focus:border-[#0b73e6] focus:bg-white focus:ring-2 focus:ring-blue-100"
                       />
                       <button

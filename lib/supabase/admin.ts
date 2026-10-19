@@ -15,6 +15,16 @@ export function createAdminClient(): SupabaseClient<any, "public", any> | null {
     return null;
   }
 
+  // Defense-in-depth guard: Prevent unit tests from obtaining live production clients unless explicitly configured
+  if (process.env.NODE_ENV === "test" || process.env.VITEST === "true") {
+    if (process.env.ALLOW_LIVE_DB_TESTS !== "true") {
+      throw new Error(
+        "Security Violation: An unmocked live Supabase admin client was requested during unit testing. " +
+        "Unit tests must mock @/lib/supabase/admin or explicitly set ALLOW_LIVE_DB_TESTS=true with an isolated test database."
+      );
+    }
+  }
+
   return createClient<any>(supabaseUrl, serviceRoleKey, {
     auth: {
       autoRefreshToken: false,

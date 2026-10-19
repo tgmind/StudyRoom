@@ -8,6 +8,14 @@ import {
 } from "@/lib/public-website/driveUtils";
 import { DEFAULT_PUBLIC_CONTENT } from "@/lib/public-website/defaultContent";
 
+vi.mock("@/lib/supabase/admin", () => ({
+  createAdminClient: vi.fn(() => null),
+}));
+
+vi.mock("@/lib/supabase/server", () => ({
+  createClient: vi.fn(async () => null),
+}));
+
 describe("Public Website - Google Drive & Image Utilities", () => {
   it("extracts file ID from standard /file/d/ sharing URLs", () => {
     const url = "https://drive.google.com/file/d/16hdJsPDWQ6_S8i9HiAVw1Wxn36bT--M0/view?usp=sharing";
@@ -143,14 +151,25 @@ import {
   recordReferralEnrollment,
   inMemoryCoupons,
   saveCoupon,
+  resetTestStore,
 } from "@/lib/public-website/couponStore";
 
 describe("Public Website - Referral Coupon Validation & Enrollment", () => {
+  beforeEach(async () => {
+    resetTestStore();
+    await saveCoupon({ code: "SAMPLE100", discountPercent: 100, isActive: true, maxUses: 1000 });
+    await saveCoupon({ code: "STUDY100", discountPercent: 100, isActive: true, maxUses: 500 });
+  });
+
+  afterEach(() => {
+    resetTestStore();
+  });
+
   it("validates existing active 100% OFF coupons", async () => {
-    const res = await validateCouponCode("REFERRAL100");
+    const res = await validateCouponCode("SAMPLE100");
     expect(res.valid).toBe(true);
     expect(res.coupon?.discountPercent).toBe(100);
-    expect(res.coupon?.code).toBe("REFERRAL100");
+    expect(res.coupon?.code).toBe("SAMPLE100");
   });
 
   it("handles case-insensitivity and whitespace in coupon codes", async () => {
@@ -185,7 +204,8 @@ describe("Public Website - Referral Coupon Validation & Enrollment", () => {
       isActive: true,
       discountPercent: 100,
     });
-    limitedCoupon.usedCount = 1;
+    const inMem = inMemoryCoupons.find((c) => c.code === "MAXTEST");
+    if (inMem) inMem.usedCount = 1;
 
     const res = await validateCouponCode("MAXTEST");
     expect(res.valid).toBe(false);
@@ -194,7 +214,7 @@ describe("Public Website - Referral Coupon Validation & Enrollment", () => {
 
   it("fails referral enrollment if agreement is not accepted", async () => {
     const res = await recordReferralEnrollment({
-      couponCode: "REFERRAL100",
+      couponCode: "SAMPLE100",
       name: "Ravi Sharma",
       referredBy: "Aditya",
       agreementAccepted: false,
@@ -206,7 +226,7 @@ describe("Public Website - Referral Coupon Validation & Enrollment", () => {
 
   it("fails referral enrollment if name or referredBy is missing or too short", async () => {
     const res1 = await recordReferralEnrollment({
-      couponCode: "REFERRAL100",
+      couponCode: "SAMPLE100",
       name: "",
       referredBy: "Aditya",
       agreementAccepted: true,
@@ -215,7 +235,7 @@ describe("Public Website - Referral Coupon Validation & Enrollment", () => {
     expect(res1.errorMessage).toContain("full name");
 
     const res2 = await recordReferralEnrollment({
-      couponCode: "REFERRAL100",
+      couponCode: "SAMPLE100",
       name: "Ravi",
       referredBy: "",
       agreementAccepted: true,
@@ -225,10 +245,10 @@ describe("Public Website - Referral Coupon Validation & Enrollment", () => {
   });
 
   it("successfully enrolls student with valid coupon, valid fields, and agreement", async () => {
-    const initialUsedCount = inMemoryCoupons.find((c) => c.code === "REFERRAL100")?.usedCount || 0;
+    const initialUsedCount = inMemoryCoupons.find((c) => c.code === "SAMPLE100")?.usedCount || 0;
 
     const res = await recordReferralEnrollment({
-      couponCode: "REFERRAL100",
+      couponCode: "SAMPLE100",
       name: "Riya Verma",
       referredBy: "Telegram Study Group",
       agreementAccepted: true,
@@ -237,7 +257,7 @@ describe("Public Website - Referral Coupon Validation & Enrollment", () => {
     expect(res.success).toBe(true);
     expect(res.enrollmentId).toMatch(/^ref_/);
 
-    const updatedUsedCount = inMemoryCoupons.find((c) => c.code === "REFERRAL100")?.usedCount || 0;
+    const updatedUsedCount = inMemoryCoupons.find((c) => c.code === "SAMPLE100")?.usedCount || 0;
     expect(updatedUsedCount).toBe(initialUsedCount + 1);
   });
 });
@@ -442,9 +462,10 @@ describe("Public Website - Admin Database & In-Memory Deletion Functions", () =>
   });
 
   it("deletes a referral enrollment by ID", async () => {
-    await saveCoupon({ code: "ENROLLTEST", discountPercent: 100, isActive: true });
+    resetTestStore();
+    await saveCoupon({ code: "TESTENROLL", discountPercent: 100, isActive: true });
     const enrollRes = await recordReferralEnrollment({
-      couponCode: "ENROLLTEST",
+      couponCode: "TESTENROLL",
       name: "Enrollment Delete Test",
       referredBy: "Friend",
       agreementAccepted: true,
@@ -457,18 +478,20 @@ describe("Public Website - Admin Database & In-Memory Deletion Functions", () =>
     const deleted = await deleteReferralEnrollment(id);
     expect(deleted).toBe(true);
     expect(inMemoryReferrals.some((r) => r.id === id)).toBe(false);
+    resetTestStore();
   });
 
   it("clears all referral enrollments", async () => {
-    await saveCoupon({ code: "BATCHTEST", discountPercent: 100, isActive: true });
+    resetTestStore();
+    await saveCoupon({ code: "TESTBATCH", discountPercent: 100, isActive: true });
     await recordReferralEnrollment({
-      couponCode: "BATCHTEST",
+      couponCode: "TESTBATCH",
       name: "Student 1",
       referredBy: "Friend 1",
       agreementAccepted: true,
     });
     await recordReferralEnrollment({
-      couponCode: "BATCHTEST",
+      couponCode: "TESTBATCH",
       name: "Student 2",
       referredBy: "Friend 2",
       agreementAccepted: true,
@@ -478,6 +501,7 @@ describe("Public Website - Admin Database & In-Memory Deletion Functions", () =>
     const cleared = await clearAllReferralEnrollments();
     expect(cleared).toBe(true);
     expect(inMemoryReferrals.length).toBe(0);
+    resetTestStore();
   });
 });
 
