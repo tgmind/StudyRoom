@@ -6,7 +6,7 @@ import { ActiveTimer } from "@/components/session/ActiveTimer";
 import { CreateGoalModal } from "@/components/goals/CreateGoalModal";
 import { UserStatus, DailyGoal } from "@/lib/supabase/types";
 import { GoalCountdownResult } from "@/lib/time/countdown";
-import { Play, Pause, Square, RotateCcw } from "lucide-react";
+import { Play, Pause, Square, RotateCcw, Sparkles, Clock, Coffee, CheckCircle2 } from "lucide-react";
 import { requestNotificationPermission } from "@/hooks/useActiveSession";
 
 import { SessionSyncStatus } from "@/hooks/useActiveSession";
@@ -29,6 +29,7 @@ interface SessionControllerProps {
   countdown: GoalCountdownResult;
   isLoading?: boolean;
   isHydrating?: boolean;
+  showPreparationRules?: boolean;
 }
 
 export const SessionController = memo(function SessionController({
@@ -46,6 +47,7 @@ export const SessionController = memo(function SessionController({
   countdown,
   isLoading = false,
   isHydrating = false,
+  showPreparationRules = false,
 }: SessionControllerProps) {
   const [isGoalSetupModalOpen, setIsGoalSetupModalOpen] = useState(false);
 
@@ -144,7 +146,13 @@ export const SessionController = memo(function SessionController({
   }, [isBreak, isStudying, handleResume, handlePause]);
 
   return (
-    <div className="w-full bg-zinc-900/70 border border-zinc-800/90 rounded-2xl p-4 sm:p-5 shadow-xl space-y-4 backdrop-blur-md">
+    <div
+      className={`w-full bg-zinc-900/70 border border-zinc-800/90 rounded-2xl p-4 sm:p-5 shadow-xl backdrop-blur-md transition-all ${
+        showPreparationRules && isIdle && !isHydratingState
+          ? "h-full flex flex-col justify-between space-y-4"
+          : "space-y-4"
+      }`}
+    >
       {/* Session Hydration Skeleton (structural parity, prevents false Start button / timer flash) */}
       {isHydratingState && (
         <div className="w-full flex flex-col items-center justify-center py-2 space-y-3">
@@ -154,6 +162,58 @@ export const SessionController = memo(function SessionController({
             <div className="w-28 h-3 bg-zinc-800/40 rounded-full animate-pulse" />
           </div>
           <div className="w-full h-12 rounded-xl bg-zinc-800/60 animate-pulse" />
+        </div>
+      )}
+
+      {/* Session Preparation & Rules (Desktop Idle Symmetry) */}
+      {isIdle && !isHydratingState && showPreparationRules && (
+        <div className="space-y-3.5">
+          <div className="flex items-center justify-between pb-3 border-b border-zinc-800/80">
+            <div className="flex items-center space-x-2.5">
+              <div className="p-2 rounded-xl bg-violet-500/15 border border-violet-500/30 text-violet-300">
+                <Sparkles className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-zinc-100">Study Session Ready</h3>
+                <p className="text-[11px] text-zinc-400">Distraction-free focus protocol</p>
+              </div>
+            </div>
+            <span className="text-[10px] font-mono font-bold text-violet-400 bg-violet-500/10 border border-violet-500/20 px-2.5 py-0.5 rounded-full">
+              STANDBY
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 gap-2.5 text-xs">
+            <div className="p-3 rounded-xl bg-zinc-950/60 border border-zinc-800/80 space-y-1">
+              <div className="flex items-center space-x-2 text-zinc-200 font-semibold text-xs">
+                <Clock className="w-3.5 h-3.5 text-violet-400 shrink-0" />
+                <span>3-Hour Session Cap</span>
+              </div>
+              <p className="text-[11px] text-zinc-400 leading-relaxed pl-5.5">
+                Continuous study sessions are capped at 3 hours with a 10-minute prompt to encourage healthy breaks.
+              </p>
+            </div>
+
+            <div className="p-3 rounded-xl bg-zinc-950/60 border border-zinc-800/80 space-y-1">
+              <div className="flex items-center space-x-2 text-zinc-200 font-semibold text-xs">
+                <Coffee className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span>1 hour Study Breaks</span>
+              </div>
+              <p className="text-[11px] text-zinc-400 leading-relaxed pl-5.5">
+                Pause anytime for water or rest. Breaks over 1 hour automatically finalize the session.
+              </p>
+            </div>
+
+            <div className="p-3 rounded-xl bg-zinc-950/60 border border-zinc-800/80 space-y-1">
+              <div className="flex items-center space-x-2 text-zinc-200 font-semibold text-xs">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span>Goal Reconciliation on Stop</span>
+              </div>
+              <p className="text-[11px] text-zinc-400 leading-relaxed pl-5.5">
+                Stopping your session prompts task verification, recording your accomplishments into your weekly score.
+              </p>
+            </div>
+          </div>
         </div>
       )}
 

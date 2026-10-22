@@ -75,8 +75,8 @@ export const PlannerHeader = memo(function PlannerHeader({
               <LayoutDashboard className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="flex items-center space-x-2">
-                <span className="text-xs sm:text-[13px] font-bold text-zinc-200 truncate">
+              <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                <span className="text-xs sm:text-[13px] font-bold text-zinc-200 leading-snug">
                   Show Upcoming Target in Room
                 </span>
                 <span
@@ -90,7 +90,7 @@ export const PlannerHeader = memo(function PlannerHeader({
                   {isEnabled ? "ON" : "OFF"}
                 </span>
               </div>
-              <p className="text-[10.5px] sm:text-xs text-zinc-400 truncate mt-0.5">
+              <p className="text-[10.5px] sm:text-xs text-zinc-400 leading-snug mt-0.5 break-words">
                 Display nearest upcoming exam & active phase above the study timer in Room
               </p>
             </div>

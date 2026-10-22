@@ -865,8 +865,9 @@ export function useActiveSession(
   useEffect(() => {
     if (!profile?.id || !supabase?.channel) return;
     try {
+      const channelTopic = `user:session_blocks:${profile.id}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
       const channel = (supabase as any)
-        .channel(`user:session_blocks:${profile.id}`)
+        .channel(channelTopic)
         .on(
           "postgres_changes",
           {

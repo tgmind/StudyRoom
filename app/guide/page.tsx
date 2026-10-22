@@ -8,12 +8,25 @@ import { BottomNav } from "@/components/navigation/BottomNav";
 import { FeatureGuideCards } from "@/components/guide/FeatureGuideCards";
 import { Button } from "@/components/ui/Button";
 import { BookOpen, ArrowRight, Sparkles } from "lucide-react";
+import { useDeviceLayout } from "@/lib/device/useDeviceLayout";
+import { DesktopGuideView } from "@/components/presentation/desktop/DesktopGuideView";
 
 function GuideContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const layout = useDeviceLayout();
   const { profile } = useAuth();
   const isWelcome = searchParams.get("welcome") === "true";
+
+  if (layout === "desktop") {
+    return (
+      <DesktopGuideView
+        profile={profile}
+        isWelcome={isWelcome}
+        onEnterRoom={() => router.push("/room")}
+      />
+    );
+  }
 
   return (
     <div className="flex-1 flex flex-col min-h-screen pb-24 bg-[#090a0f] text-zinc-100">

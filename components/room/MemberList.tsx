@@ -505,8 +505,8 @@ export const MemberList = memo(function MemberList({
 
   if (isLoading) {
     return (
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3.5">
-        {[1, 2, 3, 4].map((idx) => (
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3.5">
+        {[1, 2, 3, 4, 5, 6].map((idx) => (
           <div
             key={idx}
             className="w-full h-44 bg-zinc-900/50 border border-zinc-800/80 rounded-2xl animate-pulse"
@@ -626,7 +626,7 @@ export const MemberList = memo(function MemberList({
           </div>
 
           {nonRivalActiveMembers.length > 0 ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3.5">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3.5">
               {nonRivalActiveMembers.map((member) => (
                 <div
                   key={member.id}
@@ -663,7 +663,7 @@ export const MemberList = memo(function MemberList({
             </h3>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3.5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3.5">
             {sortedOfflineMembers.map((member) => (
               <div key={member.id} className="h-full flex flex-col">
                 <MemberCard

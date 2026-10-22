@@ -233,8 +233,9 @@ export function useDailyGoals(
     // Real-time listener for daily_goals table
     let channel: ReturnType<typeof supabase.channel> | null = null;
     if (userId && typeof supabase.channel === "function") {
+      const channelTopic = `daily_goals_user_${userId}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
       channel = supabase
-        .channel(`daily_goals_user_${userId}`)
+        .channel(channelTopic)
         .on(
           "postgres_changes",
           {

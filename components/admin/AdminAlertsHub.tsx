@@ -592,8 +592,9 @@ export function AdminAlertsHub({ adminEmail, lastDeletedUserId }: AdminAlertsHub
     fetchData();
 
     // Supabase Realtime: instantly update UI when users are deleted, inserted, or updated
+    const channelTopic = `admin:alerts:realtime:${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const channel = supabase
-      .channel("admin:alerts:realtime")
+      .channel(channelTopic)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "users" },

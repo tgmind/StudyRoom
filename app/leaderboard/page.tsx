@@ -20,6 +20,9 @@ import {
 } from "@/lib/time/format";
 import { getServerNow } from "@/lib/time/clockSync";
 import { StudySession } from "@/lib/supabase/types";
+import { useDeviceLayout } from "@/lib/device/useDeviceLayout";
+import { DesktopLeaderboardView } from "@/components/presentation/desktop/DesktopLeaderboardView";
+import { useGlobalAnalytics } from "@/hooks/useGlobalAnalytics";
 
 type RpcCaller = {
   rpc: (name: string, params?: Record<string, unknown>) => Promise<{ data: unknown; error: Error | null }>;
@@ -73,6 +76,7 @@ function computeLiveActiveSecondsInWeek(
 
 export default function LeaderboardPage() {
   const { user, profile } = useAuth();
+  const layout = useDeviceLayout();
   const timezone = process.env.NEXT_PUBLIC_APP_TIMEZONE || "Asia/Kolkata";
   const currentPeriodId = getLeaderboardPeriodId(getServerNow(), timezone);
   const nowMs = Date.now();
@@ -87,6 +91,13 @@ export default function LeaderboardPage() {
   const [loading, setLoading] = useState(initialCachedEntries.length === 0);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const {
+    analytics,
+    loading: analyticsLoading,
+    error: analyticsError,
+    fetchAnalytics,
+  } = useGlobalAnalytics();
 
   const supabase = createClient();
   const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -480,6 +491,26 @@ export default function LeaderboardPage() {
   const userRankIndex = entries.findIndex((e) => e.user_id === user?.id);
   const userEntry = userRankIndex !== -1 ? entries[userRankIndex] : null;
   const userRank = userRankIndex !== -1 ? userRankIndex + 1 : null;
+
+  if (layout === "desktop") {
+    return (
+      <DesktopLeaderboardView
+        profile={profile}
+        user={user}
+        entries={entries}
+        loading={loading}
+        error={error}
+        userEntry={userEntry}
+        userRank={userRank}
+        isModalOpen={isModalOpen}
+        setIsModalOpen={setIsModalOpen}
+        analytics={analytics}
+        analyticsLoading={analyticsLoading}
+        analyticsError={analyticsError}
+        fetchAnalytics={fetchAnalytics}
+      />
+    );
+  }
 
   return (
     <div className="flex-1 flex flex-col min-h-screen pb-24 bg-[#090a0f] text-zinc-100">

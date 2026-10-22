@@ -146,33 +146,42 @@ export const ExamCard = memo(function ExamCard({
       onDragStart={onDragStart}
       onDragOver={onDragOver}
       onDrop={onDrop}
-      className={`group relative rounded-2xl border transition-all duration-200 backdrop-blur-md ${theme.cardBg} ${
-        isDragging
-          ? "border-amber-400/80 opacity-60 scale-[0.99] shadow-2xl"
-          : isExpanded
-          ? "border-zinc-500/80 shadow-2xl ring-1 ring-white/10 mb-5 sm:mb-6"
-          : `${theme.cardBorder} shadow-lg mb-0`
+      data-testid="exam-card"
+      data-plan-id={plan.id}
+      className={`group relative transition-all duration-200 ${
+        isExpanded ? "mb-5 sm:mb-6" : "mb-0"
       }`}
     >
-      {/* Ambient background glow graphic contained inside rounded bounds */}
-      <div className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none">
-        <div
-          className={`absolute -top-14 -right-14 w-48 h-48 rounded-full blur-3xl transition-opacity duration-300 opacity-60 group-hover:opacity-90 ${theme.glow}`}
-        />
-      </div>
-
-      {/* Top Accent Strip with Deterministic Theme Palette */}
+      {/* Inner Card Container with perfect border, background, and rounded clipping */}
       <div
-        className={`h-1.5 w-full rounded-t-2xl transition-colors ${
-          plan.is_locked
-            ? "bg-amber-500/70"
-            : countdown.status === "today"
-            ? "bg-emerald-500"
-            : theme.gradient
+        className={`relative rounded-2xl overflow-hidden border transition-all duration-200 backdrop-blur-md ${theme.cardBg} ${
+          isDragging
+            ? "border-amber-400/80 opacity-60 scale-[0.99] shadow-2xl"
+            : isExpanded
+            ? "border-zinc-500/80 shadow-2xl ring-1 ring-white/10"
+            : `${theme.cardBorder} shadow-lg`
         }`}
-      />
+      >
+        {/* Ambient background glow graphic contained inside rounded bounds */}
+        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+          <div
+            className={`absolute -top-14 -right-14 w-48 h-48 rounded-full blur-3xl transition-opacity duration-300 opacity-60 group-hover:opacity-90 ${theme.glow}`}
+          />
+        </div>
 
-      <div className="p-3.5 sm:p-5 space-y-3">
+        {/* Top Accent Strip with Deterministic Theme Palette */}
+        <div
+          aria-hidden="true"
+          className={`h-1.5 w-full transition-colors ${
+            plan.is_locked
+              ? "bg-amber-500/70"
+              : countdown.status === "today"
+              ? "bg-emerald-500"
+              : theme.gradient
+          }`}
+        />
+
+        <div className="p-3.5 sm:p-5 space-y-3">
         {/* ROW 1: Drag handle + Themed Avatar + Exam Title (left) & Prominent Large Countdown Counter (right) */}
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center space-x-2.5 min-w-0 flex-1">
@@ -575,6 +584,9 @@ export const ExamCard = memo(function ExamCard({
             />
           </div>
         )}
+      </div>
+
+      {/* Close the inner overflow-hidden card container */}
       </div>
 
       {/* Large Up Arrow Collapse Button Overlapping the Bottom Border of the Card */}

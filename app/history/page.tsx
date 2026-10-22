@@ -27,9 +27,12 @@ import {
   Coffee,
 } from "lucide-react";
 import { LapsedGoalHistoryCard } from "@/components/goals/LapsedGoalHistoryCard";
+import { useDeviceLayout } from "@/lib/device/useDeviceLayout";
+import { DesktopHistoryView } from "@/components/presentation/desktop/DesktopHistoryView";
 
 export default function HistoryPage() {
   const { user, profile } = useAuth();
+  const layout = useDeviceLayout();
   const {
     currentWeekSessions: rawCurrentWeekSessions,
     pastSessions: rawPastSessions,
@@ -123,6 +126,36 @@ export default function HistoryPage() {
   const pastWeeksMinutes = totalSummary.pastWeeksMinutes;
   const totalStudyMinutes = totalSummary.totalMinutes;
   const totalSessionsCount = totalSummary.totalSessions;
+
+  if (layout === "desktop") {
+    return (
+      <DesktopHistoryView
+        profile={profile}
+        loading={loading}
+        error={error}
+        totalSessionsCount={totalSessionsCount}
+        totalStudyMinutes={totalStudyMinutes}
+        pastWeeksCount={pastWeeksCount}
+        pastWeeksMinutes={pastWeeksMinutes}
+        currentWeekDateLabels={currentWeekDateLabels}
+        currentWeekSessions={currentWeekSessions}
+        currentWeekLapsedGoals={currentWeekLapsedGoals}
+        pastWeekDateLabels={pastWeekDateLabels}
+        pastWeekSessions={pastWeekSessions}
+        pastWeeksLapsedGoals={pastWeeksLapsedGoals}
+        isPastWeeksExpanded={isPastWeeksExpanded}
+        setIsPastWeeksExpanded={setIsPastWeeksExpanded}
+        isPastLoading={isPastLoading}
+        isClearModalOpen={isClearModalOpen}
+        setIsClearModalOpen={setIsClearModalOpen}
+        actionLoading={actionLoading}
+        handleConfirmClear={handleConfirmClear}
+        handleTogglePastWeeks={handleTogglePastWeeks}
+        archiveTopRef={archiveTopRef}
+        onNavigateRoom={() => router.push("/room")}
+      />
+    );
+  }
 
   return (
     <div className="flex-1 flex flex-col min-h-screen pb-24 bg-[#090a0f] text-zinc-100">

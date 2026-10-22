@@ -109,8 +109,9 @@ export default function AdminPage() {
   useEffect(() => {
     if (!user || (!isAdminEmail(user.email) && !isAdminUserId(user.id))) return;
 
+    const channelTopic = `admin:users:${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const channel = supabase
-      .channel("admin:users")
+      .channel(channelTopic)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "users" },

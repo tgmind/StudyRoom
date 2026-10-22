@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint app components hooks lib",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:grants": "node scripts/verify-supabase-data-api-grants.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",

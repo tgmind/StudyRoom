@@ -802,6 +802,7 @@ export default function PublicSiteAdminPage() {
                 <div className="mt-4 flex items-center gap-4">
                   <div className="h-24 w-24 rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm flex items-center justify-center overflow-hidden">
                     {qrPreviewUrls[0] ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
                       <img
                         src={qrPreviewUrls[0]}
                         alt="QR Preview"

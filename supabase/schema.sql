@@ -3885,3 +3885,49 @@ GRANT EXECUTE ON FUNCTION public.rpc_create_exam_plan_with_slot(TEXT, DATE, TEXT
 REVOKE EXECUTE ON FUNCTION public.prevent_locked_plan_mutation() FROM PUBLIC, anon;
 REVOKE EXECUTE ON FUNCTION public.prevent_locked_slot_mutation() FROM PUBLIC, anon;
 REVOKE EXECUTE ON FUNCTION public.trg_set_updated_at() FROM PUBLIC, anon;
+
+-- =============================================================================
+-- DATA API EXPLICIT TABLE GRANTS & DEFAULT PRIVILEGES (OCTOBER 30 COMPLIANCE)
+-- =============================================================================
+
+-- 1. Public-readable & collaborative core tables (RLS enforced)
+GRANT SELECT ON TABLE public.users TO anon, authenticated, service_role;
+GRANT INSERT, UPDATE ON TABLE public.users TO authenticated, service_role;
+GRANT DELETE ON TABLE public.users TO service_role;
+
+GRANT SELECT ON TABLE public.study_sessions TO anon, authenticated, service_role;
+GRANT INSERT, UPDATE, DELETE ON TABLE public.study_sessions TO authenticated, service_role;
+
+GRANT SELECT ON TABLE public.rivalry_events TO anon, authenticated, service_role;
+GRANT INSERT, UPDATE, DELETE ON TABLE public.rivalry_events TO authenticated, service_role;
+
+GRANT SELECT ON TABLE public.social_community_links TO anon, authenticated, service_role;
+GRANT INSERT, UPDATE, DELETE ON TABLE public.social_community_links TO authenticated, service_role;
+
+-- 2. Authenticated user tables (RLS enforced)
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.daily_goals TO authenticated, service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.session_blocks TO authenticated, service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.exam_plans TO authenticated, service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.preparation_slots TO authenticated, service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.user_alerts TO authenticated, service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.weekly_achiever_snapshots TO authenticated, service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.weekly_global_analytics_snapshots TO authenticated, service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.weekly_user_analytics_records TO authenticated, service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.user_analytics_acknowledgements TO authenticated, service_role;
+
+-- 3. Sequences
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO authenticated, service_role;
+
+-- 4. Automatic default privileges for future tables created in public schema
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO authenticated, service_role;
+
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO authenticated, service_role;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT USAGE, SELECT ON SEQUENCES TO authenticated, service_role;
+
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+  GRANT USAGE, SELECT ON SEQUENCES TO authenticated, service_role;
+

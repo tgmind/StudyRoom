@@ -16,9 +16,12 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { ExamPlanWithSlots, PreparationSlot, SlotCategory } from "@/lib/supabase/types";
 import { Loader2, AlertTriangle } from "lucide-react";
+import { useDeviceLayout } from "@/lib/device/useDeviceLayout";
+import { DesktopPlannerView } from "@/components/presentation/desktop/DesktopPlannerView";
 
 export default function PlannerPage() {
   const { profile, user } = useAuth();
+  const layout = useDeviceLayout();
   const {
     plans,
     loading,
@@ -131,6 +134,44 @@ export default function PlannerPage() {
       // Error handled by hook
     }
   };
+
+  if (layout === "desktop") {
+    return (
+      <DesktopPlannerView
+        profile={profile}
+        loading={loading}
+        actionLoading={actionLoading}
+        error={error}
+        plans={plans}
+        insights={insights}
+        showRoomUpcomingCard={showRoomUpcomingCard}
+        toggleShowRoomUpcomingCard={toggleShowRoomUpcomingCard}
+        isPreferenceUpdating={isPreferenceUpdating}
+        isCreateExamOpen={isCreateExamOpen}
+        setIsCreateExamOpen={setIsCreateExamOpen}
+        editingExamPlan={editingExamPlan}
+        setEditingExamPlan={setEditingExamPlan}
+        activePlanForSlot={activePlanForSlot}
+        setActivePlanForSlot={setActivePlanForSlot}
+        editingSlot={editingSlot}
+        setEditingSlot={setEditingSlot}
+        planToDelete={planToDelete}
+        setPlanToDelete={setPlanToDelete}
+        slotToDelete={slotToDelete}
+        setSlotToDelete={setSlotToDelete}
+        handleCreatePlan={handleCreatePlan}
+        handleEditExam={handleEditExam}
+        handleOpenAddSlot={handleOpenAddSlot}
+        handleOpenEditSlot={handleOpenEditSlot}
+        handleSaveSlot={handleSaveSlot}
+        handleConfirmDeletePlan={handleConfirmDeletePlan}
+        handleConfirmDeleteSlot={handleConfirmDeleteSlot}
+        toggleLockPlan={toggleLockPlan}
+        toggleStreaksVisibility={toggleStreaksVisibility}
+        reorderPlans={reorderPlans}
+      />
+    );
+  }
 
   return (
     <div className="flex-1 flex flex-col min-h-screen pb-24 bg-[#090a0f] text-zinc-100">

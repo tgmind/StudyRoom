@@ -155,8 +155,12 @@ export function useExamPlans(userId?: string) {
   useEffect(() => {
     if (!userId) return;
 
+    // Use a unique channel topic per hook instance to prevent channel collisions
+    // when multiple components concurrently subscribe (e.g. RoomPage and UpcomingExamSlotCard),
+    // or during React StrictMode / Fast Refresh unmount & remount cycles.
+    const channelTopic = `exam-planner:${userId}:${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const channel = supabase
-      .channel(`exam-planner:${userId}`)
+      .channel(channelTopic)
       .on(
         "postgres_changes",
         {
@@ -184,7 +188,13 @@ export function useExamPlans(userId?: string) {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      if (channel && typeof supabase.removeChannel === "function") {
+        try {
+          supabase.removeChannel(channel);
+        } catch {
+          // ignore cleanup errors
+        }
+      }
     };
   }, [userId, supabase, fetchPlans]);
 

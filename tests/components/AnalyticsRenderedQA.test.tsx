@@ -274,12 +274,12 @@ describe("Global Analytics Rendered QA & Viewport Acceptance", () => {
       expect(screen.getByText("Subodh")).toBeDefined();
       expect(screen.getByText("Raunak")).toBeDefined();
 
-      // 8. Bottom Navigation: Global Analytics must be highlighted
-      const analyticsNavLink = screen.getByRole("link", {
+      // 8. Navigation: Global Analytics must be present with href="/analytics"
+      const analyticsNavLinks = screen.getAllByRole("link", {
         name: /Global Analytics/i,
       });
-      expect(analyticsNavLink).toBeDefined();
-      expect(analyticsNavLink.getAttribute("href")).toBe("/analytics");
+      expect(analyticsNavLinks.length).toBeGreaterThanOrEqual(1);
+      expect(analyticsNavLinks.some((link) => link.getAttribute("href") === "/analytics")).toBe(true);
 
       rendered.unmount();
     });

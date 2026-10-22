@@ -16,9 +16,13 @@ import { GlobalAnalyticsAlert } from "@/components/analytics/GlobalAnalyticsAler
 import { UpcomingExamSlotCard } from "@/components/room/UpcomingExamSlotCard";
 import { getServerNow } from "@/lib/time/clockSync";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { useDeviceLayout } from "@/lib/device/useDeviceLayout";
+import { DesktopRoomView } from "@/components/presentation/desktop/DesktopRoomView";
+import { useExamPlans } from "@/hooks/useExamPlans";
 
 export default function RoomPage() {
   const isOnline = useOnlineStatus();
+  const layout = useDeviceLayout();
   const { user, profile, loading: authLoading, refreshProfile, updateProfileOptimistic } = useAuth();
   const {
     members,
@@ -119,6 +123,8 @@ export default function RoomPage() {
   } = useDailyGoals(user?.id, sessionStartTime, isSessionActive);
 
   const hasPendingGoals = Boolean(activeGoal?.tasks && activeGoal.tasks.some((t) => !t.completed));
+  const { insights: examInsights } = useExamPlans(user?.id);
+  const nearestExam = examInsights?.nearestExam;
 
   const handleStartSession = async () => {
     await startSession();
@@ -198,6 +204,75 @@ export default function RoomPage() {
       return m;
     });
   }, [members, user, effectiveProfile, isRoomPresent, status, breakStartedAt]);
+
+  const viewProps = {
+    members,
+    reconciledMembers,
+    isRealtimeConnected,
+    connectionState,
+    effectiveProfile,
+    expectedPeakHours,
+    status,
+    focus,
+    elapsedStudySeconds,
+    breakStartedAt,
+    syncStatus,
+    handleStartSession,
+    handlePauseSession,
+    handleResumeSession,
+    handleFinishSession,
+    handleCreateGoal,
+    activeGoal,
+    countdown,
+    actionLoading,
+    mutationPending,
+    authLoading,
+    forceSynchronizeSession,
+    roomLoading,
+    roomReconciling,
+    hasInitialSnapshot,
+    roomError,
+    activeWinEvent,
+    activeWinEvents,
+    broadcastRivalryWin,
+    dismissWinEvent,
+    isOnline,
+    tenMinuteWarning,
+    dismissTenMinuteWarning,
+    user,
+    // Modals
+    isGoalUpdateModalOpen,
+    isSessionLimitNoticeOpen,
+    isBreakExpiredNoticeOpen,
+    closeGoalUpdateModal,
+    closeBreakExpiredNotice,
+    closeSessionLimitNotice,
+    pendingGoalSessionId,
+    pendingGoalSeconds,
+    savedStudySecondsOnLimit,
+    savedStudySecondsOnBreakExpiry,
+    pendingGoalReason,
+    goalActionLoading,
+    completeSessionGoals,
+    completeGoalTasks,
+    broadcastStatusChange,
+    refreshGoals,
+    refreshProfile,
+    refreshMembers,
+    isGoalSetupModalOpen,
+    setIsGoalSetupModalOpen,
+    handleGoalCreatedFromModal,
+  };
+
+  if (layout === "desktop") {
+    return (
+      <DesktopRoomView
+        {...viewProps}
+        nearestExamName={nearestExam?.examName}
+        nearestExamDaysRemaining={nearestExam?.daysRemaining}
+      />
+    );
+  }
 
   return (
     <div className="flex-1 flex flex-col min-h-screen pb-24 bg-[#090a0f] text-zinc-100">

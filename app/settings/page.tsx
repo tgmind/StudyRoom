@@ -24,9 +24,12 @@ import {
   AlertCircle,
   Crown,
 } from "lucide-react";
+import { useDeviceLayout } from "@/lib/device/useDeviceLayout";
+import { DesktopSettingsView } from "@/components/presentation/desktop/DesktopSettingsView";
 
 export default function SettingsPage() {
   const { user, profile, loading: authLoading, signOut, refreshProfile } = useAuth();
+  const layout = useDeviceLayout();
   const [displayName, setDisplayName] = useState("");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -102,6 +105,28 @@ export default function SettingsPage() {
   };
 
   const isAchiever = profile?.has_achiever_badge === true;
+
+  if (layout === "desktop") {
+    return (
+      <DesktopSettingsView
+        user={user}
+        profile={profile}
+        authLoading={authLoading}
+        displayName={displayName}
+        setDisplayName={setDisplayName}
+        avatarUrl={avatarUrl}
+        setAvatarUrl={setAvatarUrl}
+        saving={saving}
+        error={error}
+        success={success}
+        handleUpdateProfile={handleUpdateProfile}
+        isSignOutModalOpen={isSignOutModalOpen}
+        setIsSignOutModalOpen={setIsSignOutModalOpen}
+        handleSignOut={handleSignOut}
+        onNavigateGuide={() => router.push("/guide")}
+      />
+    );
+  }
 
   return (
     <div className="flex-1 flex flex-col min-h-screen pb-24 bg-[#090a0f] text-zinc-100">

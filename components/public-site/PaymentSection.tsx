@@ -265,6 +265,7 @@ export function PaymentSection({ membership, branding, onOpenUtrModal }: Payment
                   {/* QR Code Container */}
                   <div className="mt-3.5 rounded-2xl border-2 border-blue-100 bg-white p-2.5 sm:p-3 relative min-h-[190px] sm:min-h-[210px] flex items-center justify-center">
                     {!imageError && currentSrc ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
                       <img
                         src={currentSrc}
                         alt={`Study Room ₹${price} UPI Payment QR Code`}

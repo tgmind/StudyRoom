@@ -11,9 +11,12 @@ import { AddGoalModal } from "@/components/goals/AddGoalModal";
 import { Target, Plus, HelpCircle } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { GoalsGuideModal } from "@/components/goals/GoalsGuideModal";
+import { useDeviceLayout } from "@/lib/device/useDeviceLayout";
+import { DesktopGoalsView } from "@/components/presentation/desktop/DesktopGoalsView";
 
 export default function GoalsPage() {
   const { user, profile } = useAuth();
+  const layout = useDeviceLayout();
   const isSessionActive = profile?.current_status === "studying" || profile?.current_status === "break";
   const sessionStartTime = profile?.session_start_time || null;
 
@@ -37,6 +40,26 @@ export default function GoalsPage() {
   const handleAddGoals = async (tasks: string[]) => {
     await addTasksToGoal(tasks);
   };
+
+  if (layout === "desktop") {
+    return (
+      <DesktopGoalsView
+        profile={profile}
+        activeGoal={activeGoal}
+        countdown={countdown}
+        loading={loading}
+        actionLoading={actionLoading}
+        isCreateModalOpen={isCreateModalOpen}
+        setIsCreateModalOpen={setIsCreateModalOpen}
+        isAddModalOpen={isAddModalOpen}
+        setIsAddModalOpen={setIsAddModalOpen}
+        isGuideModalOpen={isGuideModalOpen}
+        setIsGuideModalOpen={setIsGuideModalOpen}
+        handleCreateGoals={handleCreateGoals}
+        handleAddGoals={handleAddGoals}
+      />
+    );
+  }
 
   return (
     <div className="flex-1 flex flex-col min-h-screen pb-24 bg-[#090a0f] text-zinc-100">

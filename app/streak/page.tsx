@@ -14,9 +14,12 @@ import { DayDetailModal } from "@/components/streak/DayDetailModal";
 import { PlannerCalendarMap } from "@/components/streak/PlannerCalendarMap";
 import { useExamPlans } from "@/hooks/useExamPlans";
 import { Flame, Loader2 } from "lucide-react";
+import { useDeviceLayout } from "@/lib/device/useDeviceLayout";
+import { DesktopStreakView } from "@/components/presentation/desktop/DesktopStreakView";
 
 export default function StreakPage() {
   const { user, profile } = useAuth();
+  const layout = useDeviceLayout();
 
   // Lightweight live in-progress active study minutes derived directly from profile
   // Eliminates 1-second re-renders and decouples heavy session controller logic from the streak view
@@ -66,6 +69,23 @@ export default function StreakPage() {
 
   // Authoritative exam planner data for Streaks calendar visualization
   const { plans: examPlans, loading: plannerLoading } = useExamPlans(user?.id);
+
+  if (layout === "desktop") {
+    return (
+      <DesktopStreakView
+        profile={profile}
+        loading={loading}
+        error={error}
+        heatmapDays={heatmapDays}
+        stats={stats}
+        selectedDay={selectedDay}
+        setSelectedDay={setSelectedDay}
+        dailySummaries={dailySummaries}
+        examPlans={examPlans}
+        plannerLoading={plannerLoading}
+      />
+    );
+  }
 
   return (
     <div className="flex-1 flex flex-col min-h-screen pb-24 bg-[#090a0f] text-zinc-100">

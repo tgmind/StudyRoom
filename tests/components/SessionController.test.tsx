@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, act } from "@testing-library/react";
 import { SessionController } from "@/components/session/SessionController";
 
 describe("SessionController Component", () => {
@@ -89,8 +89,42 @@ describe("SessionController Component", () => {
     );
 
     const startBtn = screen.getByText("Start Studying");
-    startBtn.click();
+    await act(async () => {
+      startBtn.click();
+    });
 
     expect(onStartSessionMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders preparation rules when showPreparationRules is true in idle state", () => {
+    render(
+      <SessionController
+        status="offline"
+        elapsedSeconds={0}
+        showPreparationRules={true}
+        {...dummyProps}
+      />
+    );
+
+    expect(screen.getByText("Study Session Ready")).toBeInTheDocument();
+    expect(screen.getByText("3-Hour Session Cap")).toBeInTheDocument();
+    expect(screen.getByText("1 hour Study Breaks")).toBeInTheDocument();
+    expect(screen.getByText("Goal Reconciliation on Stop")).toBeInTheDocument();
+    expect(screen.getByText("Start Studying")).toBeInTheDocument();
+  });
+
+  it("does not render preparation rules when status is studying even if showPreparationRules is true", () => {
+    render(
+      <SessionController
+        status="studying"
+        elapsedSeconds={60}
+        showPreparationRules={true}
+        {...dummyProps}
+      />
+    );
+
+    expect(screen.queryByText("Study Session Ready")).not.toBeInTheDocument();
+    expect(screen.getByText("Pause")).toBeInTheDocument();
+    expect(screen.getByText("Stop")).toBeInTheDocument();
   });
 });

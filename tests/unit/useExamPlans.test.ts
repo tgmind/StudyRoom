@@ -220,4 +220,43 @@ describe("useExamPlans Hook", () => {
 
     expect(result.current.plans).toEqual([]);
   });
+
+  it("safely supports concurrent hook instances for the same user without channel collision", async () => {
+    const subscribedChannels: string[] = [];
+    mockSupabase.channel = vi.fn().mockImplementation((topic: string) => {
+      subscribedChannels.push(topic);
+      let isSubscribed = false;
+      return {
+        on: vi.fn().mockImplementation(() => {
+          if (isSubscribed) {
+            throw new Error(`cannot add postgres_changes callbacks for realtime:${topic} after subscribe()`);
+          }
+          return {
+            on: vi.fn().mockReturnThis(),
+            subscribe: vi.fn().mockImplementation(() => {
+              isSubscribed = true;
+              return {};
+            }),
+          };
+        }),
+        subscribe: vi.fn().mockImplementation(() => {
+          isSubscribed = true;
+          return {};
+        }),
+      };
+    });
+
+    // Mount two instances simultaneously (e.g. RoomPage and UpcomingExamSlotCard)
+    const hook1 = renderHook(() => useExamPlans(userId));
+    const hook2 = renderHook(() => useExamPlans(userId));
+
+    expect(subscribedChannels.length).toBe(2);
+    // Topics must be unique to prevent "cannot add callbacks after subscribe" error
+    expect(subscribedChannels[0]).not.toBe(subscribedChannels[1]);
+    expect(subscribedChannels[0]).toContain(`exam-planner:${userId}`);
+    expect(subscribedChannels[1]).toContain(`exam-planner:${userId}`);
+
+    hook1.unmount();
+    hook2.unmount();
+  });
 });
