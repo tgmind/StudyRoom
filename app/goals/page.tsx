@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useDailyGoals } from "@/hooks/useDailyGoals";
 import { TopHeader } from "@/components/navigation/TopHeader";
@@ -33,13 +33,17 @@ export default function GoalsPage() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isGuideModalOpen, setIsGuideModalOpen] = useState(false);
 
-  const handleCreateGoals = async (tasks: string[]) => {
+  const handleCreateGoals = useCallback(async (tasks: string[]) => {
     await createGoal(tasks);
-  };
+  }, [createGoal]);
 
-  const handleAddGoals = async (tasks: string[]) => {
+  const handleAddGoals = useCallback(async (tasks: string[]) => {
     await addTasksToGoal(tasks);
-  };
+  }, [addTasksToGoal]);
+
+  const handleCloseCreateModal = useCallback(() => setIsCreateModalOpen(false), []);
+  const handleCloseAddModal = useCallback(() => setIsAddModalOpen(false), []);
+  const handleCloseGuideModal = useCallback(() => setIsGuideModalOpen(false), []);
 
   if (layout === "desktop") {
     return (
@@ -145,21 +149,21 @@ export default function GoalsPage() {
 
       <CreateGoalModal
         isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
+        onClose={handleCloseCreateModal}
         onConfirmCreate={handleCreateGoals}
         isLoading={actionLoading}
       />
 
       <AddGoalModal
         isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
+        onClose={handleCloseAddModal}
         onConfirmAdd={handleAddGoals}
         isLoading={actionLoading}
       />
 
       <GoalsGuideModal
         isOpen={isGuideModalOpen}
-        onClose={() => setIsGuideModalOpen(false)}
+        onClose={handleCloseGuideModal}
       />
 
       <BottomNav />

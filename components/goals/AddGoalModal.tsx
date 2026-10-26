@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -14,42 +14,72 @@ interface AddGoalModalProps {
   isLoading?: boolean;
 }
 
+interface TaskFieldItem {
+  id: string;
+  value: string;
+}
+
+let taskFieldIdCounter = 0;
+function createNewTaskField(): TaskFieldItem {
+  taskFieldIdCounter += 1;
+  return {
+    id: `add-task-row-${Date.now()}-${taskFieldIdCounter}`,
+    value: "",
+  };
+}
+
 export function AddGoalModal({
   isOpen,
   onClose,
   onConfirmAdd,
   isLoading = false,
 }: AddGoalModalProps) {
-  const [taskInputs, setTaskInputs] = useState<string[]>([""]);
+  const [taskFields, setTaskFields] = useState<TaskFieldItem[]>([createNewTaskField()]);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
+  const pendingFocusIdRef = useRef<string | null>(null);
 
   // Reset state when modal opens
-  React.useEffect(() => {
+  useEffect(() => {
     if (isOpen) {
       setIsSubmitting(false);
       setError(null);
+      setTaskFields([createNewTaskField()]);
     }
   }, [isOpen]);
 
-  const handleTaskChange = (index: number, value: string) => {
-    setTaskInputs((prev) => {
-      const next = [...prev];
-      next[index] = value;
-      return next;
-    });
-  };
+  const handleTaskChange = useCallback((id: string, value: string) => {
+    setTaskFields((prev) =>
+      prev.map((field) => (field.id === id ? { ...field, value } : field))
+    );
+  }, []);
 
-  const addTaskField = () => {
-    if (taskInputs.length >= 5 || isSubmitting || isLoading) return;
-    setTaskInputs((prev) => [...prev, ""]);
-  };
+  const addTaskField = useCallback(() => {
+    setTaskFields((prev) => {
+      if (prev.length >= 5 || isSubmitting || isLoading) return prev;
+      const newField = createNewTaskField();
+      pendingFocusIdRef.current = newField.id;
+      return [...prev, newField];
+    });
+  }, [isSubmitting, isLoading]);
+
+  useEffect(() => {
+    if (pendingFocusIdRef.current) {
+      const el = inputRefs.current.get(pendingFocusIdRef.current);
+      if (el && typeof el.focus === "function") {
+        el.focus();
+      }
+      pendingFocusIdRef.current = null;
+    }
+  }, [taskFields]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmitting || isLoading) return;
 
-    const validation = validateGoalTasks(taskInputs);
+    const rawTasks = taskFields.map((f) => f.value);
+    const validation = validateGoalTasks(rawTasks);
 
     if (!validation.isValid) {
       setError(validation.error || "Invalid goal task");
@@ -60,7 +90,7 @@ export function AddGoalModal({
     try {
       setError(null);
       await onConfirmAdd(validation.value);
-      setTaskInputs([""]);
+      setTaskFields([createNewTaskField()]);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add goals");
@@ -79,15 +109,22 @@ export function AddGoalModal({
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
-          {taskInputs.map((taskText, idx) => (
-            <div key={idx} className="flex items-center space-x-2">
+          {taskFields.map((field, idx) => (
+            <div key={field.id} className="flex items-center space-x-2">
               <span className="text-xs font-bold text-violet-400 w-5 text-right shrink-0">
                 +{idx + 1}
               </span>
               <Input
-                placeholder={`New Task (e.g. Solve 20 organic chemistry questions)`}
-                value={taskText}
-                onChange={(e) => handleTaskChange(idx, e.target.value)}
+                ref={(el) => {
+                  if (el) {
+                    inputRefs.current.set(field.id, el);
+                  } else {
+                    inputRefs.current.delete(field.id);
+                  }
+                }}
+                placeholder="New Task (e.g. Solve 20 organic chemistry questions)"
+                value={field.value}
+                onChange={(e) => handleTaskChange(field.id, e.target.value)}
                 maxLength={120}
                 disabled={isLoading || isSubmitting}
                 autoFocus={idx === 0}
@@ -96,7 +133,7 @@ export function AddGoalModal({
           ))}
         </div>
 
-        {taskInputs.length < 5 && (
+        {taskFields.length < 5 && (
           <Button
             type="button"
             variant="ghost"

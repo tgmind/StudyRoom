@@ -47,113 +47,117 @@ export function Modal({
   const [mounted, setMounted] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
   const previousActiveElementRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const disableEscapeRef = useRef(disableEscape);
+  disableEscapeRef.current = disableEscape;
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  const handleKeyDown = useCallback(
-    (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !disableEscape) {
-        onClose();
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (e.key === "Escape" && !disableEscapeRef.current) {
+      onCloseRef.current();
+      return;
+    }
+
+    if (e.key === "Tab") {
+      if (!dialogRef.current) return;
+      const focusableElements = Array.from(
+        dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
+      ).filter((el) => {
+        if (el.hasAttribute("disabled") || el.getAttribute("aria-hidden") === "true") return false;
+        if (typeof window !== "undefined") {
+          try {
+            const style = window.getComputedStyle(el);
+            if (style.display === "none" || style.visibility === "hidden") return false;
+          } catch (_) {}
+        }
+        return true;
+      });
+
+      if (focusableElements.length === 0) {
+        e.preventDefault();
         return;
       }
 
-      if (e.key === "Tab") {
-        if (!dialogRef.current) return;
-        const focusableElements = Array.from(
-          dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
-        ).filter((el) => {
-          if (el.hasAttribute("disabled") || el.getAttribute("aria-hidden") === "true") return false;
-          if (typeof window !== "undefined") {
-            try {
-              const style = window.getComputedStyle(el);
-              if (style.display === "none" || style.visibility === "hidden") return false;
-            } catch (_) {}
-          }
-          return true;
-        });
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
 
-        if (focusableElements.length === 0) {
+      if (e.shiftKey) {
+        if (document.activeElement === firstElement || !dialogRef.current.contains(document.activeElement)) {
           e.preventDefault();
-          return;
+          lastElement.focus();
         }
-
-        const firstElement = focusableElements[0];
-        const lastElement = focusableElements[focusableElements.length - 1];
-
-        if (e.shiftKey) {
-          if (document.activeElement === firstElement || !dialogRef.current.contains(document.activeElement)) {
-            e.preventDefault();
-            lastElement.focus();
-          }
-        } else {
-          if (document.activeElement === lastElement || !dialogRef.current.contains(document.activeElement)) {
-            e.preventDefault();
-            firstElement.focus();
-          }
+      } else {
+        if (document.activeElement === lastElement || !dialogRef.current.contains(document.activeElement)) {
+          e.preventDefault();
+          firstElement.focus();
         }
       }
-    },
-    [onClose, disableEscape]
-  );
+    }
+  }, []);
 
   useEffect(() => {
-    if (isOpen) {
-      if (typeof document !== "undefined" && document.activeElement instanceof HTMLElement) {
-        previousActiveElementRef.current = document.activeElement;
+    if (!isOpen) return;
+
+    if (typeof document !== "undefined" && document.activeElement instanceof HTMLElement) {
+      previousActiveElementRef.current = document.activeElement;
+    }
+
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+
+    // Disable Android SwipeRefreshLayout while modal is open to prevent touch interception
+    if (typeof window !== "undefined" && (window as any).AndroidBridge?.setSwipeRefreshEnabled) {
+      try {
+        (window as any).AndroidBridge.setSwipeRefreshEnabled(false);
+      } catch (e) {}
+    }
+
+    // Initial focus management: run once on open, but never steal focus if user/browser already placed focus inside
+    const focusTimer = setTimeout(() => {
+      if (!dialogRef.current) return;
+      if (document.activeElement && dialogRef.current.contains(document.activeElement)) {
+        return;
+      }
+      const autoFocusEl = dialogRef.current.querySelector<HTMLElement>("[autofocus]");
+      if (autoFocusEl && typeof autoFocusEl.focus === "function") {
+        autoFocusEl.focus();
+        return;
+      }
+      const focusableElements = Array.from(
+        dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
+      );
+      if (focusableElements.length > 0 && typeof focusableElements[0].focus === "function") {
+        focusableElements[0].focus();
+      } else if (typeof dialogRef.current.focus === "function") {
+        dialogRef.current.focus();
+      }
+    }, 50);
+
+    return () => {
+      clearTimeout(focusTimer);
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+
+      // Restore focus to previously active element ONLY when modal is closed
+      if (previousActiveElementRef.current && typeof previousActiveElementRef.current.focus === "function") {
+        try {
+          previousActiveElementRef.current.focus();
+        } catch (_) {}
+        previousActiveElementRef.current = null;
       }
 
-      const originalOverflow = document.body.style.overflow;
-      document.body.style.overflow = "hidden";
-      window.addEventListener("keydown", handleKeyDown);
-
-      // Disable Android SwipeRefreshLayout while modal is open to prevent touch interception
+      // Re-enable Android SwipeRefreshLayout when modal is closed
       if (typeof window !== "undefined" && (window as any).AndroidBridge?.setSwipeRefreshEnabled) {
         try {
-          (window as any).AndroidBridge.setSwipeRefreshEnabled(false);
+          (window as any).AndroidBridge.setSwipeRefreshEnabled(true);
         } catch (e) {}
       }
-
-      // Initial focus management
-      const focusTimer = setTimeout(() => {
-        if (!dialogRef.current) return;
-        const autoFocusEl = dialogRef.current.querySelector<HTMLElement>("[autofocus]");
-        if (autoFocusEl && typeof autoFocusEl.focus === "function") {
-          autoFocusEl.focus();
-          return;
-        }
-        const focusableElements = Array.from(
-          dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
-        );
-        if (focusableElements.length > 0 && typeof focusableElements[0].focus === "function") {
-          focusableElements[0].focus();
-        } else if (typeof dialogRef.current.focus === "function") {
-          dialogRef.current.focus();
-        }
-      }, 50);
-
-      return () => {
-        clearTimeout(focusTimer);
-        document.body.style.overflow = originalOverflow;
-        window.removeEventListener("keydown", handleKeyDown);
-
-        // Restore focus to previously active element
-        if (previousActiveElementRef.current && typeof previousActiveElementRef.current.focus === "function") {
-          try {
-            previousActiveElementRef.current.focus();
-          } catch (_) {}
-          previousActiveElementRef.current = null;
-        }
-
-        // Re-enable Android SwipeRefreshLayout when modal is closed
-        if (typeof window !== "undefined" && (window as any).AndroidBridge?.setSwipeRefreshEnabled) {
-          try {
-            (window as any).AndroidBridge.setSwipeRefreshEnabled(true);
-          } catch (e) {}
-        }
-      };
-    }
+    };
   }, [isOpen, handleKeyDown]);
 
   if (!isOpen || !mounted) return null;
@@ -168,8 +172,8 @@ export function Modal({
         left: 0,
         right: 0,
         bottom: 0,
-        width: "100vw",
-        height: "100vh",
+        width: "100%",
+        height: "100%",
       }}
       role="dialog"
       aria-modal="true"

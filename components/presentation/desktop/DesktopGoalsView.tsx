@@ -1,6 +1,6 @@
 "use client";
 
-import React, { memo } from "react";
+import React, { memo, useCallback } from "react";
 import { DesktopAppLayout } from "./DesktopAppLayout";
 import { GoalWindowCard } from "@/components/goals/GoalWindowCard";
 import { CreateGoalModal } from "@/components/goals/CreateGoalModal";
@@ -41,6 +41,10 @@ export const DesktopGoalsView = memo(function DesktopGoalsView({
   handleCreateGoals,
   handleAddGoals,
 }: DesktopGoalsViewProps) {
+  const handleCloseCreateModal = useCallback(() => setIsCreateModalOpen(false), [setIsCreateModalOpen]);
+  const handleCloseAddModal = useCallback(() => setIsAddModalOpen(false), [setIsAddModalOpen]);
+  const handleCloseGuideModal = useCallback(() => setIsGuideModalOpen(false), [setIsGuideModalOpen]);
+
   return (
     <DesktopAppLayout profile={profile}>
       <main className="w-full px-6 lg:px-8 xl:px-12 py-6 space-y-6">
@@ -188,21 +192,21 @@ export const DesktopGoalsView = memo(function DesktopGoalsView({
 
       <CreateGoalModal
         isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
+        onClose={handleCloseCreateModal}
         onConfirmCreate={handleCreateGoals}
         isLoading={actionLoading}
       />
 
       <AddGoalModal
         isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
+        onClose={handleCloseAddModal}
         onConfirmAdd={handleAddGoals}
         isLoading={actionLoading}
       />
 
       <GoalsGuideModal
         isOpen={isGuideModalOpen}
-        onClose={() => setIsGuideModalOpen(false)}
+        onClose={handleCloseGuideModal}
       />
     </DesktopAppLayout>
   );
