@@ -306,15 +306,6 @@ export const DesktopRoomView = memo(function DesktopRoomView({
           await closeGoalUpdateModal();
           if (isBreakExpiredNoticeOpen) await closeBreakExpiredNotice();
           if (isSessionLimitNoticeOpen) closeSessionLimitNotice();
-          if (user) {
-            broadcastStatusChange({
-              id: user.id,
-              current_status: status,
-              session_start_time: status === "offline" ? null : effectiveProfile?.session_start_time,
-              break_started_at: status === "break" ? (breakStartedAt || effectiveProfile?.break_started_at) : null,
-              pending_goal_session_id: null,
-            });
-          }
           await Promise.allSettled([refreshGoals(), refreshProfile(), refreshMembers(), refreshStreak()]);
         }}
         onConfirmSaveGoals={async (completedTaskIds) => {

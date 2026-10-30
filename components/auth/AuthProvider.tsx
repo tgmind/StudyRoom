@@ -13,7 +13,7 @@ import {
   purgeStaleActiveSession,
   clearOfflineActiveSession,
 } from "@/lib/offline/sessionQueue";
-import { syncServerClockOnce } from "@/lib/time/clockSync";
+import { syncServerClockOnce, handleSystemWake } from "@/lib/time/clockSync";
 import { getLeaderboardPeriodId } from "@/lib/time/format";
 
 export interface AuthContextValue {
@@ -60,6 +60,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const incoming = data as UserProfile;
           const prevVersion = prev?.state_version ?? 0;
           const incomingVersion = incoming.state_version ?? 0;
+
+          // Monotonic ordering: Drop delayed stale profile response from the past
           if (incomingVersion > 0 && prevVersion > 0 && incomingVersion < prevVersion) {
             return prev;
           }
@@ -219,6 +221,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const incoming = payload.new as Partial<UserProfile>;
             const prevVersion = prev.state_version ?? 0;
             const incomingVersion = (incoming.state_version as number) ?? 0;
+
+            // Monotonic ordering: Drop out-of-order stale Realtime event from the past
             if (incomingVersion > 0 && prevVersion > 0 && incomingVersion < prevVersion) {
               return prev;
             }
@@ -282,7 +286,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           });
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED" && user?.id) {
+          fetchProfile(user.id);
+        }
+      });
 
     return () => {
       try {
@@ -291,7 +299,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // ignore cleanup errors
       }
     };
-  }, [supabase, user?.id]);
+  }, [supabase, user?.id, fetchProfile]);
 
   // Resync own profile & clock immediately when returning from background, unlocking device, or reconnecting to network
   useEffect(() => {
@@ -308,14 +316,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const handleWakeup = () => {
       if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        handleSystemWake();
         fetchProfile(user.id);
-        syncServerClockOnce();
       }
     };
 
     const handleOnline = () => {
+      handleSystemWake();
       fetchProfile(user.id);
-      syncServerClockOnce();
     };
 
     document.addEventListener("visibilitychange", handleWakeup);

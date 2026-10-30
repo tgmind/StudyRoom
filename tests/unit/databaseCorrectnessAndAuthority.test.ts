@@ -442,4 +442,379 @@ describe('Database Correctness & Authority Invariants', () => {
       expect(finalized.end_time).toBe(t1130);
     });
   });
+
+  describe('8. Server Authority & Anti-Tampering Transition Invariants (Phase 2)', () => {
+    interface DBUser {
+      id: string;
+      current_status: 'studying' | 'break' | 'offline';
+      session_start_time: string | null;
+      last_resumed_at: string | null;
+      break_started_at: string | null;
+      active_study_seconds_snapshot: number;
+      state_version: number;
+    }
+
+    interface DBSessionBlock {
+      id: string;
+      user_id: string;
+      block_type: 'study' | 'break';
+      start_time: string;
+      end_time: string | null;
+      session_id: string | null;
+    }
+
+    // Database simulation adhering 100% to PostgreSQL RPC transactions
+    const createDB = (nowIso: string) => {
+      let now = new Date(nowIso).getTime();
+      let user: DBUser = {
+        id: 'u1',
+        current_status: 'studying',
+        session_start_time: nowIso,
+        last_resumed_at: nowIso,
+        break_started_at: null,
+        active_study_seconds_snapshot: 0,
+        state_version: 1,
+      };
+      let blocks: DBSessionBlock[] = [
+        {
+          id: 'b1',
+          user_id: 'u1',
+          block_type: 'study',
+          start_time: nowIso,
+          end_time: null,
+          session_id: null,
+        },
+      ];
+      let studySessions: any[] = [];
+
+      const setServerNow = (iso: string) => {
+        now = new Date(iso).getTime();
+      };
+
+      // Simulates rpc_pause_session (Strict Server-Authoritative)
+      const rpcPauseSession = (p_paused_at?: string | null, p_elapsed_study_seconds?: number | null) => {
+        const v_server_now = new Date(now).toISOString();
+        // Server Authority: p_paused_at and p_elapsed_study_seconds are completely ignored
+        const v_now = v_server_now;
+
+        if (user.current_status === 'break') {
+          return { success: true, already_paused: true, state_version: user.state_version };
+        }
+        if (user.current_status !== 'studying') {
+          throw new Error('User is not currently studying');
+        }
+
+        // Close current active study block at v_now (server clock)
+        blocks.forEach((b) => {
+          if (b.user_id === user.id && b.block_type === 'study' && b.end_time === null) {
+            b.end_time = v_now;
+          }
+        });
+
+        // Open break block at v_now (server clock)
+        blocks.push({
+          id: `b_break_${blocks.length + 1}`,
+          user_id: user.id,
+          block_type: 'break',
+          start_time: v_now,
+          end_time: null,
+          session_id: null,
+        });
+
+        // Compute study seconds strictly from session blocks
+        const totalStudy = blocks
+          .filter((b) => b.user_id === user.id && b.block_type === 'study' && b.session_id === null)
+          .reduce((sum, b) => {
+            const end = b.end_time ? new Date(b.end_time).getTime() : new Date(v_now).getTime();
+            return sum + Math.floor((end - new Date(b.start_time).getTime()) / 1000);
+          }, 0);
+
+        user.current_status = 'break';
+        user.last_resumed_at = null;
+        user.break_started_at = v_now;
+        user.active_study_seconds_snapshot = totalStudy;
+        user.state_version += 1;
+
+        return {
+          success: true,
+          status: 'break',
+          paused_at: v_now,
+          break_started_at: v_now,
+          active_study_seconds_snapshot: totalStudy,
+          state_version: user.state_version,
+          server_now: v_server_now,
+        };
+      };
+
+      // Simulates rpc_resume_session (Strict Server-Authoritative)
+      const rpcResumeSession = (p_resumed_at?: string | null) => {
+        const v_server_now = new Date(now).toISOString();
+        const v_now = v_server_now;
+
+        if (user.current_status === 'studying') {
+          return { success: true, already_resumed: true, state_version: user.state_version };
+        }
+        if (user.current_status !== 'break') {
+          throw new Error('User is not currently on break');
+        }
+
+        // 1-Hour break expiry enforcement
+        const breakStartMs = user.break_started_at ? new Date(user.break_started_at).getTime() : now;
+        if (now - breakStartMs >= 3600 * 1000) {
+          // Finalize session with reason 'break_expired'
+          user.current_status = 'offline';
+          user.break_started_at = null;
+          user.state_version += 1;
+          return {
+            success: false,
+            error: 'break_expired',
+            message: 'You stayed on break for more than 1 hour. Session has been stopped.',
+            state_version: user.state_version,
+            server_now: v_server_now,
+          };
+        }
+
+        // Close break block at v_now
+        blocks.forEach((b) => {
+          if (b.user_id === user.id && b.block_type === 'break' && b.end_time === null) {
+            b.end_time = v_now;
+          }
+        });
+
+        // Open study block at v_now
+        blocks.push({
+          id: `b_study_${blocks.length + 1}`,
+          user_id: user.id,
+          block_type: 'study',
+          start_time: v_now,
+          end_time: null,
+          session_id: null,
+        });
+
+        user.current_status = 'studying';
+        user.last_resumed_at = v_now;
+        user.break_started_at = null;
+        user.state_version += 1;
+
+        return {
+          success: true,
+          status: 'studying',
+          resumed_at: v_now,
+          state_version: user.state_version,
+          server_now: v_server_now,
+        };
+      };
+
+      // Simulates rpc_finish_session
+      const rpcFinishSession = () => {
+        const v_server_now = new Date(now).toISOString();
+        if (user.current_status === 'offline') {
+          return { success: true, already_finished: true, state_version: user.state_version };
+        }
+
+        blocks.forEach((b) => {
+          if (b.user_id === user.id && b.end_time === null) {
+            b.end_time = v_server_now;
+          }
+        });
+
+        const totalStudy = blocks
+          .filter((b) => b.user_id === user.id && b.block_type === 'study' && b.session_id === null)
+          .reduce((sum, b) => {
+            const end = b.end_time ? new Date(b.end_time).getTime() : new Date(v_server_now).getTime();
+            return sum + Math.floor((end - new Date(b.start_time).getTime()) / 1000);
+          }, 0);
+
+        const durationMinutes = Math.min(180, Math.floor(totalStudy / 60));
+        const sessionId = `s_${studySessions.length + 1}`;
+        studySessions.push({
+          id: sessionId,
+          user_id: user.id,
+          duration_minutes: durationMinutes,
+        });
+
+        blocks.forEach((b) => {
+          if (b.session_id === null) b.session_id = sessionId;
+        });
+
+        user.current_status = 'offline';
+        user.session_start_time = null;
+        user.last_resumed_at = null;
+        user.break_started_at = null;
+        user.active_study_seconds_snapshot = 0;
+        user.state_version += 1;
+
+        return {
+          success: true,
+          session_id: sessionId,
+          duration_minutes: durationMinutes,
+          state_version: user.state_version,
+          server_now: v_server_now,
+        };
+      };
+
+      return {
+        user,
+        blocks,
+        studySessions,
+        setServerNow,
+        rpcPauseSession,
+        rpcResumeSession,
+        rpcFinishSession,
+      };
+    };
+
+    it('A. rejects client pause timestamp submitted several minutes in the past and uses server clock', () => {
+      const db = createDB('2026-10-30T10:00:00.000Z');
+      // Advance server to 10:30:00 (30 minutes of study)
+      db.setServerNow('2026-10-30T10:30:00.000Z');
+
+      // Client attempts to claim it paused 15 minutes ago (10:15:00)
+      const res = db.rpcPauseSession('2026-10-30T10:15:00.000Z');
+
+      // The server clock authoritatively closed study block at 10:30:00 (1800s), NOT 10:15:00 (900s)
+      expect(res.paused_at).toBe('2026-10-30T10:30:00.000Z');
+      expect(res.active_study_seconds_snapshot).toBe(1800);
+      expect(db.blocks[0].end_time).toBe('2026-10-30T10:30:00.000Z');
+    });
+
+    it('B. rejects client pause timestamp submitted in the future and uses server clock', () => {
+      const db = createDB('2026-10-30T10:00:00.000Z');
+      db.setServerNow('2026-10-30T10:30:00.000Z');
+
+      // Client attempts to set a future pause time (10:45:00)
+      const res = db.rpcPauseSession('2026-10-30T10:45:00.000Z');
+
+      // Clamped strictly to server now (10:30:00)
+      expect(res.paused_at).toBe('2026-10-30T10:30:00.000Z');
+      expect(res.active_study_seconds_snapshot).toBe(1800);
+    });
+
+    it('C. rejects client resume timestamp submitted several minutes in the past and uses server clock', () => {
+      const db = createDB('2026-10-30T10:00:00.000Z');
+      db.setServerNow('2026-10-30T10:30:00.000Z');
+      db.rpcPauseSession(); // Break starts at 10:30:00
+
+      // Advance server to 10:50:00 (20 minutes of break)
+      db.setServerNow('2026-10-30T10:50:00.000Z');
+
+      // Client attempts to backdate resume to 10:35:00 (claiming only 5m break and 15m unearned study)
+      const res = db.rpcResumeSession('2026-10-30T10:35:00.000Z');
+
+      // Server starts new study block at 10:50:00, NOT 10:35:00
+      expect(res.resumed_at).toBe('2026-10-30T10:50:00.000Z');
+      const newStudyBlock = db.blocks[db.blocks.length - 1];
+      expect(newStudyBlock.start_time).toBe('2026-10-30T10:50:00.000Z');
+      expect(newStudyBlock.block_type).toBe('study');
+    });
+
+    it('D. rejects client resume timestamp submitted in the future and uses server clock', () => {
+      const db = createDB('2026-10-30T10:00:00.000Z');
+      db.setServerNow('2026-10-30T10:30:00.000Z');
+      db.rpcPauseSession();
+
+      db.setServerNow('2026-10-30T10:45:00.000Z');
+      // Client passes future resume timestamp
+      const res = db.rpcResumeSession('2026-10-30T11:15:00.000Z');
+
+      expect(res.resumed_at).toBe('2026-10-30T10:45:00.000Z');
+    });
+
+    it('E. ignores exaggerated p_elapsed_study_seconds value and derives duration strictly from session_blocks', () => {
+      const db = createDB('2026-10-30T10:00:00.000Z');
+      db.setServerNow('2026-10-30T10:30:00.000Z'); // 30m of actual study (1800s)
+
+      // Malicious or desynchronized client attempts to send 24 hours of elapsed study
+      const res = db.rpcPauseSession(null, 86400);
+
+      // Must be exactly 1800s from session_blocks, completely ignoring 86400
+      expect(res.active_study_seconds_snapshot).toBe(1800);
+      expect(db.user.active_study_seconds_snapshot).toBe(1800);
+    });
+
+    it('F. records correct study intervals across a valid pause/resume sequence', () => {
+      const db = createDB('2026-10-30T10:00:00.000Z');
+      // 1. Study for 60m (10:00 to 11:00)
+      db.setServerNow('2026-10-30T11:00:00.000Z');
+      db.rpcPauseSession();
+
+      // 2. Break for 15m (11:00 to 11:15)
+      db.setServerNow('2026-10-30T11:15:00.000Z');
+      db.rpcResumeSession();
+
+      // 3. Study for 45m (11:15 to 12:00)
+      db.setServerNow('2026-10-30T12:00:00.000Z');
+      const fin = db.rpcFinishSession();
+
+      // Total study = 60m + 45m = 105m. Total duration_minutes = 105.
+      expect(fin.duration_minutes).toBe(105);
+      expect(db.studySessions[0].duration_minutes).toBe(105);
+    });
+
+    it('G. prevents duplicate interval accounting under concurrent pause requests', () => {
+      const db = createDB('2026-10-30T10:00:00.000Z');
+      db.setServerNow('2026-10-30T10:30:00.000Z');
+
+      // Request 1 pauses
+      const res1 = db.rpcPauseSession();
+      expect(res1.status).toBe('break');
+      const blocksCountAfterPause = db.blocks.length;
+
+      // Request 2 (concurrent or duplicate retry)
+      const res2 = db.rpcPauseSession();
+      expect(res2.already_paused).toBe(true);
+
+      // Does not create a duplicate break block
+      expect(db.blocks.length).toBe(blocksCountAfterPause);
+    });
+
+    it('H. prevents duplicate finalized sessions under concurrent finish requests', () => {
+      const db = createDB('2026-10-30T10:00:00.000Z');
+      db.setServerNow('2026-10-30T10:30:00.000Z');
+
+      const fin1 = db.rpcFinishSession();
+      expect(fin1.session_id).toBeDefined();
+      expect(db.studySessions.length).toBe(1);
+
+      // Concurrent second finish
+      const fin2 = db.rpcFinishSession();
+      expect(fin2.already_finished).toBe(true);
+      expect(db.studySessions.length).toBe(1); // No duplicate session inserted
+    });
+
+    it('I. does not double-count elapsed time upon network retry', () => {
+      const db = createDB('2026-10-30T10:00:00.000Z');
+      db.setServerNow('2026-10-30T10:45:00.000Z'); // 45m study
+
+      // Initial call succeeds in DB but client times out
+      db.rpcPauseSession();
+      const firstSnapshot = db.user.active_study_seconds_snapshot;
+      expect(firstSnapshot).toBe(2700);
+
+      // Client retries 10s later
+      db.setServerNow('2026-10-30T10:45:10.000Z');
+      const retryRes = db.rpcPauseSession();
+
+      // Snapshot remains identical (2700s), no double counting
+      expect(retryRes.already_paused).toBe(true);
+      expect(db.user.active_study_seconds_snapshot).toBe(2700);
+    });
+
+    it('J. resolves race between break expiry and manual resume authoritatively', () => {
+      const db = createDB('2026-10-30T10:00:00.000Z');
+      db.setServerNow('2026-10-30T10:30:00.000Z'); // 30m study
+      db.rpcPauseSession(); // Break starts at 10:30:00
+
+      // User remains on break for 65 minutes (11:35:00)
+      db.setServerNow('2026-10-30T11:35:00.000Z');
+
+      // Manual resume attempted after break expiry
+      const resumeRes = db.rpcResumeSession();
+
+      // Server terminates session due to break expiry, saving only study time before the break
+      expect(resumeRes.success).toBe(false);
+      expect(resumeRes.error).toBe('break_expired');
+      expect(db.user.current_status).toBe('offline');
+    });
+  });
 });

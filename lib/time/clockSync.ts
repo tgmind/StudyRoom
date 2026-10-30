@@ -53,8 +53,10 @@ if (typeof window !== "undefined") {
     }
     if (cached !== null) {
       const parsed = parseInt(cached, 10);
-      // Sanity check: plausible device clock skew within +/- 2 hours
-      if (!isNaN(parsed) && Math.abs(parsed) < 7200000) {
+      const cachedTs = parseInt(localStorage.getItem("studyroom_server_clock_offset_ts") || "0", 10);
+      const isStale = cachedTs > 0 && Date.now() - cachedTs > 24 * 3600 * 1000;
+      // Sanity check: plausible device clock skew within +/- 30 days and not stale (> 24 hours)
+      if (!isNaN(parsed) && Math.abs(parsed) < 30 * 24 * 3600 * 1000 && !isStale) {
         serverTimeOffsetMs = parsed;
         anchorWallTimeMs = Date.now();
         anchorServerTimeMs = anchorWallTimeMs + parsed;
@@ -102,8 +104,12 @@ export function calibrateWithServerTime(
 
   const measuredOffset = estimatedServerNow - clientNow;
 
-  // Discard absurd offsets greater than 2 hours (e.g. stale goal created_at timestamps)
-  if (Math.abs(measuredOffset) > 7200000) return;
+  // Discard absurd offsets greater than 30 days (e.g. uninitialized epoch 1970 dates)
+  if (Math.abs(measuredOffset) > 30 * 24 * 3600 * 1000) return;
+
+  // Discard high-latency samples (> 5000ms RTT) if already calibrated with lower uncertainty,
+  // preventing inaccurate network transit delays from distorting a healthy clock.
+  if (isCalibrated && roundTripTimeMs > 5000) return;
 
   const prevOffset = serverTimeOffsetMs;
 
@@ -163,6 +169,42 @@ export function getServerNow(): Date {
   return new Date(getServerTime());
 }
 
+let lastHeartbeatWallMs = 0;
+
+/**
+ * Re-anchors monotonic clock on system wakeup (from sleep, backgrounding, tab suspension).
+ * Ensures that wall clock time elapsed while the device was sleeping is immediately reflected
+ * without waiting for network round-trip.
+ */
+export function handleSystemWake(): void {
+  const now = Date.now();
+  if (isCalibrated) {
+    anchorWallTimeMs = now;
+    anchorServerTimeMs = now + serverTimeOffsetMs;
+    anchorPerfTimeMs = typeof performance !== "undefined" ? performance.now() : 0;
+  }
+  lastHeartbeatWallMs = now;
+  syncServerClockOnce();
+}
+
+/**
+ * Called on every 1-second timer tick.
+ * Detects if the JS event loop was suspended (e.g. device sleep, tab throttling >3s).
+ */
+export function recordClockHeartbeat(): void {
+  const now = Date.now();
+  if (lastHeartbeatWallMs > 0 && isCalibrated) {
+    const delta = now - lastHeartbeatWallMs;
+    // If more than 3 seconds elapsed between 1-second ticks, system was sleeping or suspended
+    if (delta > 3000) {
+      anchorWallTimeMs = now;
+      anchorServerTimeMs = now + serverTimeOffsetMs;
+      anchorPerfTimeMs = typeof performance !== "undefined" ? performance.now() : 0;
+    }
+  }
+  lastHeartbeatWallMs = now;
+}
+
 /**
  * Returns current millisecond timestamp calibrated with server atomic time.
  * Uses monotonic hardware clock (performance.now) when calibrated if an OS clock step,
@@ -173,7 +215,7 @@ export function getServerTime(): number {
     const wallElapsed = Date.now() - anchorWallTimeMs;
     const perfElapsed = performance.now() - anchorPerfTimeMs;
 
-    // If local wall clock stepped/jumped by more than 1.5 seconds, use monotonic anchor
+    // If local wall clock stepped/jumped by more than 1.5 seconds while active, use monotonic anchor
     if (Math.abs(wallElapsed - perfElapsed) > 1500) {
       if (perfElapsed >= 0) {
         return Math.round(anchorServerTimeMs + perfElapsed);
@@ -199,6 +241,13 @@ export function isServerTimeCalibrated(): boolean {
 }
 
 /**
+ * Returns whether the current clock time is based on an unverified or provisional estimate.
+ */
+export function isClockEstimateProvisional(): boolean {
+  return !isCalibrated;
+}
+
+/**
  * Resets calibration state (useful for unit testing).
  */
 export function resetClockCalibration(): void {
@@ -206,6 +255,7 @@ export function resetClockCalibration(): void {
   anchorServerTimeMs = 0;
   anchorPerfTimeMs = 0;
   anchorWallTimeMs = 0;
+  lastHeartbeatWallMs = 0;
   isCalibrated = false;
   listeners.clear();
   if (typeof window !== "undefined") {

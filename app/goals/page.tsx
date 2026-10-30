@@ -17,7 +17,10 @@ import { DesktopGoalsView } from "@/components/presentation/desktop/DesktopGoals
 export default function GoalsPage() {
   const { user, profile } = useAuth();
   const layout = useDeviceLayout();
-  const isSessionActive = profile?.current_status === "studying" || profile?.current_status === "break";
+  const isSessionActive =
+    profile?.current_status === "studying" ||
+    profile?.current_status === "break" ||
+    Boolean(profile?.pending_goal_session_id);
   const sessionStartTime = profile?.session_start_time || null;
 
   const {

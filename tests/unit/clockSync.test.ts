@@ -6,8 +6,11 @@ import {
   getServerTime,
   getServerTimeOffset,
   isServerTimeCalibrated,
+  isClockEstimateProvisional,
   resetClockCalibration,
   subscribeToClockCalibration,
+  handleSystemWake,
+  recordClockHeartbeat,
 } from "@/lib/time/clockSync";
 
 describe("Server Clock Synchronization Engine", () => {
@@ -139,6 +142,71 @@ describe("Server Clock Synchronization Engine", () => {
     // After calibration, getServerTime() evaluates exactly to true server time
     const serverNowMs = getServerTime();
     expect(Math.abs(serverNowMs - (trueServerEpoch + 50))).toBeLessThanOrEqual(5);
+
+    vi.restoreAllMocks();
+  });
+
+  it("calibrates accurately for skews greater than 2 hours (e.g. 5.5h IST vs UTC or multi-hour drift)", () => {
+    const fixedClientTime = new Date("2026-10-30T10:00:00.000Z").getTime();
+    vi.spyOn(Date, "now").mockReturnValue(fixedClientTime);
+
+    // Device clock has a 5.5-hour timezone discrepancy (+19,800,000ms)
+    const fiveAndHalfHoursAhead = fixedClientTime + 19800000;
+    calibrateWithServerTime(fiveAndHalfHoursAhead, 80);
+
+    expect(isServerTimeCalibrated()).toBe(true);
+    // Measured offset = +19,800,000 + 40ms = 19,800,040ms
+    expect(getServerTimeOffset()).toBe(19800040);
+
+    const serverNow = getServerTime();
+    expect(serverNow).toBe(fiveAndHalfHoursAhead + 40);
+
+    vi.restoreAllMocks();
+  });
+
+  it("handles system wake from sleep without freezing or drifting", () => {
+    const startClientTime = 1000000;
+    let mockClientTime = startClientTime;
+    vi.spyOn(Date, "now").mockImplementation(() => mockClientTime);
+
+    // Initial calibration with server 0 offset
+    calibrateWithServerTime(startClientTime, 0);
+    expect(getServerTime()).toBe(startClientTime);
+
+    // Simulate device sleep of 1 hour (3,600,000ms)
+    mockClientTime += 3600000;
+
+    // Call recordClockHeartbeat or handleSystemWake
+    handleSystemWake();
+
+    // The elapsed sleep time must be immediately reflected in getServerTime
+    expect(getServerTime()).toBe(startClientTime + 3600000);
+
+    vi.restoreAllMocks();
+  });
+
+  it("indicates provisional estimate state before and after calibration", () => {
+    expect(isClockEstimateProvisional()).toBe(true);
+
+    calibrateWithServerTime("2026-10-30T10:00:00.000Z", 50);
+
+    expect(isClockEstimateProvisional()).toBe(false);
+  });
+
+  it("rejects high-latency (>5000ms RTT) samples when already calibrated with lower uncertainty", () => {
+    const fixedClientTime = new Date("2026-10-30T10:00:00.000Z").getTime();
+    vi.spyOn(Date, "now").mockReturnValue(fixedClientTime);
+
+    // Initial low-latency calibration (50ms RTT)
+    calibrateWithServerTime("2026-10-30T10:00:01.000Z", 50);
+    const initialOffset = getServerTimeOffset();
+    expect(initialOffset).toBe(1025);
+
+    // High latency sample (6000ms RTT) with distorted timestamp
+    calibrateWithServerTime("2026-10-30T10:00:10.000Z", 6000);
+
+    // High latency sample must be discarded to protect against transit delay jitter
+    expect(getServerTimeOffset()).toBe(initialOffset);
 
     vi.restoreAllMocks();
   });

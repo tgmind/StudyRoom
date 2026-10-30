@@ -27,7 +27,7 @@ import {
   calculateMemberOfflineTimestampMs,
 } from "@/lib/time/format";
 import { getEffectiveMemberStatus } from "@/lib/time/break";
-import { getServerNow } from "@/lib/time/clockSync";
+import { getServerNow, recordClockHeartbeat, handleSystemWake } from "@/lib/time/clockSync";
 import { SessionSyncStatus } from "@/hooks/useActiveSession";
 
 const useIsomorphicLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
@@ -76,7 +76,10 @@ export const MemberList = memo(function MemberList({
   );
 
   useEffect(() => {
-    const tick = () => setCurrentTimestamp(getServerNow());
+    const tick = () => {
+      recordClockHeartbeat();
+      setCurrentTimestamp(getServerNow());
+    };
     tick();
     // 1s interval when active/break members present; 10s interval when all are offline to update minute counters
     const intervalMs = hasAnyActiveOrBreak ? 1000 : 10000;
@@ -84,6 +87,7 @@ export const MemberList = memo(function MemberList({
 
     const handleVisibility = () => {
       if (document.visibilityState === "visible") {
+        handleSystemWake();
         tick();
         setOfflineTimestamp(getServerNow());
       }

@@ -123,13 +123,13 @@ export function useDailyGoals(
           saveCachedActiveGoal(goal);
           setCountdown(calculateGoalCountdown(goal.expires_at, serverNow));
         } else {
-          const fourHoursAgoMs = serverNow.getTime() - 4 * 3600 * 1000;
+          const twentyHoursAgoMs = serverNow.getTime() - 20 * 3600 * 1000;
           const goalExpiryMs = new Date(goal.expires_at).getTime();
           const wasActiveAtSessionStart = Boolean(
             sessionStartTime && goalExpiryMs >= new Date(sessionStartTime).getTime()
           );
           const isEligibleSessionGrace =
-            isSessionActive && (wasActiveAtSessionStart || goalExpiryMs >= fourHoursAgoMs);
+            isSessionActive && (wasActiveAtSessionStart || goalExpiryMs >= twentyHoursAgoMs);
 
           if (isEligibleSessionGrace) {
             setActiveGoal(goal);

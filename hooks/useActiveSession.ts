@@ -20,6 +20,8 @@ import {
   getServerNow,
   getServerTimeOffset,
   calibrateWithServerTime,
+  recordClockHeartbeat,
+  handleSystemWake,
 } from "@/lib/time/clockSync";
 import {
   with10sTimeout,
@@ -665,6 +667,11 @@ export function useActiveSession(
       profile.last_break_expired_study_seconds !== undefined
     ) {
       setSavedStudySecondsOnBreakExpiry(profile.last_break_expired_study_seconds);
+      if (profile.pending_goal_session_id) {
+        setPendingGoalSessionId(profile.pending_goal_session_id);
+        setPendingGoalSeconds(profile.pending_goal_seconds || profile.last_break_expired_study_seconds);
+        setPendingGoalReason(profile.pending_goal_reason || "break_expired");
+      }
       setIsBreakExpiredNoticeOpen(true);
     }
   }, [profile, currentStatus]);
@@ -799,7 +806,7 @@ export function useActiveSession(
 
     if (!profile) return;
 
-    if (effectiveStatus === "offline" || profile.current_status === "offline") {
+    if (profile.current_status === "offline") {
       const offlineSession = getOfflineActiveSession();
       if (!offlineSession) {
         setBlocks([]);
@@ -931,13 +938,22 @@ export function useActiveSession(
           elapsed_seconds: number;
           state_version: number;
           server_now: string;
+          session_id?: string;
+          pending_goal_session_id?: string | null;
+          pending_goal_seconds?: number | null;
+          pending_goal_reason?: string | null;
         };
 
         if (res.server_now) {
-          calibrateWithServerTime(res.server_now, 0);
+          const rtt = Math.max(0, Date.now() - now);
+          calibrateWithServerTime(res.server_now, rtt);
         }
 
         if (res.repaired || res.status) {
+          const targetSessionId = res.pending_goal_session_id || res.session_id || null;
+          const targetSeconds = res.pending_goal_seconds ?? (res.elapsed_seconds || res.active_study_seconds_snapshot || 0);
+          const targetReason = res.pending_goal_reason ?? (res.reason === "break_expired" ? "break_expired" : res.reason === "session_limit_exceeded" ? "session_limit" : "manual_stop");
+
           if (updateProfileOptimisticRef.current) {
             updateProfileOptimisticRef.current({
               current_status: res.status,
@@ -946,6 +962,11 @@ export function useActiveSession(
               break_started_at: res.break_started_at,
               active_study_seconds_snapshot: res.active_study_seconds_snapshot,
               state_version: res.state_version,
+              ...(targetSessionId ? {
+                pending_goal_session_id: targetSessionId,
+                pending_goal_seconds: targetSeconds,
+                pending_goal_reason: targetReason,
+              } : {}),
             });
           }
 
@@ -955,11 +976,19 @@ export function useActiveSession(
             setBlocks([]);
             setElapsedStudySeconds(0);
             lastAuthoritativeElapsedRef.current = 0;
+
+            if (targetSessionId) {
+              setPendingGoalSessionId(targetSessionId);
+              setPendingGoalSeconds(targetSeconds);
+              setPendingGoalReason(targetReason);
+              setIsGoalUpdateModalOpen(true);
+            }
+
             if (res.reason === "break_expired") {
-              setSavedStudySecondsOnBreakExpiry(res.elapsed_seconds || res.active_study_seconds_snapshot || 0);
+              setSavedStudySecondsOnBreakExpiry(targetSeconds);
               setIsBreakExpiredNoticeOpen(true);
             } else if (res.reason === "session_limit_exceeded") {
-              setSavedStudySecondsOnLimit(res.elapsed_seconds || 10800);
+              setSavedStudySecondsOnLimit(targetSeconds || 10800);
               setIsSessionLimitNoticeOpen(true);
             }
           } else if (res.status === "studying" || res.status === "break") {
@@ -996,6 +1025,36 @@ export function useActiveSession(
 
     return () => clearTimeout(timer);
   }, [isTimerCalibrating, isOnline, effectiveStatus, reconcileActiveSession]);
+
+  // Reconnect & foreground session reconciliation: ensures that if Realtime dropped or device woke from sleep,
+  // the client authoritatively recovers active session state, pending goals, and break expiry.
+  const prevConnectionStateRef = useRef<string | null>(connectionState);
+  useEffect(() => {
+    if (!isOnline || isAuthLoading || !profileRef.current?.id) return;
+
+    const triggerReconcile = () => {
+      if (document.visibilityState === "visible") {
+        reconcileActiveSession();
+        fetchSessionBlocks();
+      }
+    };
+
+    if (prevConnectionStateRef.current && prevConnectionStateRef.current !== "connected" && connectionState === "connected") {
+      reconcileActiveSession();
+      fetchSessionBlocks();
+    }
+    prevConnectionStateRef.current = connectionState;
+
+    window.addEventListener("online", triggerReconcile);
+    document.addEventListener("visibilitychange", triggerReconcile);
+    window.addEventListener("focus", triggerReconcile);
+
+    return () => {
+      window.removeEventListener("online", triggerReconcile);
+      document.removeEventListener("visibilitychange", triggerReconcile);
+      window.removeEventListener("focus", triggerReconcile);
+    };
+  }, [connectionState, isOnline, isAuthLoading, reconcileActiveSession, fetchSessionBlocks]);
 
   // Manual interactive force synchronization
   const forceSynchronizeSession = useCallback(async () => {
@@ -1043,8 +1102,12 @@ export function useActiveSession(
         !b.end_time ? { ...b, end_time: nowIso } : b
       );
 
-      // 2. Compute exact active study duration in seconds
-      const totalActiveSeconds = calculateActiveStudySeconds(finalBlocks, new Date(nowIso));
+      // 2. Compute exact active study duration in seconds (falling back to profile calculation if blocks not yet hydrated)
+      const computedFromBlocks = calculateActiveStudySeconds(finalBlocks, new Date(nowIso));
+      const fallbackFromProfile = profileRef.current
+        ? calculateMemberElapsedStudySeconds(profileRef.current, new Date(nowIso))
+        : 0;
+      const totalActiveSeconds = Math.max(computedFromBlocks, fallbackFromProfile);
       const durationMinutes = Math.min(180, Math.max(0, Math.floor(totalActiveSeconds / 60)));
 
       // Determine authoritative study end time:
@@ -1194,6 +1257,10 @@ export function useActiveSession(
             success: boolean;
             already_finished?: boolean;
             session_id?: string;
+            duration_minutes?: number;
+            pending_goal_session_id?: string;
+            pending_goal_seconds?: number;
+            pending_goal_reason?: string;
             server_now?: string;
             error?: string;
           };
@@ -1211,10 +1278,35 @@ export function useActiveSession(
             removeOfflineCompletedSession(baseOfflineId + "_1");
             removeOfflineCompletedSession(baseOfflineId + "_2");
             removeActiveTransitionActions();
+
+            // Recover pending goal update from profile or server RPC
+            const pendingSid = profileRef.current?.pending_goal_session_id;
+            if (pendingSid) {
+              setPendingGoalSessionId(pendingSid);
+              setPendingGoalSeconds(profileRef.current?.pending_goal_seconds || durationMinutes * 60);
+              setPendingGoalReason(profileRef.current?.pending_goal_reason || reason);
+              setIsGoalUpdateModalOpen(true);
+            } else {
+              try {
+                const { data: pendData } = await (supabase as unknown as RpcCaller).rpc("rpc_get_pending_goal_session");
+                if (pendData && (pendData as any).has_pending && (pendData as any).session_id) {
+                  const p = pendData as any;
+                  setPendingGoalSessionId(p.session_id);
+                  setPendingGoalSeconds(p.pending_goal_seconds || p.duration_minutes * 60);
+                  setPendingGoalReason(p.pending_goal_reason || reason);
+                  setIsGoalUpdateModalOpen(true);
+                }
+              } catch (pErr) {
+                console.warn("rpc_get_pending_goal_session recovery error:", pErr);
+              }
+            }
             return { success: true, already_finished: true };
           }
 
           const targetSessionId = res.session_id || baseOfflineId;
+          const targetGoalSeconds =
+            res.pending_goal_seconds ??
+            (typeof res.duration_minutes === "number" ? res.duration_minutes * 60 : (totalActiveSeconds || durationMinutes * 60));
           const confirmedDetails: Partial<UserProfile> = {
             current_status: "offline",
             session_start_time: null,
@@ -1226,6 +1318,9 @@ export function useActiveSession(
             total_sessions_count: currentTotalSessions,
             weekly_sessions_count: currentWeeklySessions,
             _weekly_period_id: currentPeriodId,
+            pending_goal_session_id: targetSessionId,
+            pending_goal_seconds: targetGoalSeconds,
+            pending_goal_reason: reason,
           } as any;
           if (profileRef.current) {
             Object.assign(profileRef.current, confirmedDetails);
@@ -1236,7 +1331,7 @@ export function useActiveSession(
           setSyncStatus("synced");
           setActionLoading(false);
           setPendingGoalSessionId(targetSessionId);
-          setPendingGoalSeconds(durationMinutes * 60);
+          setPendingGoalSeconds(targetGoalSeconds);
           setPendingGoalReason(reason);
           setIsGoalUpdateModalOpen(true);
 
@@ -1515,6 +1610,7 @@ export function useActiveSession(
     };
 
     const tick = () => {
+      recordClockHeartbeat();
       setElapsedStudySeconds(computeCurrentSeconds(getServerNow()));
     };
 
@@ -1522,7 +1618,10 @@ export function useActiveSession(
     const intervalId = setInterval(tick, 1000);
 
     const handleVisibility = () => {
-      if (document.visibilityState === "visible") tick();
+      if (document.visibilityState === "visible") {
+        handleSystemWake();
+        tick();
+      }
     };
     document.addEventListener("visibilitychange", handleVisibility);
     window.addEventListener("focus", handleVisibility);
@@ -1769,10 +1868,7 @@ export function useActiveSession(
     // 4. Remote RPC with 10s safety timeout
     try {
       const { data, error: rpcErr } = await with10sTimeout(
-        (supabase as unknown as RpcCaller).rpc("rpc_pause_session", {
-          p_paused_at: nowIso,
-          p_elapsed_study_seconds: currentStudySeconds,
-        }),
+        (supabase as unknown as RpcCaller).rpc("rpc_pause_session"),
         "Pause session RPC"
       );
 
@@ -2023,6 +2119,13 @@ export function useActiveSession(
       hasCompletedGoalsRef.current = true;
       setIsGoalUpdateModalOpen(false);
       setPendingGoalSessionId(null);
+      if (updateProfileOptimisticRef.current) {
+        updateProfileOptimisticRef.current({
+          pending_goal_session_id: null,
+          pending_goal_seconds: null,
+          pending_goal_reason: null,
+        });
+      }
 
       const targetUuid = isValidUuid(sessionId) ? sessionId : null;
 
@@ -2061,18 +2164,9 @@ export function useActiveSession(
       hasCompletedGoalsRef.current = false;
       return;
     }
-    const sid = pendingGoalSessionId;
-    setPendingGoalSessionId(null);
-    const targetUuid = isValidUuid(sid) ? sid : null;
-    try {
-      await (supabase as unknown as RpcCaller).rpc("rpc_complete_session_goals", {
-        p_session_id: targetUuid,
-        p_completed_task_ids: [],
-      });
-    } catch (err) {
-      console.warn("Error clearing pending goals on dismiss:", err);
-    }
-  }, [supabase, pendingGoalSessionId]);
+    // Dismissing the modal without submitting/skipping preserves pending_goal_session_id on server
+    // so the user can review and update goals later or from another device.
+  }, []);
 
   const dismissTenMinuteWarning = useCallback(() => {
     isTenMinWarningDismissedRef.current = true;

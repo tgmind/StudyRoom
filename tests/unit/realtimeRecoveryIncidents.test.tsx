@@ -99,7 +99,8 @@ describe("Realtime Critical Recovery Incidents Verification", () => {
         />
       );
 
-      expect(container.querySelectorAll(".animate-pulse").length).toBe(4);
+      // MemberList renders 6 skeleton cards matching responsive 2xl:grid-cols-6 columns
+      expect(container.querySelectorAll(".animate-pulse").length).toBe(6);
     });
 
     it("displays 'Connecting...' (sky pulse) when connectionState is connecting", () => {

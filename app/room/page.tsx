@@ -110,7 +110,8 @@ export default function RoomPage() {
     isBreakExpiredNoticeOpen ||
     isSessionLimitNoticeOpen ||
     isGoalUpdateModalOpen ||
-    Boolean(pendingGoalSessionId);
+    Boolean(pendingGoalSessionId) ||
+    Boolean(effectiveProfile?.pending_goal_session_id);
   const sessionStartTime = effectiveProfile?.session_start_time || null;
 
   const {
@@ -366,15 +367,6 @@ export default function RoomPage() {
           await closeGoalUpdateModal();
           if (isBreakExpiredNoticeOpen) await closeBreakExpiredNotice();
           if (isSessionLimitNoticeOpen) closeSessionLimitNotice();
-          if (user) {
-            broadcastStatusChange({
-              id: user.id,
-              current_status: status,
-              session_start_time: status === "offline" ? null : effectiveProfile?.session_start_time,
-              break_started_at: status === "break" ? (breakStartedAt || effectiveProfile?.break_started_at) : null,
-              pending_goal_session_id: null,
-            });
-          }
           await Promise.allSettled([refreshGoals(), refreshProfile(), refreshMembers()]);
         }}
         onConfirmSaveGoals={async (completedTaskIds) => {

@@ -348,7 +348,11 @@ $$;
 
 -- RPC: Start Session
 CREATE OR REPLACE FUNCTION public.rpc_start_session(p_focus TEXT DEFAULT NULL)
-RETURNS JSONB AS $$
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
 DECLARE
   v_user_id UUID;
   v_status TEXT;
@@ -389,7 +393,7 @@ BEGIN
   SET end_time = v_now
   WHERE user_id = v_user_id AND end_time IS NULL;
 
-  -- Update user status with active resume timestamp
+  -- Update user status with active resume timestamp and monotonic version increment
   UPDATE public.users
   SET current_status = 'studying',
       current_focus = v_trimmed_focus,
@@ -397,7 +401,8 @@ BEGIN
       last_resumed_at = v_now,
       break_started_at = NULL,
       active_study_seconds_snapshot = 0,
-      last_break_expired_study_seconds = NULL
+      last_break_expired_study_seconds = NULL,
+      state_version = COALESCE(state_version, 1) + 1
   WHERE id = v_user_id
   RETURNING state_version INTO v_version;
 
@@ -418,7 +423,11 @@ BEGIN
     'server_now', v_now
   );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.rpc_start_session(TEXT) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.rpc_start_session(TEXT) FROM anon;
+GRANT EXECUTE ON FUNCTION public.rpc_start_session(TEXT) TO authenticated, service_role;
 
 -- RPC: Pause Session
 DROP FUNCTION IF EXISTS public.rpc_pause_session() CASCADE;
@@ -428,12 +437,21 @@ CREATE OR REPLACE FUNCTION public.rpc_pause_session(
   p_paused_at TIMESTAMPTZ DEFAULT NULL,
   p_elapsed_study_seconds INTEGER DEFAULT NULL
 )
-RETURNS JSONB AS $$
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
 DECLARE
   v_user_id UUID;
   v_status TEXT;
   v_break_started_at TIMESTAMPTZ;
-  v_now TIMESTAMPTZ := COALESCE(p_paused_at, NOW());
+  v_server_now TIMESTAMPTZ := NOW();
+  -- Strictly Server-Authoritative: The database transaction clock dictates the transition boundary.
+  -- p_paused_at and p_elapsed_study_seconds are retained in the signature purely for RPC caller
+  -- backward compatibility and are strictly ignored in authoritative timeline accounting.
+  v_now TIMESTAMPTZ := v_server_now;
+  v_last_study_start TIMESTAMPTZ;
   v_total_study_seconds INTEGER := 0;
   v_version BIGINT;
   v_snapshot INTEGER;
@@ -458,12 +476,21 @@ BEGIN
       'break_started_at', v_break_started_at,
       'active_study_seconds_snapshot', v_snapshot,
       'state_version', v_version,
-      'server_now', v_now
+      'server_now', v_server_now
     );
   END IF;
 
   IF v_status <> 'studying' THEN
     RAISE EXCEPTION 'User is not currently studying';
+  END IF;
+
+  -- Ensure v_now is not prior to the start time of the active unlinked study block
+  SELECT MAX(start_time) INTO v_last_study_start
+  FROM public.session_blocks
+  WHERE user_id = v_user_id AND block_type = 'study' AND session_id IS NULL AND end_time IS NULL;
+
+  IF v_last_study_start IS NOT NULL AND v_now < v_last_study_start THEN
+    v_now := v_last_study_start;
   END IF;
 
   -- Close current active study block
@@ -475,7 +502,7 @@ BEGIN
   INSERT INTO public.session_blocks (user_id, block_type, start_time)
   VALUES (v_user_id, 'break', v_now);
 
-  -- Calculate total active study seconds from study blocks so far (excluding breaks)
+  -- Calculate total active study seconds strictly from study blocks so far (excluding breaks)
   SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(end_time, v_now) - start_time))), 0)::INTEGER
   INTO v_total_study_seconds
   FROM public.session_blocks
@@ -483,16 +510,15 @@ BEGIN
     AND block_type = 'study'
     AND session_id IS NULL;
 
-  IF p_elapsed_study_seconds IS NOT NULL AND p_elapsed_study_seconds > v_total_study_seconds THEN
-    v_total_study_seconds := p_elapsed_study_seconds;
-  END IF;
+  v_total_study_seconds := LEAST(10800, GREATEST(0, v_total_study_seconds));
 
   -- Update user status with frozen active study seconds snapshot and break start timestamp
   UPDATE public.users
   SET current_status = 'break',
       last_resumed_at = NULL,
       break_started_at = v_now,
-      active_study_seconds_snapshot = v_total_study_seconds
+      active_study_seconds_snapshot = v_total_study_seconds,
+      state_version = COALESCE(state_version, 1) + 1
   WHERE id = v_user_id
   RETURNING state_version INTO v_version;
 
@@ -503,10 +529,14 @@ BEGIN
     'break_started_at', v_now,
     'active_study_seconds_snapshot', v_total_study_seconds,
     'state_version', v_version,
-    'server_now', v_now
+    'server_now', v_server_now
   );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.rpc_pause_session(TIMESTAMPTZ, INTEGER) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.rpc_pause_session(TIMESTAMPTZ, INTEGER) FROM anon;
+GRANT EXECUTE ON FUNCTION public.rpc_pause_session(TIMESTAMPTZ, INTEGER) TO authenticated, service_role;
 
 -- RPC: Resume Session (with 1-hour break timeout protection)
 DROP FUNCTION IF EXISTS public.rpc_resume_session() CASCADE;
@@ -515,14 +545,23 @@ DROP FUNCTION IF EXISTS public.rpc_resume_session(TIMESTAMPTZ) CASCADE;
 CREATE OR REPLACE FUNCTION public.rpc_resume_session(
   p_resumed_at TIMESTAMPTZ DEFAULT NULL
 )
-RETURNS JSONB AS $$
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
 DECLARE
   v_user_id UUID;
   v_status TEXT;
   v_break_started_at TIMESTAMPTZ;
-  v_now TIMESTAMPTZ := COALESCE(p_resumed_at, NOW());
+  v_server_now TIMESTAMPTZ := NOW();
+  -- Strictly Server-Authoritative: The database transaction clock dictates the resume boundary.
+  -- p_resumed_at is retained in the signature purely for RPC caller backward compatibility
+  -- and is strictly ignored in authoritative timeline accounting.
+  v_now TIMESTAMPTZ := v_server_now;
   v_total_study_seconds INTEGER := 0;
   v_version BIGINT;
+  v_finish_res JSONB;
 BEGIN
   v_user_id := auth.uid();
   IF v_user_id IS NULL THEN
@@ -542,12 +581,17 @@ BEGIN
       'already_resumed', true,
       'status', 'studying',
       'state_version', v_version,
-      'server_now', v_now
+      'server_now', v_server_now
     );
   END IF;
 
   IF v_status <> 'break' THEN
     RAISE EXCEPTION 'User is not currently on break';
+  END IF;
+
+  -- Ensure v_now is not prior to break_started_at
+  IF v_break_started_at IS NOT NULL AND v_now < v_break_started_at THEN
+    v_now := v_break_started_at;
   END IF;
 
   -- 1-HOUR BREAK EXPIRY ENFORCEMENT:
@@ -558,10 +602,11 @@ BEGIN
     FROM public.session_blocks
     WHERE user_id = v_user_id AND block_type = 'study' AND session_id IS NULL;
 
-    PERFORM public.rpc_finish_session(ARRAY[]::TEXT[], 'break_expired');
+    SELECT * INTO v_finish_res FROM public.rpc_finish_session(ARRAY[]::TEXT[], 'break_expired');
 
     UPDATE public.users
-    SET last_break_expired_study_seconds = v_total_study_seconds
+    SET last_break_expired_study_seconds = v_total_study_seconds,
+        state_version = COALESCE(state_version, 1) + 1
     WHERE id = v_user_id
     RETURNING state_version INTO v_version;
 
@@ -569,8 +614,12 @@ BEGIN
       'success', false,
       'error', 'break_expired',
       'message', 'You stayed on break for more than 1 hour. Session has been stopped. Start a new session.',
+      'session_id', v_finish_res->>'session_id',
+      'pending_goal_session_id', v_finish_res->>'pending_goal_session_id',
+      'pending_goal_seconds', COALESCE((v_finish_res->>'pending_goal_seconds')::INTEGER, v_total_study_seconds),
+      'pending_goal_reason', 'break_expired',
       'state_version', v_version,
-      'server_now', v_now
+      'server_now', v_server_now
     );
   END IF;
 
@@ -588,7 +637,8 @@ BEGIN
   SET current_status = 'studying',
       last_resumed_at = v_now,
       break_started_at = NULL,
-      last_break_expired_study_seconds = NULL
+      last_break_expired_study_seconds = NULL,
+      state_version = COALESCE(state_version, 1) + 1
   WHERE id = v_user_id
   RETURNING state_version INTO v_version;
 
@@ -597,19 +647,28 @@ BEGIN
     'status', 'studying',
     'resumed_at', v_now,
     'state_version', v_version,
-    'server_now', v_now
+    'server_now', v_server_now
   );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.rpc_resume_session(TIMESTAMPTZ) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.rpc_resume_session(TIMESTAMPTZ) FROM anon;
+GRANT EXECUTE ON FUNCTION public.rpc_resume_session(TIMESTAMPTZ) TO authenticated, service_role;
 
 -- RPC: Terminate Expired Break
 CREATE OR REPLACE FUNCTION public.rpc_terminate_expired_break()
-RETURNS JSONB AS $$
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
 DECLARE
   v_user_id UUID;
   v_status TEXT;
   v_break_started_at TIMESTAMPTZ;
   v_now TIMESTAMPTZ := NOW();
+  v_finish_res JSONB;
 BEGIN
   v_user_id := auth.uid();
   IF v_user_id IS NULL THEN
@@ -622,20 +681,318 @@ BEGIN
   FOR UPDATE;
 
   IF v_status = 'break' AND v_break_started_at IS NOT NULL AND EXTRACT(EPOCH FROM (v_now - v_break_started_at)) >= 3600 THEN
-    PERFORM public.rpc_finish_session(ARRAY[]::TEXT[]);
+    SELECT * INTO v_finish_res FROM public.rpc_finish_session(ARRAY[]::TEXT[], 'break_expired');
     RETURN jsonb_build_object(
       'success', true,
       'terminated', true,
+      'session_id', v_finish_res->>'session_id',
+      'pending_goal_session_id', v_finish_res->>'pending_goal_session_id',
+      'pending_goal_seconds', v_finish_res->>'pending_goal_seconds',
+      'pending_goal_reason', 'break_expired',
+      'state_version', v_finish_res->>'state_version',
+      'server_now', v_now,
       'message', 'You stayed on break for more than 1 hour. Session has been stopped. Start a new session.'
     );
   END IF;
 
   RETURN jsonb_build_object(
     'success', true,
-    'terminated', false
+    'terminated', false,
+    'server_now', v_now
   );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.rpc_terminate_expired_break() FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.rpc_terminate_expired_break() FROM anon;
+GRANT EXECUTE ON FUNCTION public.rpc_terminate_expired_break() TO authenticated, service_role;
+
+-- RPC: Synchronize Session (Pending Goal Preservation & Expiration Safety)
+CREATE OR REPLACE FUNCTION public.rpc_synchronize_session()
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_user_id UUID;
+  v_status TEXT;
+  v_session_start TIMESTAMPTZ;
+  v_last_resumed TIMESTAMPTZ;
+  v_break_start TIMESTAMPTZ;
+  v_snapshot INTEGER;
+  v_version BIGINT;
+  v_now TIMESTAMPTZ := NOW();
+
+  v_true_start TIMESTAMPTZ;
+  v_true_resume TIMESTAMPTZ;
+  v_accrued_study_seconds INTEGER := 0;
+  v_open_study_block_start TIMESTAMPTZ;
+  v_study_block_count INTEGER := 0;
+  v_total_study_seconds INTEGER := 0;
+
+  v_pending_sid UUID;
+  v_pending_sec INTEGER;
+  v_pending_reason TEXT;
+  v_finish_res JSONB;
+BEGIN
+  -- 1. Authentication Check
+  v_user_id := auth.uid();
+  IF v_user_id IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  -- 2. Lock user profile row to guarantee ACID atomicity
+  SELECT
+    current_status,
+    session_start_time,
+    last_resumed_at,
+    break_started_at,
+    COALESCE(active_study_seconds_snapshot, 0),
+    COALESCE(state_version, 1),
+    pending_goal_session_id,
+    pending_goal_seconds,
+    pending_goal_reason
+  INTO
+    v_status,
+    v_session_start,
+    v_last_resumed,
+    v_break_start,
+    v_snapshot,
+    v_version,
+    v_pending_sid,
+    v_pending_sec,
+    v_pending_reason
+  FROM public.users
+  WHERE id = v_user_id
+  FOR UPDATE;
+
+  -- If user is offline, ensure any orphaned unlinked blocks are closed and surface pending goals
+  IF v_status IS NULL OR v_status = 'offline' THEN
+    UPDATE public.session_blocks
+    SET end_time = v_now
+    WHERE user_id = v_user_id AND session_id IS NULL AND end_time IS NULL;
+
+    RETURN jsonb_build_object(
+      'success', true,
+      'status', 'offline',
+      'repaired', false,
+      'reason', 'already_offline',
+      'session_start_time', NULL,
+      'last_resumed_at', NULL,
+      'break_started_at', NULL,
+      'active_study_seconds_snapshot', 0,
+      'elapsed_seconds', 0,
+      'pending_goal_session_id', v_pending_sid,
+      'pending_goal_seconds', v_pending_sec,
+      'pending_goal_reason', v_pending_reason,
+      'state_version', v_version,
+      'server_now', v_now
+    );
+  END IF;
+
+  -- 3. Handling User on Break
+  IF v_status = 'break' THEN
+    -- Derive break_started_at if missing
+    IF v_break_start IS NULL THEN
+      SELECT start_time INTO v_break_start
+      FROM public.session_blocks
+      WHERE user_id = v_user_id AND session_id IS NULL AND block_type = 'break' AND end_time IS NULL
+      ORDER BY start_time DESC
+      LIMIT 1;
+
+      IF v_break_start IS NOT NULL THEN
+        UPDATE public.users
+        SET break_started_at = v_break_start,
+            state_version = COALESCE(state_version, 1) + 1
+        WHERE id = v_user_id
+        RETURNING state_version INTO v_version;
+      ELSE
+        v_break_start := v_now;
+      END IF;
+    END IF;
+
+    -- Check 1-Hour Break Expiry Limit
+    IF v_now - v_break_start >= INTERVAL '1 hour' THEN
+      SELECT * INTO v_finish_res FROM public.rpc_finish_session(ARRAY[]::TEXT[], 'break_expired');
+
+      RETURN jsonb_build_object(
+        'success', true,
+        'status', 'offline',
+        'repaired', true,
+        'reason', 'break_expired',
+        'session_id', v_finish_res->>'session_id',
+        'pending_goal_session_id', v_finish_res->>'pending_goal_session_id',
+        'pending_goal_seconds', COALESCE((v_finish_res->>'pending_goal_seconds')::INTEGER, v_snapshot),
+        'pending_goal_reason', 'break_expired',
+        'session_start_time', NULL,
+        'last_resumed_at', NULL,
+        'break_started_at', NULL,
+        'active_study_seconds_snapshot', v_snapshot,
+        'elapsed_seconds', v_snapshot,
+        'state_version', COALESCE((v_finish_res->>'state_version')::BIGINT, v_version + 1),
+        'server_now', v_now
+      );
+    END IF;
+
+    -- Valid Break State
+    RETURN jsonb_build_object(
+      'success', true,
+      'status', 'break',
+      'repaired', false,
+      'reason', 'already_synchronized',
+      'session_start_time', v_session_start,
+      'last_resumed_at', NULL,
+      'break_started_at', v_break_start,
+      'active_study_seconds_snapshot', v_snapshot,
+      'elapsed_seconds', v_snapshot,
+      'state_version', v_version,
+      'server_now', v_now
+    );
+  END IF;
+
+  -- 4. Handling User Studying
+  IF v_status = 'studying' THEN
+    -- Query unlinked session blocks on the server across entire active session
+    SELECT
+      MIN(start_time) FILTER (WHERE block_type = 'study'),
+      MAX(start_time) FILTER (WHERE block_type = 'study' AND end_time IS NULL),
+      COALESCE(SUM(EXTRACT(EPOCH FROM (end_time - start_time))) FILTER (WHERE block_type = 'study' AND end_time IS NOT NULL), 0)::INTEGER,
+      COUNT(*) FILTER (WHERE block_type = 'study')
+    INTO
+      v_true_start,
+      v_open_study_block_start,
+      v_accrued_study_seconds,
+      v_study_block_count
+    FROM public.session_blocks
+    WHERE user_id = v_user_id
+      AND session_id IS NULL;
+
+    -- CASE 4A: Valid study blocks exist on the server
+    IF v_study_block_count > 0 AND v_true_start IS NOT NULL THEN
+      -- If there is no open study block, open one now
+      IF v_open_study_block_start IS NULL THEN
+        INSERT INTO public.session_blocks (user_id, block_type, start_time)
+        VALUES (v_user_id, 'study', v_now);
+        v_true_resume := v_now;
+      ELSE
+        v_true_resume := v_open_study_block_start;
+      END IF;
+
+      -- Calculate total study seconds so far
+      v_total_study_seconds := v_accrued_study_seconds + GREATEST(0, EXTRACT(EPOCH FROM (v_now - v_true_resume))::INTEGER);
+
+      -- Enforce 3-hour maximum study session limit
+      IF v_total_study_seconds >= 10800 THEN
+        SELECT * INTO v_finish_res FROM public.rpc_finish_session(ARRAY[]::TEXT[], 'session_limit');
+
+        RETURN jsonb_build_object(
+          'success', true,
+          'status', 'offline',
+          'repaired', true,
+          'reason', 'session_limit_exceeded',
+          'session_id', v_finish_res->>'session_id',
+          'pending_goal_session_id', v_finish_res->>'pending_goal_session_id',
+          'pending_goal_seconds', COALESCE((v_finish_res->>'pending_goal_seconds')::INTEGER, 10800),
+          'pending_goal_reason', 'session_limit',
+          'session_start_time', NULL,
+          'last_resumed_at', NULL,
+          'break_started_at', NULL,
+          'active_study_seconds_snapshot', 0,
+          'elapsed_seconds', 10800,
+          'state_version', COALESCE((v_finish_res->>'state_version')::BIGINT, v_version + 1),
+          'server_now', v_now
+        );
+      END IF;
+
+      -- Check if users row is missing start_time or resume_time or snapshot
+      IF v_session_start IS NULL OR v_last_resumed IS NULL OR v_snapshot <> v_accrued_study_seconds THEN
+        UPDATE public.users
+        SET session_start_time = COALESCE(v_session_start, v_true_start),
+            last_resumed_at = COALESCE(v_last_resumed, v_true_resume),
+            active_study_seconds_snapshot = v_accrued_study_seconds,
+            break_started_at = NULL,
+            updated_at = v_now,
+            state_version = COALESCE(state_version, 1) + 1
+        WHERE id = v_user_id
+        RETURNING state_version INTO v_version;
+
+        RETURN jsonb_build_object(
+          'success', true,
+          'status', 'studying',
+          'repaired', true,
+          'reason', 'repaired_from_server_blocks',
+          'session_start_time', COALESCE(v_session_start, v_true_start),
+          'last_resumed_at', COALESCE(v_last_resumed, v_true_resume),
+          'break_started_at', NULL,
+          'active_study_seconds_snapshot', v_accrued_study_seconds,
+          'elapsed_seconds', v_total_study_seconds,
+          'state_version', v_version,
+          'server_now', v_now
+        );
+      END IF;
+
+      -- Already fully synchronized
+      RETURN jsonb_build_object(
+        'success', true,
+        'status', 'studying',
+        'repaired', false,
+        'reason', 'already_synchronized',
+        'session_start_time', v_session_start,
+        'last_resumed_at', v_last_resumed,
+        'break_started_at', NULL,
+        'active_study_seconds_snapshot', v_snapshot,
+        'elapsed_seconds', v_total_study_seconds,
+        'state_version', v_version,
+        'server_now', v_now
+      );
+    END IF;
+
+    -- CASE 4B: Zero unlinked study blocks exist (Ghost Studying Status)
+    -- Database marked 'studying' without any session blocks
+    UPDATE public.users
+    SET current_status = 'offline',
+        session_start_time = NULL,
+        last_resumed_at = NULL,
+        break_started_at = NULL,
+        active_study_seconds_snapshot = 0,
+        current_focus = NULL,
+        last_offline_at = v_now,
+        updated_at = v_now,
+        state_version = COALESCE(state_version, 1) + 1
+    WHERE id = v_user_id
+    RETURNING state_version INTO v_version;
+
+    RETURN jsonb_build_object(
+      'success', true,
+      'status', 'offline',
+      'repaired', true,
+      'reason', 'ghost_session_cleaned',
+      'session_start_time', NULL,
+      'last_resumed_at', NULL,
+      'break_started_at', NULL,
+      'active_study_seconds_snapshot', 0,
+      'elapsed_seconds', 0,
+      'state_version', v_version,
+      'server_now', v_now
+    );
+  END IF;
+
+  -- Default fallback
+  RETURN jsonb_build_object(
+    'success', true,
+    'status', v_status,
+    'repaired', false,
+    'reason', 'unhandled_status',
+    'state_version', v_version,
+    'server_now', v_now
+  );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.rpc_synchronize_session() FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.rpc_synchronize_session() FROM anon;
+GRANT EXECUTE ON FUNCTION public.rpc_synchronize_session() TO authenticated, service_role;
 
 -- RPC: Finish Session (Atomic Transaction for Stop Hook with Midnight Splitting)
 DROP FUNCTION IF EXISTS public.rpc_finish_session() CASCADE;
@@ -647,7 +1004,11 @@ CREATE OR REPLACE FUNCTION public.rpc_finish_session(
   p_completed_task_ids TEXT[] DEFAULT ARRAY[]::TEXT[],
   p_reason TEXT DEFAULT 'manual_stop'
 )
-RETURNS JSONB AS $$
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
 DECLARE
   v_user_id UUID;
   v_status TEXT;
@@ -932,7 +1293,11 @@ BEGIN
     'server_now', v_now
   );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.rpc_finish_session(TEXT[], TEXT) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.rpc_finish_session(TEXT[], TEXT) FROM anon;
+GRANT EXECUTE ON FUNCTION public.rpc_finish_session(TEXT[], TEXT) TO authenticated, service_role;
 
 -- One-time migration helper to retroactively split past cross-midnight sessions
 CREATE OR REPLACE FUNCTION public.split_cross_midnight_sessions()
@@ -2094,7 +2459,11 @@ CREATE OR REPLACE FUNCTION public.rpc_complete_session_goals(
   p_session_id UUID DEFAULT NULL,
   p_completed_task_ids TEXT[] DEFAULT ARRAY[]::TEXT[]
 )
-RETURNS JSONB AS $$
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
 DECLARE
   v_user_id UUID := auth.uid();
   v_active_goal_id UUID;
@@ -2105,6 +2474,7 @@ DECLARE
   v_is_completed BOOLEAN;
   v_task_text TEXT;
   v_session_completed_tasks JSONB := '[]'::JSONB;
+  v_version BIGINT;
   v_now TIMESTAMPTZ := NOW();
 BEGIN
   IF v_user_id IS NULL THEN
@@ -2183,26 +2553,37 @@ BEGIN
     END IF;
   END IF;
 
-  -- 3. Atomically clear pending goal state on user profile
+  -- 3. Atomically clear pending goal state on user profile with monotonic state_version increment
   UPDATE public.users
   SET pending_goal_session_id = NULL,
       pending_goal_seconds = NULL,
       pending_goal_reason = NULL,
-      last_break_expired_study_seconds = NULL
-  WHERE id = v_user_id;
+      last_break_expired_study_seconds = NULL,
+      state_version = COALESCE(state_version, 1) + 1
+  WHERE id = v_user_id
+  RETURNING state_version INTO v_version;
 
   RETURN jsonb_build_object(
     'success', true,
     'session_id', p_session_id,
     'completed_tasks', v_session_completed_tasks,
+    'state_version', v_version,
     'server_now', v_now
   );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
--- RPC to acknowledge and clear break-expiry notice for authenticated user
+REVOKE EXECUTE ON FUNCTION public.rpc_complete_session_goals(UUID, TEXT[]) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.rpc_complete_session_goals(UUID, TEXT[]) FROM anon;
+GRANT EXECUTE ON FUNCTION public.rpc_complete_session_goals(UUID, TEXT[]) TO authenticated, service_role;
+
+-- RPC to acknowledge and clear break-expiry notice for authenticated user (preserves pending_goal_session_id)
 CREATE OR REPLACE FUNCTION public.rpc_acknowledge_break_expiry()
-RETURNS JSONB AS $$
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
 DECLARE
   v_user_id UUID := auth.uid();
   v_version BIGINT;
@@ -2213,15 +2594,78 @@ BEGIN
 
   UPDATE public.users
   SET last_break_expired_study_seconds = NULL,
-      pending_goal_session_id = NULL,
-      pending_goal_seconds = NULL,
-      pending_goal_reason = NULL
+      state_version = COALESCE(state_version, 1) + 1
   WHERE id = v_user_id
   RETURNING state_version INTO v_version;
 
   RETURN jsonb_build_object('success', true, 'state_version', v_version);
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.rpc_acknowledge_break_expiry() FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.rpc_acknowledge_break_expiry() FROM anon;
+GRANT EXECUTE ON FUNCTION public.rpc_acknowledge_break_expiry() TO authenticated, service_role;
+
+-- RPC: Get Pending Goal Session (Authoritative Cross-Device Recovery Query)
+CREATE OR REPLACE FUNCTION public.rpc_get_pending_goal_session()
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_user_id UUID := auth.uid();
+  v_pending_sid UUID;
+  v_pending_sec INTEGER;
+  v_pending_reason TEXT;
+  v_session RECORD;
+BEGIN
+  IF v_user_id IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  SELECT pending_goal_session_id, pending_goal_seconds, pending_goal_reason
+  INTO v_pending_sid, v_pending_sec, v_pending_reason
+  FROM public.users
+  WHERE id = v_user_id;
+
+  IF v_pending_sid IS NULL THEN
+    RETURN jsonb_build_object('has_pending', false);
+  END IF;
+
+  SELECT id, start_time, end_time, duration_minutes, break_minutes, completed_tasks
+  INTO v_session
+  FROM public.study_sessions
+  WHERE id = v_pending_sid AND user_id = v_user_id;
+
+  IF v_session.id IS NULL THEN
+    -- Dangling reference, clean it up
+    UPDATE public.users
+    SET pending_goal_session_id = NULL,
+        pending_goal_seconds = NULL,
+        pending_goal_reason = NULL,
+        state_version = COALESCE(state_version, 1) + 1
+    WHERE id = v_user_id;
+    RETURN jsonb_build_object('has_pending', false);
+  END IF;
+
+  RETURN jsonb_build_object(
+    'has_pending', true,
+    'session_id', v_session.id,
+    'start_time', v_session.start_time,
+    'end_time', v_session.end_time,
+    'duration_minutes', v_session.duration_minutes,
+    'break_minutes', v_session.break_minutes,
+    'pending_goal_seconds', COALESCE(v_pending_sec, v_session.duration_minutes * 60),
+    'pending_goal_reason', COALESCE(v_pending_reason, 'manual_stop'),
+    'completed_tasks', v_session.completed_tasks
+  );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.rpc_get_pending_goal_session() FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.rpc_get_pending_goal_session() FROM anon;
+GRANT EXECUTE ON FUNCTION public.rpc_get_pending_goal_session() TO authenticated, service_role;
 
 -- RPC to record goal completions after break expiry and attach them to the latest session
 CREATE OR REPLACE FUNCTION public.rpc_record_break_expiry_goals(p_completed_task_ids TEXT[] DEFAULT ARRAY[]::TEXT[])
