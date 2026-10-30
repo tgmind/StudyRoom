@@ -8,9 +8,14 @@ export function PwaRegister() {
     // Schedule asynchronous idle cache maintenance (with 24h cooldown)
     const cancelCleanup = scheduleStartupCleanup();
 
+    let swRegistration: ServiceWorkerRegistration | null = null;
+
     const handleVisibility = () => {
       if (typeof document !== "undefined" && document.visibilityState === "visible") {
         scheduleStartupCleanup();
+        if (swRegistration && typeof swRegistration.update === "function") {
+          swRegistration.update().catch(() => {});
+        }
       }
     };
 
@@ -58,6 +63,13 @@ export function PwaRegister() {
       navigator.serviceWorker
         .register("/sw.js")
         .then((registration) => {
+          swRegistration = registration;
+
+          // Check if there is already an updated worker waiting
+          if (registration.waiting && navigator.serviceWorker.controller) {
+            window.dispatchEvent(new CustomEvent("studyroom:update-available"));
+          }
+
           registration.addEventListener("updatefound", () => {
             const installingWorker = registration.installing;
             if (installingWorker) {
@@ -66,7 +78,8 @@ export function PwaRegister() {
                   installingWorker.state === "installed" &&
                   navigator.serviceWorker.controller
                 ) {
-                  console.log("[PWA] New content is available; please refresh.");
+                  console.info("[PWA] New deployment content installed; notifying client.");
+                  window.dispatchEvent(new CustomEvent("studyroom:update-available"));
                 }
               });
             }

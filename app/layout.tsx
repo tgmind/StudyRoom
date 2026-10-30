@@ -3,6 +3,7 @@ import "./globals.css";
 import { OfflineBanner } from "@/components/ui/OfflineBanner";
 import { PwaInstallBanner } from "@/components/ui/PwaInstallBanner";
 import { PwaRegister } from "@/components/ui/PwaRegister";
+import { AppUpdateModal } from "@/components/ui/AppUpdateModal";
 import { LaunchAnnouncementModal } from "@/components/ui/LaunchAnnouncementModal";
 import { AuthProvider } from "@/components/auth/AuthProvider";
 
@@ -43,6 +44,7 @@ export default function RootLayout({
       <body className="h-full min-h-screen flex flex-col antialiased bg-[#090a0f] text-foreground selection:bg-zinc-800 selection:text-zinc-100">
         <PwaRegister />
         <OfflineBanner />
+        <AppUpdateModal />
         <AuthProvider>
           <LaunchAnnouncementModal />
           <PwaInstallBanner />

@@ -1,5 +1,5 @@
 // StudyRoom PWA Service Worker — Version 11 with Bounded Cache Eviction
-const CACHE_NAME = "studyroom-v11";
+const CACHE_NAME = "studyroom-c466a15c";
 const OFFLINE_URL = "/offline.html";
 
 // Maximum number of Next.js static asset chunks to retain in cache
@@ -80,6 +80,14 @@ self.addEventListener("activate", (event) => {
 
 // Message Event: Allow web client to trigger cache trimming during idle cleanup
 self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
+  if (event.data && event.data.type === "CLEAR_CACHES") {
+    event.waitUntil(
+      caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
+    );
+  }
   if (event.data && event.data.type === "TRIM_CACHE") {
     event.waitUntil(caches.open(CACHE_NAME).then((cache) => trimStaticCache(cache)));
   }
