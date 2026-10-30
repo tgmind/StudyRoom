@@ -68,34 +68,34 @@ export const DesktopLeaderboardView = memo(function DesktopLeaderboardView({
     <DesktopAppLayout profile={profile}>
       <main className="w-full max-w-6xl xl:max-w-7xl 2xl:max-w-[1780px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 space-y-6">
         {/* Unified Desktop Header */}
-        <div className="flex items-center justify-between border-b border-zinc-800/80 pb-4">
-          <div className="flex items-center space-x-3 min-w-0">
-            <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-400 shrink-0 shadow-inner">
-              <Trophy className="w-5 h-5" />
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-800/80 pb-5">
+          <div className="flex items-start space-x-3.5 min-w-0 flex-1">
+            <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-400 shrink-0 shadow-inner mt-0.5">
+              <Trophy className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
-            <div>
-              <div className="flex items-center space-x-2.5">
-                <h1 className="text-base font-black text-zinc-100 tracking-tight">
+            <div className="min-w-0 flex-1 space-y-1">
+              <div className="flex items-center space-x-2.5 flex-wrap gap-y-1">
+                <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight leading-tight">
                   Rankings & Global Analytics
                 </h1>
-                <span className="text-[10px] font-mono font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
+                <span className="text-[10px] font-mono font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full shrink-0">
                   LIVE SPLIT VIEW
                 </span>
               </div>
-              <p className="text-xs text-zinc-400">
+              <p className="text-xs sm:text-sm text-zinc-400 leading-relaxed max-w-3xl">
                 Weekly 50/30/20 competitive leaderboard on the left • Historical community benchmarks & observatory on the right
               </p>
             </div>
           </div>
 
-          <div className="flex items-center space-x-3 shrink-0">
+          <div className="flex items-center space-x-3 shrink-0 self-start md:self-auto">
             <button
               type="button"
               onClick={() => setIsModalOpen(true)}
-              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-amber-500/30 hover:border-amber-500/60 text-zinc-200 hover:text-white text-xs font-bold transition-all shadow-sm group"
+              className="flex items-center space-x-2 px-3.5 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-amber-500/30 hover:border-amber-500/60 text-zinc-200 hover:text-white text-xs sm:text-sm font-bold transition-all shadow-sm group cursor-pointer"
               title="View scoring methodology & updated Dual-Pillar rules"
             >
-              <HelpCircle className="w-4 h-4 text-amber-400 group-hover:rotate-12 transition-transform" />
+              <HelpCircle className="w-4 h-4 text-amber-400 group-hover:rotate-12 transition-transform shrink-0" />
               <span>Scoring Rules</span>
             </button>
           </div>
@@ -107,14 +107,14 @@ export const DesktopLeaderboardView = memo(function DesktopLeaderboardView({
           {/* LEFT WING: WEEKLY LEADERBOARD & USER STANDING            */}
           {/* ======================================================== */}
           <section aria-label="Weekly Leaderboard" className="space-y-6 min-w-0">
-            <div className="flex items-center justify-between pb-2 border-b border-zinc-800/80">
-              <div className="flex items-center space-x-2">
-                <Trophy className="w-4 h-4 text-amber-400" />
-                <h2 className="text-xs font-black uppercase tracking-wider text-zinc-300">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-800/80">
+              <div className="flex items-center space-x-2 min-w-0">
+                <Trophy className="w-4 h-4 text-amber-400 shrink-0" />
+                <h2 className="text-sm sm:text-base font-black uppercase tracking-wider text-zinc-200">
                   Weekly Leaderboard
                 </h2>
               </div>
-              <span className="text-[10px] font-mono font-bold text-zinc-400 bg-zinc-900 border border-zinc-800 px-2 py-0.5 rounded-full">
+              <span className="text-[10px] font-mono font-bold text-zinc-400 bg-zinc-900 border border-zinc-800 px-2 py-0.5 rounded-full shrink-0">
                 50/30/20 RULES
               </span>
             </div>
@@ -170,18 +170,18 @@ export const DesktopLeaderboardView = memo(function DesktopLeaderboardView({
               )}
 
               {/* Transparent Metric Formula Chips */}
-              <div className="grid grid-cols-3 gap-2 text-xs">
+              <div className="grid grid-cols-3 gap-2 sm:gap-2.5 text-xs">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(true)}
-                  className="p-2 rounded-xl bg-zinc-950/60 hover:bg-zinc-900/90 border border-violet-500/15 hover:border-violet-500/40 text-center min-w-0 transition-all group"
+                  className="p-2 sm:p-2.5 rounded-xl bg-zinc-950/60 hover:bg-zinc-900/90 border border-violet-500/15 hover:border-violet-500/40 text-center min-w-0 transition-all group"
                   title="Active Study Duration (50% weight)"
                 >
                   <div className="flex items-center justify-center space-x-1 text-violet-300 font-bold mb-0.5">
                     <Clock className="w-3.5 h-3.5 shrink-0" />
-                    <span>50% Hours</span>
+                    <span className="text-xs font-black truncate">50% Hours</span>
                   </div>
-                  <span className="text-[10px] text-zinc-500 group-hover:text-zinc-400 block leading-tight">
+                  <span className="text-[10px] xl:text-[11px] text-zinc-400 group-hover:text-zinc-300 block leading-tight font-medium truncate">
                     Study Duration
                   </span>
                 </button>
@@ -189,14 +189,14 @@ export const DesktopLeaderboardView = memo(function DesktopLeaderboardView({
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(true)}
-                  className="p-2 rounded-xl bg-zinc-950/60 hover:bg-zinc-900/90 border border-fuchsia-500/15 hover:border-fuchsia-500/40 text-center min-w-0 transition-all group"
+                  className="p-2 sm:p-2.5 rounded-xl bg-zinc-950/60 hover:bg-zinc-900/90 border border-fuchsia-500/15 hover:border-fuchsia-500/40 text-center min-w-0 transition-all group"
                   title="Dual-Pillar Goal Index (30% weight: 60% Volume + 40% Discipline)"
                 >
                   <div className="flex items-center justify-center space-x-1 text-fuchsia-300 font-bold mb-0.5">
                     <Target className="w-3.5 h-3.5 shrink-0" />
-                    <span>30% Goals</span>
+                    <span className="text-xs font-black truncate">30% Goals</span>
                   </div>
-                  <span className="text-[10px] text-zinc-500 group-hover:text-zinc-400 block leading-tight">
+                  <span className="text-[10px] xl:text-[11px] text-zinc-400 group-hover:text-zinc-300 block leading-tight font-medium truncate">
                     Dual-Pillar Index
                   </span>
                 </button>
@@ -204,14 +204,14 @@ export const DesktopLeaderboardView = memo(function DesktopLeaderboardView({
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(true)}
-                  className="p-2 rounded-xl bg-zinc-950/60 hover:bg-zinc-900/90 border border-amber-500/15 hover:border-amber-500/40 text-center min-w-0 transition-all group"
+                  className="p-2 sm:p-2.5 rounded-xl bg-zinc-950/60 hover:bg-zinc-900/90 border border-amber-500/15 hover:border-amber-500/40 text-center min-w-0 transition-all group"
                   title="Consistency Streak (20% weight: ≥30m daily)"
                 >
                   <div className="flex items-center justify-center space-x-1 text-amber-300 font-bold mb-0.5">
                     <Flame className="w-3.5 h-3.5 shrink-0" />
-                    <span>20% Streak</span>
+                    <span className="text-xs font-black truncate">20% Streak</span>
                   </div>
-                  <span className="text-[10px] text-zinc-500 group-hover:text-zinc-400 block leading-tight">
+                  <span className="text-[10px] xl:text-[11px] text-zinc-400 group-hover:text-zinc-300 block leading-tight font-medium truncate">
                     ≥30m Daily
                   </span>
                 </button>
@@ -229,8 +229,8 @@ export const DesktopLeaderboardView = memo(function DesktopLeaderboardView({
 
             {/* Community Rankings List */}
             <div className="space-y-3">
-              <div className="border-b border-zinc-800/80 pb-2 flex items-center justify-between">
-                <h2 className="text-xs font-black uppercase tracking-wider text-zinc-400">
+              <div className="border-b border-zinc-800/80 pb-2.5 flex items-center justify-between">
+                <h2 className="text-xs sm:text-sm font-black uppercase tracking-wider text-zinc-300">
                   Community Rankings ({entries.length} Active Competitors)
                 </h2>
               </div>
@@ -275,18 +275,19 @@ export const DesktopLeaderboardView = memo(function DesktopLeaderboardView({
           {/* RIGHT WING: GLOBAL ANALYTICS OBSERVATORY                 */}
           {/* ======================================================== */}
           <section aria-label="Global Analytics Observatory" className="space-y-6 min-w-0">
-            <div className="flex items-center justify-between pb-2 border-b border-zinc-800/80">
-              <div className="flex items-center space-x-2">
-                <Globe className="w-4 h-4 text-amber-400" />
-                <h2 className="text-xs font-black uppercase tracking-wider text-zinc-300">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-800/80">
+              <div className="flex items-center space-x-2 min-w-0">
+                <Globe className="w-4 h-4 text-amber-400 shrink-0" />
+                <h2 className="text-sm sm:text-base font-black uppercase tracking-wider text-zinc-200">
                   Global Analytics Observatory
                 </h2>
               </div>
               <Link
                 href="/analytics"
-                className="text-[11px] font-bold text-amber-400 hover:text-amber-300 transition-colors"
+                className="text-xs font-bold text-amber-400 hover:text-amber-300 transition-colors shrink-0 flex items-center space-x-1"
               >
-                Global Analytics
+                <span>Global Analytics</span>
+                <span>→</span>
               </Link>
             </div>
 

@@ -185,68 +185,68 @@ export const AchieverCelebrationCard = memo(function AchieverCelebrationCard({
 
         {/* Display Name and Recognition Subtitle */}
         <div className="space-y-1">
-          <h1 className="text-lg sm:text-2xl font-black text-white tracking-tight leading-snug">
+          <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight leading-snug">
             {achiever.display_name}
-          </h1>
-          <p className="text-[11px] sm:text-xs text-amber-200/80 font-medium max-w-sm mx-auto flex items-center justify-center gap-1.5">
+          </h2>
+          <p className="text-xs sm:text-sm text-amber-200/80 font-medium max-w-md mx-auto flex items-center justify-center gap-1.5 leading-relaxed">
             <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
             <span>Highest consolidated performance in the StudyRoom community</span>
           </p>
         </div>
 
         {/* Consolidated Previous-Week Authoritative Metrics Grid */}
-        <div className="w-full grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 pt-2 text-left">
+        <div className="w-full grid grid-cols-2 2xl:grid-cols-4 gap-2.5 sm:gap-3 pt-2 text-left">
           {/* Total Study Duration */}
-          <div className="p-3 rounded-2xl bg-[#221606]/80 border border-amber-500/20 shadow-sm flex flex-col justify-between">
-            <div className="flex items-center space-x-1.5 text-zinc-400 text-[10px] sm:text-xs mb-1">
+          <div className="p-3 sm:p-3.5 rounded-2xl bg-[#221606]/80 border border-amber-500/20 shadow-sm flex flex-col justify-between">
+            <div className="flex items-center space-x-1.5 text-zinc-400 text-xs mb-1.5">
               <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-              <span className="font-semibold text-zinc-300">Total Study</span>
+              <span className="font-bold text-zinc-200">Total Study</span>
             </div>
-            <div className="text-base sm:text-lg font-black text-zinc-100 tracking-tight font-mono">
+            <div className="text-base sm:text-xl font-black text-zinc-100 tracking-tight font-mono">
               {totalHours}
             </div>
-            <span className="text-[9.5px] text-zinc-400 font-medium">
+            <span className="text-[10px] sm:text-[11px] text-zinc-400 font-medium mt-1">
               Finalized weekly hours
             </span>
           </div>
 
           {/* Daily Average (Strict 7-day average) */}
-          <div className="p-3 rounded-2xl bg-[#221606]/80 border border-amber-500/20 shadow-sm flex flex-col justify-between">
-            <div className="flex items-center space-x-1.5 text-zinc-400 text-[10px] sm:text-xs mb-1">
+          <div className="p-3 sm:p-3.5 rounded-2xl bg-[#221606]/80 border border-amber-500/20 shadow-sm flex flex-col justify-between">
+            <div className="flex items-center space-x-1.5 text-zinc-400 text-xs mb-1.5">
               <Calendar className="w-3.5 h-3.5 text-violet-400 shrink-0" />
-              <span className="font-semibold text-zinc-300">7-Day Avg</span>
+              <span className="font-bold text-zinc-200">7-Day Avg</span>
             </div>
-            <div className="text-base sm:text-lg font-black text-zinc-100 tracking-tight font-mono">
+            <div className="text-base sm:text-xl font-black text-zinc-100 tracking-tight font-mono">
               {dailyHours}
               <span className="text-xs text-zinc-400 font-normal"> /day</span>
             </div>
-            <span className="text-[9.5px] text-zinc-400 font-medium">
+            <span className="text-[10px] sm:text-[11px] text-zinc-400 font-medium mt-1">
               Across all 7 days
             </span>
           </div>
 
           {/* Goal Discipline Rate */}
-          <div className="p-3 rounded-2xl bg-[#221606]/80 border border-amber-500/20 shadow-sm flex flex-col justify-between">
-            <div className="flex items-center space-x-1.5 text-zinc-400 text-[10px] sm:text-xs mb-1">
+          <div className="p-3 sm:p-3.5 rounded-2xl bg-[#221606]/80 border border-amber-500/20 shadow-sm flex flex-col justify-between">
+            <div className="flex items-center space-x-1.5 text-zinc-400 text-xs mb-1.5">
               <Target className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-              <span className="font-semibold text-zinc-300">Goal Follow-Through</span>
+              <span className="font-bold text-zinc-200 whitespace-nowrap">Goal Follow-Through</span>
             </div>
-            <div className="text-base sm:text-lg font-black text-zinc-100 tracking-tight font-mono">
+            <div className="text-base sm:text-xl font-black text-zinc-100 tracking-tight font-mono">
               {achiever.goal_completion_pct}%
             </div>
-            <span className="text-[9.5px] text-zinc-400 font-medium">
+            <span className="text-[10px] sm:text-[11px] text-zinc-400 font-medium mt-1">
               {achiever.completed_goals_count}/{achiever.total_goals_count} tasks completed
             </span>
           </div>
 
           {/* Dual-Pillar Score */}
-          <div className="p-3 rounded-2xl bg-[#221606]/80 border border-amber-500/20 shadow-sm flex flex-col justify-between">
-            <div className="flex items-center space-x-1.5 text-zinc-400 text-[10px] sm:text-xs mb-1">
+          <div className="p-3 sm:p-3.5 rounded-2xl bg-[#221606]/80 border border-amber-500/20 shadow-sm flex flex-col justify-between">
+            <div className="flex items-center space-x-1.5 text-zinc-400 text-xs mb-1.5">
               <Trophy className="w-3.5 h-3.5 text-yellow-400 shrink-0" />
-              <span className="font-semibold text-zinc-300">Score Index</span>
+              <span className="font-bold text-zinc-200">Score Index</span>
             </div>
             {hasValidScore ? (
-              <div className="text-base sm:text-lg font-black text-amber-300 tracking-tight font-mono">
+              <div className="text-base sm:text-xl font-black text-amber-300 tracking-tight font-mono">
                 {canonicalScore.toFixed(1)}
                 <span className="text-xs text-zinc-400 font-normal"> / 100</span>
               </div>
@@ -255,7 +255,7 @@ export const AchieverCelebrationCard = memo(function AchieverCelebrationCard({
                 Score unavailable
               </div>
             )}
-            <span className="text-[9.5px] text-zinc-400 font-medium">
+            <span className="text-[10px] sm:text-[11px] text-zinc-400 font-medium mt-1">
               {achiever.active_study_days} active study days
             </span>
           </div>

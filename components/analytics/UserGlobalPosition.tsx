@@ -172,10 +172,10 @@ export const UserGlobalPosition = memo(function UserGlobalPosition({
       {/* Header and Rank Pill */}
       <div className="relative z-10 flex flex-wrap items-center justify-between gap-2.5 pb-3 border-b border-slate-800/80">
         <div>
-          <span className="text-[9.5px] uppercase font-mono font-bold tracking-wider text-sky-400 block mb-0.5">
+          <span className="text-[10px] sm:text-[11px] uppercase font-mono font-bold tracking-wider text-sky-400 block mb-0.5">
             Personalized Analytics
           </span>
-          <h2 className="text-sm sm:text-base font-extrabold text-zinc-100 tracking-tight flex items-center gap-1.5">
+          <h2 className="text-base sm:text-lg font-black text-zinc-100 tracking-tight flex items-center gap-2 flex-wrap">
             <span>Your Global Position</span>
             {userPosition.is_in_top5 && (
               <span className="px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[10px] font-black uppercase">
@@ -229,13 +229,13 @@ export const UserGlobalPosition = memo(function UserGlobalPosition({
       </div>
 
       {/* Side-by-Side Community Benchmark Comparison */}
-      <div className="relative z-10 grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+      <div className="relative z-10 grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3 text-xs">
         {/* Study Duration Benchmark */}
-        <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800/80 space-y-2">
+        <div className="p-3.5 sm:p-4 rounded-2xl bg-slate-950/70 border border-slate-800/80 space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-zinc-300 font-semibold flex items-center gap-1.5">
-              <Clock className="w-3.5 h-3.5 text-sky-400" />
-              Study Duration vs Avg
+            <span className="text-zinc-200 font-bold flex items-center gap-1.5 text-xs sm:text-sm">
+              <Clock className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+              <span>Study Duration vs Avg</span>
             </span>
             <span
               className={`inline-flex items-center text-[10.5px] font-bold ${
@@ -309,11 +309,11 @@ export const UserGlobalPosition = memo(function UserGlobalPosition({
         </div>
 
         {/* Goal Discipline Benchmark */}
-        <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800/80 space-y-2">
+        <div className="p-3.5 sm:p-4 rounded-2xl bg-slate-950/70 border border-slate-800/80 space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-zinc-300 font-semibold flex items-center gap-1.5">
-              <Target className="w-3.5 h-3.5 text-emerald-400" />
-              Goal Follow-Through vs Avg
+            <span className="text-zinc-200 font-bold flex items-center gap-1.5 text-xs sm:text-sm">
+              <Target className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span>Goal Follow-Through vs Avg</span>
             </span>
             <span
               className={`inline-flex items-center text-[10.5px] font-bold ${
@@ -369,12 +369,12 @@ export const UserGlobalPosition = memo(function UserGlobalPosition({
       </div>
 
       {/* Motivational Gap Indicator & Active Days */}
-      <div className="relative z-10 flex flex-wrap items-center justify-between gap-2 pt-1 text-[11px] text-zinc-400">
+      <div className="relative z-10 flex flex-wrap items-center justify-between gap-2 pt-1 text-xs text-zinc-400">
         <div className="flex items-center space-x-1.5">
-          <Calendar className="w-3.5 h-3.5 text-sky-400/80" />
+          <Calendar className="w-3.5 h-3.5 text-sky-400/80 shrink-0" />
           <span>
             Consistency:{" "}
-            <strong className="text-zinc-200">
+            <strong className="text-zinc-200 font-bold">
               {userPosition.active_study_days} of 7 days
             </strong>{" "}
             active
@@ -382,14 +382,14 @@ export const UserGlobalPosition = memo(function UserGlobalPosition({
         </div>
 
         {!userPosition.is_in_top5 && userPosition.minutes_to_top5 > 0 ? (
-          <div className="flex items-center space-x-1 text-amber-300 font-medium">
-            <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
+          <div className="flex items-center space-x-1.5 text-amber-300 font-medium">
+            <TrendingUp className="w-3.5 h-3.5 text-amber-400 shrink-0" />
             <span>
               +{formatMinutesToHours(userPosition.minutes_to_top5)} study time separated you from Top 5
             </span>
           </div>
         ) : userPosition.is_in_top5 ? (
-          <span className="text-emerald-400 font-semibold flex items-center gap-1">
+          <span className="text-emerald-400 font-bold flex items-center gap-1">
             <span>✨ You finished in the Top 5 worldwide!</span>
           </span>
         ) : null}

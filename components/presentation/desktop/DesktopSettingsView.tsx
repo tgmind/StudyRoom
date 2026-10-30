@@ -62,16 +62,16 @@ export const DesktopSettingsView = memo(function DesktopSettingsView({
     <DesktopAppLayout profile={profile}>
       <main className="w-full px-6 lg:px-8 xl:px-12 py-6 space-y-6">
         {/* Desktop Header */}
-        <div className="flex items-center justify-between border-b border-zinc-800/80 pb-4">
-          <div className="flex items-center space-x-3 min-w-0">
-            <div className="p-2.5 rounded-xl bg-violet-500/10 border border-violet-500/25 text-violet-300 shrink-0 shadow-inner">
-              <Settings className="w-5 h-5" />
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-800/80 pb-5">
+          <div className="flex items-start space-x-3.5 min-w-0 flex-1">
+            <div className="p-2.5 rounded-xl bg-violet-500/10 border border-violet-500/25 text-violet-300 shrink-0 shadow-inner mt-0.5">
+              <Settings className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
-            <div>
-              <h1 className="text-base font-black text-zinc-100 tracking-tight">
+            <div className="min-w-0 flex-1 space-y-1">
+              <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight leading-tight">
                 Account & Preferences
               </h1>
-              <p className="text-xs text-zinc-400">
+              <p className="text-xs sm:text-sm text-zinc-400 leading-relaxed max-w-3xl">
                 Manage your public profile identity, avatar representation, and application preferences
               </p>
             </div>
@@ -80,7 +80,7 @@ export const DesktopSettingsView = memo(function DesktopSettingsView({
           <button
             type="button"
             onClick={onNavigateGuide}
-            className="flex items-center space-x-2 px-3.5 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-zinc-300 hover:text-white text-xs font-bold transition-all shadow-sm"
+            className="flex items-center space-x-2 px-3.5 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-zinc-300 hover:text-white text-xs sm:text-sm font-bold transition-all shadow-sm shrink-0 self-start md:self-auto cursor-pointer"
           >
             <BookOpen className="w-4 h-4 text-violet-400" />
             <span>Feature Handbook</span>

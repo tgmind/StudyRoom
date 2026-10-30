@@ -32,9 +32,9 @@ export const PlannerHeader = memo(function PlannerHeader({
             <div className="p-2 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400 shrink-0 shadow-inner mt-0.5 sm:mt-0">
               <CalendarDays className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 space-y-1">
               <div className="flex items-center space-x-2 flex-wrap gap-y-1">
-                <h1 className="text-base sm:text-lg font-black text-white tracking-tight leading-snug">
+                <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight leading-tight">
                   Exam Study Planner
                 </h1>
                 {activeExamsCount > 0 && (
@@ -44,7 +44,7 @@ export const PlannerHeader = memo(function PlannerHeader({
                   </span>
                 )}
               </div>
-              <p className="text-[11px] sm:text-xs text-zinc-400 leading-snug mt-0.5">
+              <p className="text-xs sm:text-sm text-zinc-400 leading-relaxed max-w-3xl">
                 Target exams, custom preparation phases, reverse countdowns & Streaks sync.
               </p>
             </div>

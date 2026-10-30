@@ -340,10 +340,10 @@ export const AnalyticsRankingSection = memo(function AnalyticsRankingSection({
                 <Compass className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-300" />
               </div>
               <div className="min-w-0">
-                <h2 className="text-sm sm:text-base font-extrabold tracking-tight text-white">
+                <h2 className="text-base sm:text-lg font-black tracking-tight text-white">
                   Study Ecosystem Observatory
                 </h2>
-                <p className="text-[11px] sm:text-xs font-medium text-zinc-400 tracking-wide mt-0.5">
+                <p className="text-xs sm:text-sm font-medium text-zinc-400 tracking-wide mt-0.5">
                   Top 5 Telemetry
                 </p>
               </div>
@@ -357,15 +357,15 @@ export const AnalyticsRankingSection = memo(function AnalyticsRankingSection({
           />
 
           {/* 3. Responsive Analytical Subtitle & 3D Page Indicator */}
-          <div className="px-1 flex items-center justify-between text-xs text-zinc-400">
-            <div>
-              <span className="text-[10px] uppercase font-mono font-bold tracking-wider text-zinc-500 block">
+          <div className="px-1 flex items-center justify-between gap-3 text-xs text-zinc-400">
+            <div className="min-w-0 flex-1">
+              <span className="text-[10px] sm:text-[11px] uppercase font-mono font-bold tracking-wider text-zinc-500 block mb-0.5">
                 {activeLens === "most_studying" && "TOP 5 · INTENSITY"}
                 {activeLens === "consistency_boost" && "GROWTH RUNWAY · DISCIPLINE"}
                 {activeLens === "achievers" && "HALL OF FAME · EXCELLENCE"}
                 {activeLens === "goal_chasers" && "TASK PRECISION · EXECUTION"}
               </span>
-              <h3 className="text-xs sm:text-sm font-extrabold text-zinc-200">
+              <h3 className="text-xs sm:text-sm font-extrabold text-zinc-200 leading-snug break-words">
                 <span className="sm:hidden">
                   {activeLens === "most_studying" && "Highest Daily Study Velocity"}
                   {activeLens === "consistency_boost" && "7-Day Habit Continuity"}
