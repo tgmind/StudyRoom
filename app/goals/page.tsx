@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/Button";
 import { GoalsGuideModal } from "@/components/goals/GoalsGuideModal";
 import { useDeviceLayout } from "@/lib/device/useDeviceLayout";
 import { DesktopGoalsView } from "@/components/presentation/desktop/DesktopGoalsView";
+import { GoalsHeroBanner } from "@/components/goals/GoalsHeroBanner";
 
 export default function GoalsPage() {
   const { user, profile } = useAuth();
@@ -136,6 +137,9 @@ export default function GoalsPage() {
             )}
           </div>
         </div>
+
+        {/* Motivational Summit Banner */}
+        <GoalsHeroBanner />
 
         {/* Goal Window Card */}
         {loading ? (

@@ -25,9 +25,11 @@ import {
   Wifi,
   Bell,
   Share2,
+  Sparkles,
 } from "lucide-react";
 import { AdminAlertsHub } from "@/components/admin/AdminAlertsHub";
 import { AdminCommunityLinksHub } from "@/components/admin/AdminCommunityLinksHub";
+import { AdminAvatarManager } from "@/components/admin/AdminAvatarManager";
 
 type StatusFilter = "all" | "studying" | "break" | "offline";
 
@@ -47,7 +49,7 @@ export default function AdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
-  const [adminSection, setAdminSection] = useState<"members" | "alerts" | "community">("members");
+  const [adminSection, setAdminSection] = useState<"members" | "alerts" | "community" | "avatars">("members");
   const [lastDeletedUserId, setLastDeletedUserId] = useState<string | null>(null);
   const [, setClockTick] = useState(0);
 
@@ -413,12 +415,26 @@ export default function AdminPage() {
             <Share2 className="w-3.5 h-3.5 shrink-0" />
             <span>Community Links</span>
           </button>
+          <button
+            type="button"
+            onClick={() => setAdminSection("avatars")}
+            className={`flex-1 sm:flex-initial px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center space-x-1.5 whitespace-nowrap ${
+              adminSection === "avatars"
+                ? "bg-violet-600 text-white shadow-sm"
+                : "text-zinc-400 hover:text-zinc-200"
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5 shrink-0" />
+            <span>Preset Avatars</span>
+          </button>
         </div>
 
         {adminSection === "community" ? (
           <AdminCommunityLinksHub adminEmail={user.email} />
         ) : adminSection === "alerts" ? (
           <AdminAlertsHub adminEmail={user.email} lastDeletedUserId={lastDeletedUserId} />
+        ) : adminSection === "avatars" ? (
+          <AdminAvatarManager />
         ) : (
           <>
             {/* Platform Stats Overview */}

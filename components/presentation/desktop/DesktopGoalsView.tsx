@@ -8,6 +8,7 @@ import { AddGoalModal } from "@/components/goals/AddGoalModal";
 import { Target, Plus, HelpCircle, Clock, Lock, Trophy, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { GoalsGuideModal } from "@/components/goals/GoalsGuideModal";
+import { GoalsHeroBanner } from "@/components/goals/GoalsHeroBanner";
 import { UserProfile, DailyGoal } from "@/lib/supabase/types";
 
 export interface DesktopGoalsViewProps {
@@ -98,6 +99,9 @@ export const DesktopGoalsView = memo(function DesktopGoalsView({
             )}
           </div>
         </div>
+
+        {/* Motivational Summit Banner */}
+        <GoalsHeroBanner />
 
         {/* Desktop Balanced 2-Column Goals Workspace */}
         {loading ? (

@@ -204,6 +204,16 @@ export const TopHeader = memo(function TopHeader({
                     alt={profile.display_name}
                     style={getAvatarScaleStyle(profile.avatar_url)}
                     className="w-full h-full object-cover object-center bg-white"
+                    onError={(e) => {
+                      const target = e.currentTarget;
+                      if (!target.dataset.triedCloud && profile.avatar_id) {
+                        target.dataset.triedCloud = "true";
+                        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://mshudehtxhsmnojirjls.supabase.co";
+                        target.src = `${supabaseUrl}/storage/v1/object/public/avatars/presets/${profile.avatar_id}.webp`;
+                      } else {
+                        target.style.display = "none";
+                      }
+                    }}
                   />
                 ) : (
                   <span>{initials}</span>

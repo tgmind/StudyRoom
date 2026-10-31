@@ -880,11 +880,11 @@ export function getAvatarById(id: string | null | undefined): AvatarItem | undef
 }
 
 /**
- * Validates whether an avatar ID exists in the approved manifest.
+ * Validates whether an avatar ID exists in the approved manifest or is a valid custom preset.
  */
 export function isValidAvatarId(id: string | null | undefined): boolean {
   if (!id) return false;
-  return AVATAR_MAP.has(id);
+  return AVATAR_MAP.has(id) || /^avatar-custom-[a-zA-Z0-9_.-]+$/.test(id);
 }
 
 /**
@@ -959,6 +959,8 @@ export function resolveAvatarUrl(
   let basePath: string | null = null;
   if (avatarId && AVATAR_MAP.has(avatarId)) {
     basePath = AVATAR_MAP.get(avatarId)!.assetPath;
+  } else if (avatarId && /^avatar-[a-zA-Z0-9_.-]+$/.test(avatarId)) {
+    basePath = `/avatars/optimized/${avatarId}.webp`;
   } else if (avatarUrl) {
     const cleanUrl = avatarUrl.split(/[?#]/)[0];
     if (
@@ -970,7 +972,7 @@ export function resolveAvatarUrl(
       basePath = cleanUrl;
     } else if (AVATAR_MAP.has(cleanUrl)) {
       basePath = AVATAR_MAP.get(cleanUrl)!.assetPath;
-    } else if (/^avatar-\d-\d{2}$/.test(cleanUrl)) {
+    } else if (/^avatar-[a-zA-Z0-9_.-]+$/.test(cleanUrl)) {
       basePath = `/avatars/optimized/${cleanUrl}.webp`;
     } else {
       basePath = cleanUrl;

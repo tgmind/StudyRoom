@@ -208,6 +208,16 @@ export const MemberCard = memo(function MemberCard({
               style={getAvatarScaleStyle(resolvedAvatar)}
               className="w-full h-full object-cover object-center rounded-full bg-white block pointer-events-none"
               loading="lazy"
+              onError={(e) => {
+                const target = e.currentTarget;
+                if (!target.dataset.triedCloud && member.avatar_id) {
+                  target.dataset.triedCloud = "true";
+                  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://mshudehtxhsmnojirjls.supabase.co";
+                  target.src = `${supabaseUrl}/storage/v1/object/public/avatars/presets/${member.avatar_id}.webp`;
+                } else {
+                  target.style.display = "none";
+                }
+              }}
             />
           ) : (
             <span>{initials}</span>

@@ -58,10 +58,38 @@ export const AvatarSelector = React.memo(function AvatarSelector({
   defaultExpanded = true,
 }: AvatarSelectorProps) {
   const [isGalleryExpanded, setIsGalleryExpanded] = useState(defaultExpanded);
-  const [selectedCategory, setSelectedCategory] = useState<AvatarCategory | "All">("All");
+  const [selectedCategory, setSelectedCategory] = useState<string>("All");
   const [searchQuery, setSearchQuery] = useState("");
   const [isCustomUploadOpen, setIsCustomUploadOpen] = useState(false);
   const [isWrapMode, setIsWrapMode] = useState(false);
+  const [avatarList, setAvatarList] = useState<AvatarItem[]>(() => getAllAvatars());
+  const [categories, setCategories] = useState<string[]>(() => [...AVATAR_CATEGORIES]);
+
+  // Fetch dynamic preset avatars from API (with instant offline fallback)
+  useEffect(() => {
+    let isMounted = true;
+    if (typeof window === "undefined" || !window.location?.origin) return;
+
+    fetch("/api/avatars")
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to load preset avatars");
+        return res.json();
+      })
+      .then((data) => {
+        if (!isMounted || !data?.avatars || !Array.isArray(data.avatars)) return;
+        setAvatarList(data.avatars);
+        if (data.categories && Array.isArray(data.categories)) {
+          setCategories(data.categories);
+        }
+      })
+      .catch(() => {
+        // Quiet fallback to static presets in offline/test environments
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Desktop horizontal scroll & drag controls for category pills
   const categoryScrollRef = useRef<HTMLDivElement>(null);
@@ -172,7 +200,7 @@ export const AvatarSelector = React.memo(function AvatarSelector({
     return idChanged || urlChanged;
   }, [currentAvatarId, currentAvatarUrl, baselineAvatarId, baselineAvatarUrl]);
 
-  const allAvatars = useMemo(() => getAllAvatars(), []);
+  const allAvatars = avatarList;
 
   // Filter avatars by selected category and search query
   const filteredAvatars = useMemo(() => {
@@ -192,19 +220,30 @@ export const AvatarSelector = React.memo(function AvatarSelector({
     return list;
   }, [allAvatars, selectedCategory, searchQuery]);
 
-  // Resolve current active avatar item
+  // Resolve current active avatar item (supports dynamic and static presets)
   const activeAvatarItem = useMemo(() => {
-    if (currentAvatarId && isValidAvatarId(currentAvatarId)) {
-      return getAvatarById(currentAvatarId);
+    if (currentAvatarId) {
+      const match = allAvatars.find((a) => a.id === currentAvatarId);
+      if (match) return match;
+      if (isValidAvatarId(currentAvatarId)) {
+        return getAvatarById(currentAvatarId);
+      }
     }
-    if (currentAvatarUrl && currentAvatarUrl.startsWith("/avatars/optimized/")) {
-      const idMatch = currentAvatarUrl.match(/avatar-\d-\d{2}/);
-      if (idMatch) {
-        return getAvatarById(idMatch[0]);
+    if (currentAvatarUrl) {
+      const cleanUrl = currentAvatarUrl.split(/[?#]/)[0];
+      const match = allAvatars.find(
+        (a) => a.assetPath === cleanUrl || cleanUrl.endsWith(a.assetPath)
+      );
+      if (match) return match;
+      if (cleanUrl.startsWith("/avatars/optimized/")) {
+        const idMatch = cleanUrl.match(/avatar-\d-\d{2}/);
+        if (idMatch) {
+          return getAvatarById(idMatch[0]);
+        }
       }
     }
     return undefined;
-  }, [currentAvatarId, currentAvatarUrl]);
+  }, [currentAvatarId, currentAvatarUrl, allAvatars]);
 
   const initials = useMemo(() => {
     return displayName ? displayName.substring(0, 2).toUpperCase() : "??";
@@ -597,7 +636,7 @@ export const AvatarSelector = React.memo(function AvatarSelector({
                 ) : (
                   <>
                     <LayoutGrid className="w-3 h-3 text-violet-400" />
-                    <span>Wrap All (8)</span>
+                    <span>Wrap All ({categories.filter((c) => c !== "All").length})</span>
                   </>
                 )}
               </button>
@@ -647,7 +686,7 @@ export const AvatarSelector = React.memo(function AvatarSelector({
                   All ({allAvatars.length})
                 </button>
 
-                {AVATAR_CATEGORIES.filter((c) => c !== "All").map((cat) => {
+                {categories.filter((c) => c !== "All").map((cat) => {
                   const count = allAvatars.filter((a) => a.category === cat).length;
                   const isSelected = selectedCategory === cat;
                   return (
@@ -755,6 +794,14 @@ export const AvatarSelector = React.memo(function AvatarSelector({
                         loading="lazy"
                         decoding="async"
                         className="w-full h-full object-cover object-center rounded-lg block transition-transform group-hover:scale-105"
+                        onError={(e) => {
+                          const target = e.currentTarget;
+                          if (!target.dataset.triedCloud && avatar.id) {
+                            target.dataset.triedCloud = "true";
+                            const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://mshudehtxhsmnojirjls.supabase.co";
+                            target.src = `${supabaseUrl}/storage/v1/object/public/avatars/presets/${avatar.id}.webp`;
+                          }
+                        }}
                       />
                     </div>
 

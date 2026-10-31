@@ -114,12 +114,19 @@ describe("AuthInstallOptions and Dual Installation Flow", () => {
     expect(promptMock).toHaveBeenCalledTimes(1);
   });
 
-  it("renders dual-choice floating PwaInstallBanner on auth pages when logged out", async () => {
+  it("strictly suppresses PwaInstallBanner on the login page where inline AuthInstallOptions is present", async () => {
+    mockPathname = "/login";
+    render(<PwaInstallBanner />);
+    expect(screen.queryByText("Install StudyRoom App")).not.toBeInTheDocument();
+  });
+
+  it("renders dual-choice floating PwaInstallBanner on non-login auth pages when logged out", async () => {
+    mockPathname = "/signup";
     const triggerSpy = vi.spyOn(latestReleaseModule, "triggerApkDirectDownload").mockImplementation(() => {});
 
     render(<PwaInstallBanner />);
 
-    // On /login for unauthenticated visitor, banner is shown automatically
+    // On /signup for unauthenticated visitor, banner is shown automatically
     expect(screen.getByText("Install StudyRoom App")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /install pwa/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /get apk/i })).toBeInTheDocument();
@@ -156,6 +163,7 @@ describe("AuthInstallOptions and Dual Installation Flow", () => {
   });
 
   it("persists dismissal in localStorage when closed with X button", async () => {
+    mockPathname = "/signup";
     render(<PwaInstallBanner />);
 
     const dismissBtn = screen.getByRole("button", { name: /dismiss banner/i });
