@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS public.users (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   display_name TEXT NOT NULL,
   avatar_url TEXT,
+  avatar_id TEXT,
   current_status TEXT NOT NULL DEFAULT 'offline' CHECK (current_status IN ('offline', 'studying', 'break')),
   current_focus TEXT,
   session_start_time TIMESTAMPTZ,
@@ -44,6 +45,8 @@ ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_break_expired_study_secon
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS pending_goal_session_id UUID;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS pending_goal_seconds INTEGER DEFAULT NULL;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS pending_goal_reason TEXT DEFAULT NULL;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS avatar_id TEXT;
+CREATE INDEX IF NOT EXISTS idx_users_avatar_id ON public.users(avatar_id) WHERE avatar_id IS NOT NULL;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_offline_at TIMESTAMPTZ;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS state_version BIGINT NOT NULL DEFAULT 1;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();

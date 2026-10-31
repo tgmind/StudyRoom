@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, memo } from "react";
+import React, { useState, useEffect, memo } from "react";
 import { Button } from "@/components/ui/Button";
 import { ActiveTimer } from "@/components/session/ActiveTimer";
 import { CreateGoalModal } from "@/components/goals/CreateGoalModal";
@@ -30,6 +30,8 @@ interface SessionControllerProps {
   isLoading?: boolean;
   isHydrating?: boolean;
   showPreparationRules?: boolean;
+  className?: string;
+  compact?: boolean;
 }
 
 export const SessionController = memo(function SessionController({
@@ -48,6 +50,8 @@ export const SessionController = memo(function SessionController({
   isLoading = false,
   isHydrating = false,
   showPreparationRules = false,
+  className,
+  compact = false,
 }: SessionControllerProps) {
   const [isGoalSetupModalOpen, setIsGoalSetupModalOpen] = useState(false);
 
@@ -69,7 +73,7 @@ export const SessionController = memo(function SessionController({
   const isGoalMissingOrExpired = !activeGoal || countdown.isExpired;
 
   // Direct Start Studying Flow - immediately starts or prompts for goal setup
-  const handleStartStudyingClick = async () => {
+  const handleStartStudyingClick = React.useCallback(async () => {
     if (submittingAction !== null) return;
     setSubmittingAction("start");
     // Request notification permission during direct user gesture
@@ -85,7 +89,18 @@ export const SessionController = memo(function SessionController({
     } finally {
       setSubmittingAction(null);
     }
-  };
+  }, [submittingAction, isGoalMissingOrExpired, onStartSession]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      (window as any).__studyRoomStartSession = handleStartStudyingClick;
+    }
+    return () => {
+      if (typeof window !== "undefined" && (window as any).__studyRoomStartSession === handleStartStudyingClick) {
+        delete (window as any).__studyRoomStartSession;
+      }
+    };
+  }, [handleStartStudyingClick]);
 
   const handleStop = async () => {
     if (submittingAction !== null) return;
@@ -147,15 +162,17 @@ export const SessionController = memo(function SessionController({
 
   return (
     <div
-      className={`w-full bg-zinc-900/70 border border-zinc-800/90 rounded-2xl p-4 sm:p-5 shadow-xl backdrop-blur-md transition-all ${
-        showPreparationRules && isIdle && !isHydratingState
-          ? "h-full flex flex-col justify-between space-y-4"
+      className={`w-full bg-zinc-900/70 border border-zinc-800/90 rounded-2xl shadow-xl backdrop-blur-md transition-all ${
+        compact ? "p-3 sm:p-3.5" : "p-4 sm:p-5"
+      } ${
+        showPreparationRules
+          ? "h-full flex flex-col justify-between"
           : "space-y-4"
-      }`}
+      } ${className || ""}`}
     >
       {/* Session Hydration Skeleton (structural parity, prevents false Start button / timer flash) */}
       {isHydratingState && (
-        <div className="w-full flex flex-col items-center justify-center py-2 space-y-3">
+        <div className={`w-full flex flex-col items-center justify-center py-2 space-y-3 ${showPreparationRules ? "flex-1 justify-center" : ""}`}>
           <div className="w-full max-w-sm px-6 py-6 rounded-2xl bg-gradient-to-b from-zinc-900/90 via-zinc-950 to-zinc-950 border border-zinc-800/80 flex flex-col items-center justify-center space-y-3 shadow-[0_0_20px_rgba(0,0,0,0.4)]">
             <div className="w-24 h-3 bg-zinc-800/60 rounded-full animate-pulse" />
             <div className="w-36 h-9 bg-zinc-800/80 rounded-xl animate-pulse" />
@@ -219,13 +236,14 @@ export const SessionController = memo(function SessionController({
 
       {/* Session Timer */}
       {!isIdle && !isHydratingState && (
-        <div className="space-y-2">
+        <div className={showPreparationRules ? "flex-1 flex flex-col justify-center items-center py-0.5 min-h-0 w-full" : "space-y-2"}>
           <ActiveTimer
             elapsedSeconds={elapsedSeconds}
             status={status}
             breakStartedAt={breakStartedAt}
             syncStatus={syncStatus}
             onForceSync={onForceSync}
+            compact={compact}
           />
         </div>
       )}
@@ -300,22 +318,26 @@ export const SessionController = memo(function SessionController({
           {isStudying && (
             <>
               <Button
-                size="md"
+                size={compact ? "sm" : "md"}
                 variant="secondary"
                 onClick={handlePause}
                 disabled={submittingAction === "stop"}
-                className="flex-1 space-x-2 border-amber-500/30 text-amber-300 hover:bg-amber-500/10 font-bold"
+                className={`flex-1 space-x-2 border-amber-500/30 text-amber-300 hover:bg-amber-500/10 font-bold ${
+                  compact ? "py-2 text-xs sm:text-sm" : ""
+                }`}
               >
                 <Pause className="w-4 h-4 fill-current" />
                 <span>Pause</span>
               </Button>
               <Button
-                size="md"
+                size={compact ? "sm" : "md"}
                 variant="danger"
                 onClick={handleStop}
                 isLoading={submittingAction === "stop"}
                 disabled={submittingAction === "stop"}
-                className="flex-1 space-x-2 font-bold"
+                className={`flex-1 space-x-2 font-bold ${
+                  compact ? "py-2 text-xs sm:text-sm" : ""
+                }`}
               >
                 <Square className="w-4 h-4 fill-current" />
                 <span>Stop</span>
@@ -326,22 +348,26 @@ export const SessionController = memo(function SessionController({
           {isBreak && (
             <>
               <Button
-                size="md"
+                size={compact ? "sm" : "md"}
                 variant="primary"
                 onClick={handleResume}
                 disabled={submittingAction === "stop"}
-                className="flex-1 space-x-2 font-extrabold"
+                className={`flex-1 space-x-2 font-extrabold ${
+                  compact ? "py-2 text-xs sm:text-sm" : ""
+                }`}
               >
                 <RotateCcw className="w-4 h-4" />
                 <span>Resume</span>
               </Button>
               <Button
-                size="md"
+                size={compact ? "sm" : "md"}
                 variant="danger"
                 onClick={handleStop}
                 isLoading={submittingAction === "stop"}
                 disabled={submittingAction === "stop"}
-                className="flex-1 space-x-2 font-bold"
+                className={`flex-1 space-x-2 font-bold ${
+                  compact ? "py-2 text-xs sm:text-sm" : ""
+                }`}
               >
                 <Square className="w-4 h-4 fill-current" />
                 <span>Stop</span>

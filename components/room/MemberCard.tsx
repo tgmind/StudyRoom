@@ -15,6 +15,7 @@ import {
 } from "@/lib/time/format";
 import { getServerNow } from "@/lib/time/clockSync";
 import { Crown, Star, Coffee, Clock, BookOpen, Swords } from "lucide-react";
+import { resolveAvatarUrl, getAvatarScaleStyle } from "@/lib/avatars/manifest";
 
 import { getEffectiveMemberStatus } from "@/lib/time/break";
 
@@ -77,6 +78,8 @@ export const MemberCard = memo(function MemberCard({
   const initials = member.display_name
     ? member.display_name.substring(0, 2).toUpperCase()
     : "??";
+
+  const resolvedAvatar = resolveAvatarUrl(member.avatar_id, member.avatar_url);
 
   const isCalibrating =
     isStudying &&
@@ -183,7 +186,7 @@ export const MemberCard = memo(function MemberCard({
 
         {/* Avatar DP Container */}
         <div
-          className={`relative rounded-full bg-zinc-800 border-2 overflow-hidden shrink-0 aspect-square flex items-center justify-center font-extrabold text-zinc-100 shadow-md ${
+          className={`relative rounded-full ${resolvedAvatar ? "bg-white" : "bg-zinc-800"} border-2 overflow-hidden shrink-0 aspect-square flex items-center justify-center font-extrabold text-zinc-100 shadow-md ${
             compact
               ? "w-11 h-11 min-w-[2.75rem] min-h-[2.75rem] max-w-[2.75rem] max-h-[2.75rem] text-xs"
               : "w-14 h-14 min-w-[3.5rem] min-h-[3.5rem] max-w-[3.5rem] max-h-[3.5rem] text-sm"
@@ -197,12 +200,13 @@ export const MemberCard = memo(function MemberCard({
               : "border-zinc-800"
           }`}
         >
-          {member.avatar_url ? (
+          {resolvedAvatar ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={member.avatar_url}
+              src={resolvedAvatar}
               alt={member.display_name}
-              className="w-full h-full object-cover object-center rounded-full block pointer-events-none"
+              style={getAvatarScaleStyle(resolvedAvatar)}
+              className="w-full h-full object-cover object-center rounded-full bg-white block pointer-events-none"
               loading="lazy"
             />
           ) : (
@@ -429,7 +433,7 @@ function areMemberCardsEqual(prev: MemberCardProps, next: MemberCardProps): bool
   if (mA.current_status !== mB.current_status) return false;
   if (mA.is_present !== mB.is_present) return false;
   if (mA.display_name !== mB.display_name) return false;
-  if (mA.avatar_url !== mB.avatar_url) return false;
+  if (mA.avatar_url !== mB.avatar_url || mA.avatar_id !== mB.avatar_id) return false;
   if (mA.has_achiever_badge !== mB.has_achiever_badge) return false;
   if (mA.weekly_study_seconds !== mB.weekly_study_seconds) return false;
   if (mA.total_sessions_count !== mB.total_sessions_count) return false;

@@ -137,12 +137,13 @@ export const DesktopRoomView = memo(function DesktopRoomView({
   const isStudyingOrBreak = status === "studying" || status === "break";
 
   // Active study minutes in current session for live heatmap and streak qualifying progression
+  const elapsedMinutes = Math.floor(elapsedStudySeconds / 60);
   const liveActiveMinutes = useMemo(() => {
     if (status === "studying") {
-      return Math.floor(elapsedStudySeconds / 60);
+      return elapsedMinutes;
     }
     return 0;
-  }, [status, Math.floor(elapsedStudySeconds / 60)]);
+  }, [status, elapsedMinutes]);
 
   // Canonical streak and weekly study duration engine (fetched from study_sessions matching /streak)
   const {
@@ -181,6 +182,7 @@ export const DesktopRoomView = memo(function DesktopRoomView({
       expectedPeakHours={expectedPeakHours}
       isRealtimeConnected={isRealtimeConnected}
       connectionState={connectionState}
+      isSessionActive={isStudyingOrBreak}
     >
       <main className="w-full px-6 lg:px-8 xl:px-12 py-6 space-y-6">
         {/* Offline Notification */}
@@ -208,11 +210,17 @@ export const DesktopRoomView = memo(function DesktopRoomView({
         {/* Monday Global Analytics Notification Card */}
         <GlobalAnalyticsAlert userId={user?.id} />
 
-        {/* 1. TOP COMMAND DECK (Symmetrical 50/50 Balanced Hero, Zero Empty Void) */}
-        <div className="grid grid-cols-2 gap-6 items-stretch">
-          {/* Left Wing: Study Session Controller */}
-          <div className="flex flex-col h-full">
-            <section aria-label="Session Controller" className="h-full">
+        {/* Wide Exam Planner Banner (Full-width across desktop UI, collapses when session runs, reappears when idle) */}
+        <UpcomingExamSlotCard
+          userId={user?.id}
+          isTimerActive={isStudyingOrBreak}
+        />
+
+        {/* 1. TOP COMMAND DECK (Compact Live Study Cockpit Grid, Zero Stretch on Break or Goals) */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6 items-start transition-all duration-300">
+          {/* Left Wing: Study Session Controller (Compact 195px during active session) */}
+          <div className={`${isStudyingOrBreak ? "h-[195px]" : "h-[310px]"} w-full transition-all duration-300`}>
+            <section aria-label="Session Controller" className="h-full w-full">
               <SessionController
                 status={status}
                 focus={focus}
@@ -230,35 +238,30 @@ export const DesktopRoomView = memo(function DesktopRoomView({
                 isHydrating={authLoading && status === "offline"}
                 onForceSync={forceSynchronizeSession}
                 showPreparationRules={true}
+                className="h-full"
+                compact={isStudyingOrBreak}
               />
             </section>
           </div>
 
-          {/* Right Wing: Room Mission Companion & Exam Prep Hub */}
-          <div className="flex flex-col h-full justify-between space-y-4">
-            {/* Upcoming Exam Slot Card (if configured) */}
-            <UpcomingExamSlotCard
-              userId={user?.id}
-              isTimerActive={isStudyingOrBreak}
+          {/* Right Wing: Room Mission Companion with Goals Slider (Compact 195px during active session) */}
+          <div className={`${isStudyingOrBreak ? "h-[195px]" : "h-[310px]"} w-full transition-all duration-300`}>
+            <RoomMissionCompanion
+              activeGoal={activeGoal}
+              isStudying={isStudyingOrBreak}
+              onCompleteTask={async (taskId) => {
+                await completeGoalTasks([taskId]);
+                await Promise.allSettled([refreshGoals(), refreshProfile(), refreshStreak()]);
+              }}
+              streakDays={effectiveStreakDays}
+              weeklyStudySeconds={effectiveWeeklyStudySeconds}
+              streakLoading={streakLoading && !streakStats}
+              nearestExamName={nearestExamName}
+              nearestExamDaysRemaining={nearestExamDaysRemaining}
+              onOpenCreateGoal={() => setIsGoalSetupModalOpen(true)}
+              className="h-full"
+              compact={isStudyingOrBreak}
             />
-
-            {/* Room Mission Companion: Fills remaining vertical height with live goals & telemetry */}
-            <div className="flex-1 flex flex-col min-h-0">
-              <RoomMissionCompanion
-                activeGoal={activeGoal}
-                isStudying={isStudyingOrBreak}
-                onCompleteTask={async (taskId) => {
-                  await completeGoalTasks([taskId]);
-                  await Promise.allSettled([refreshGoals(), refreshProfile(), refreshStreak()]);
-                }}
-                streakDays={effectiveStreakDays}
-                weeklyStudySeconds={effectiveWeeklyStudySeconds}
-                streakLoading={streakLoading && !streakStats}
-                nearestExamName={nearestExamName}
-                nearestExamDaysRemaining={nearestExamDaysRemaining}
-                onOpenCreateGoal={() => setIsGoalSetupModalOpen(true)}
-              />
-            </div>
           </div>
         </div>
 
@@ -294,6 +297,7 @@ export const DesktopRoomView = memo(function DesktopRoomView({
               winEvents={activeWinEvents}
               onRivalryWin={broadcastRivalryWin}
               onDismissWinEvent={dismissWinEvent}
+              onStartSession={handleStartSession}
             />
           </section>
         </div>

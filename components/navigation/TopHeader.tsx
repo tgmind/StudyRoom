@@ -4,6 +4,7 @@ import React, { memo, useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { UserProfile } from "@/lib/supabase/types";
 import { Star } from "lucide-react";
+import { resolveAvatarUrl, getAvatarScaleStyle } from "@/lib/avatars/manifest";
 
 export const HEADER_PEEK_MS = 8_000;
 
@@ -191,13 +192,18 @@ export const TopHeader = memo(function TopHeader({
                 </span>
               )}
 
-              <div className="w-8 h-8 rounded-full bg-zinc-800 border border-zinc-700 overflow-hidden flex items-center justify-center text-xs font-extrabold text-zinc-200 shadow-inner">
-                {profile.avatar_url ? (
+              <div
+                className={`w-8 h-8 rounded-full ${
+                  resolveAvatarUrl(profile.avatar_id, profile.avatar_url) ? "bg-white" : "bg-zinc-800"
+                } border border-zinc-700 overflow-hidden flex items-center justify-center text-xs font-extrabold text-zinc-200 shadow-inner`}
+              >
+                {resolveAvatarUrl(profile.avatar_id, profile.avatar_url) ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={profile.avatar_url}
+                    src={resolveAvatarUrl(profile.avatar_id, profile.avatar_url)!}
                     alt={profile.display_name}
-                    className="w-full h-full object-cover"
+                    style={getAvatarScaleStyle(profile.avatar_url)}
+                    className="w-full h-full object-cover object-center bg-white"
                   />
                 ) : (
                   <span>{initials}</span>

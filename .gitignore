@@ -47,3 +47,7 @@ local.properties
 
 # local documentation (excluded from repository / github pushes)
 local_docs/
+
+# python
+__pycache__/
+*.py[cod]

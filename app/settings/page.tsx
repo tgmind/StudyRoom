@@ -9,6 +9,7 @@ import { BottomNav } from "@/components/navigation/BottomNav";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { AvatarUpload } from "@/components/ui/AvatarUpload";
+import { AvatarSelector } from "@/components/settings/AvatarSelector";
 import { AppInfoCard } from "@/components/settings/AppInfoCard";
 import { CommunityLinksCard } from "@/components/settings/CommunityLinksCard";
 import { validateDisplayName } from "@/lib/validation/schemas";
@@ -28,10 +29,11 @@ import { useDeviceLayout } from "@/lib/device/useDeviceLayout";
 import { DesktopSettingsView } from "@/components/presentation/desktop/DesktopSettingsView";
 
 export default function SettingsPage() {
-  const { user, profile, loading: authLoading, signOut, refreshProfile } = useAuth();
+  const { user, profile, loading: authLoading, signOut, refreshProfile, updateProfileOptimistic } = useAuth();
   const layout = useDeviceLayout();
   const [displayName, setDisplayName] = useState("");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [avatarId, setAvatarId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -50,6 +52,7 @@ export default function SettingsPage() {
     if (profile) {
       setDisplayName(profile.display_name || "");
       setAvatarUrl(profile.avatar_url || null);
+      setAvatarId(profile.avatar_id || null);
     }
   }, [profile]);
 
@@ -90,10 +93,18 @@ export default function SettingsPage() {
         .update({
           display_name: validation.value,
           avatar_url: avatarUrl || null,
+          avatar_id: avatarId || null,
         })
         .eq("id", user.id);
 
       if (updateErr) throw updateErr;
+
+      // Optimistically update context
+      updateProfileOptimistic({
+        display_name: validation.value,
+        avatar_url: avatarUrl || null,
+        avatar_id: avatarId || null,
+      });
 
       await refreshProfile();
       setSuccess("Profile updated successfully!");
@@ -116,6 +127,8 @@ export default function SettingsPage() {
         setDisplayName={setDisplayName}
         avatarUrl={avatarUrl}
         setAvatarUrl={setAvatarUrl}
+        avatarId={avatarId}
+        setAvatarId={setAvatarId}
         saving={saving}
         error={error}
         success={success}
@@ -240,14 +253,22 @@ export default function SettingsPage() {
               </p>
             </div>
 
-            {/* Avatar Upload Component */}
+            {/* Avatar Selector Component */}
             {user && (
               <div className="pt-2 border-t border-zinc-800/60">
-                <AvatarUpload
+                <AvatarSelector
                   userId={user.id}
                   displayName={displayName || "User"}
+                  currentAvatarId={avatarId}
                   currentAvatarUrl={avatarUrl}
-                  onAvatarUploaded={(url) => setAvatarUrl(url)}
+                  savedAvatarId={profile?.avatar_id}
+                  savedAvatarUrl={profile?.avatar_url}
+                  defaultExpanded={false}
+                  onAvatarChanged={(newId, newUrl) => {
+                    setAvatarId(newId);
+                    setAvatarUrl(newUrl);
+                  }}
+                  disabled={saving}
                 />
               </div>
             )}

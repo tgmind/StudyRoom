@@ -1,5 +1,5 @@
 // StudyRoom PWA Service Worker — Version 11 with Bounded Cache Eviction
-const CACHE_NAME = "studyroom-d96534d7";
+const CACHE_NAME = "studyroom-2e944fa1";
 const OFFLINE_URL = "/offline.html";
 
 // Maximum number of Next.js static asset chunks to retain in cache

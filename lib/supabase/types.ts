@@ -4,6 +4,7 @@ export interface UserProfile {
   id: string;
   display_name: string;
   avatar_url: string | null;
+  avatar_id?: string | null;
   current_status: UserStatus;
   current_focus: string | null;
   session_start_time: string | null;

@@ -7,12 +7,14 @@ import { createClient } from "@/lib/supabase/client";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { AvatarUpload } from "@/components/ui/AvatarUpload";
+import { AvatarSelector } from "@/components/settings/AvatarSelector";
 import { validateDisplayName } from "@/lib/validation/schemas";
 
 export default function OnboardingPage() {
   const { user, profile, loading: authLoading, refreshProfile } = useAuth();
   const [displayName, setDisplayName] = useState("");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [avatarId, setAvatarId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -54,6 +56,7 @@ export default function OnboardingPage() {
         .update({
           display_name: validation.value,
           avatar_url: avatarUrl || null,
+          avatar_id: avatarId || null,
         })
         .eq("id", user.id);
 
@@ -115,11 +118,17 @@ export default function OnboardingPage() {
           />
 
           {user && (
-            <AvatarUpload
+            <AvatarSelector
               userId={user.id}
               displayName={displayName || "User"}
+              currentAvatarId={avatarId}
               currentAvatarUrl={avatarUrl}
-              onAvatarUploaded={(url) => setAvatarUrl(url)}
+              defaultExpanded={false}
+              onAvatarChanged={(newId, newUrl) => {
+                setAvatarId(newId);
+                setAvatarUrl(newUrl);
+              }}
+              disabled={saving}
             />
           )}
 

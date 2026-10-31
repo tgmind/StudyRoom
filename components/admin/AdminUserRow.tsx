@@ -16,6 +16,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import type { AdminUser } from "@/hooks/useAdmin";
 import { getEffectiveMemberStatus } from "@/lib/time/break";
+import { resolveAvatarUrl, getAvatarScaleStyle } from "@/lib/avatars/manifest";
 
 interface AdminUserRowProps {
   user: AdminUser;
@@ -138,13 +139,18 @@ export function AdminUserRow({ user, onRename, onDelete, onForceEnd }: AdminUser
         {/* Row 1: Avatar + Name + Status Badge */}
         <div className="flex items-center gap-3 min-w-0">
           {/* Avatar */}
-          <div className="w-9 h-9 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center shrink-0 overflow-hidden">
-            {user.avatar_url ? (
+          <div
+            className={`w-9 h-9 rounded-full ${
+              resolveAvatarUrl((user as any).avatar_id, user.avatar_url) ? "bg-white" : "bg-zinc-800"
+            } border border-zinc-700 flex items-center justify-center shrink-0 overflow-hidden`}
+          >
+            {resolveAvatarUrl((user as any).avatar_id, user.avatar_url) ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={user.avatar_url}
+                src={resolveAvatarUrl((user as any).avatar_id, user.avatar_url)!}
                 alt={user.display_name || "User"}
-                className="w-full h-full object-cover"
+                style={getAvatarScaleStyle(user.avatar_url)}
+                className="w-full h-full object-cover object-center bg-white"
               />
             ) : (
               <span className="text-xs font-bold text-zinc-300">

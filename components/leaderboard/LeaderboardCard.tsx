@@ -4,6 +4,7 @@ import React, { memo } from "react";
 import { LeaderboardEntry } from "@/lib/supabase/types";
 import { Star, Crown } from "lucide-react";
 import { formatSecondsToHuman } from "@/lib/time/format";
+import { resolveAvatarUrl, getAvatarScaleStyle } from "@/lib/avatars/manifest";
 
 interface LeaderboardCardProps {
   entry: LeaderboardEntry;
@@ -64,13 +65,18 @@ export const LeaderboardCard = memo(function LeaderboardCard({
           </div>
 
           {/* User Avatar DP */}
-          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-zinc-800 border border-zinc-700 overflow-hidden flex items-center justify-center font-extrabold text-zinc-100 shrink-0 text-xs shadow-inner">
-            {entry.avatar_url ? (
+          <div
+            className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full ${
+              resolveAvatarUrl(null, entry.avatar_url) ? "bg-white" : "bg-zinc-800"
+            } border border-zinc-700 overflow-hidden flex items-center justify-center font-extrabold text-zinc-100 shrink-0 text-xs shadow-inner`}
+          >
+            {resolveAvatarUrl(null, entry.avatar_url) ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={entry.avatar_url}
+                src={resolveAvatarUrl(null, entry.avatar_url)!}
                 alt={entry.display_name}
-                className="w-full h-full object-cover"
+                style={getAvatarScaleStyle(entry.avatar_url)}
+                className="w-full h-full object-cover object-center bg-white"
                 loading="lazy"
               />
             ) : (

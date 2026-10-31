@@ -180,6 +180,7 @@ export default function RoomPage() {
           // 2. Identity fields from profile:
           display_name: effectiveProfile?.display_name || m.display_name,
           avatar_url: effectiveProfile?.avatar_url ?? m.avatar_url,
+          avatar_id: effectiveProfile?.avatar_id ?? m.avatar_id,
           has_achiever_badge: effectiveProfile?.has_achiever_badge ?? m.has_achiever_badge,
 
           // 3. Authoritative Live Presence from useActiveSession:
@@ -356,6 +357,7 @@ export default function RoomPage() {
             winEvents={activeWinEvents}
             onRivalryWin={broadcastRivalryWin}
             onDismissWinEvent={dismissWinEvent}
+            onStartSession={handleStartSession}
           />
         </section>
       </main>

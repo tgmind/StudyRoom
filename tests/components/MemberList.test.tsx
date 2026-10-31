@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { MemberList } from "@/components/room/MemberList";
 import { UserProfile } from "@/lib/supabase/types";
 
@@ -77,6 +77,24 @@ describe("MemberList Component & Live Global View", () => {
     render(<MemberList members={[]} />);
     expect(screen.getByText("No room members found")).toBeInTheDocument();
     expect(screen.getByText(/Start a live study session/i)).toBeInTheDocument();
+  });
+
+  it("renders EmptyStudyRoomState with lamp illustration when room members exist but none are actively studying", () => {
+    const onStartSession = vi.fn();
+    render(
+      <MemberList
+        members={[memberC]}
+        onStartSession={onStartSession}
+      />
+    );
+
+    expect(screen.getByTestId("empty-study-room-state")).toBeInTheDocument();
+    expect(screen.getAllByText("No members actively studying right now").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/1 peer in room available/i).length).toBeGreaterThanOrEqual(1);
+
+    const startBtns = screen.getAllByRole("button", { name: /Start Studying/i });
+    fireEvent.click(startBtns[0]);
+    expect(onStartSession).toHaveBeenCalledTimes(1);
   });
 
   it("renders loading skeleton when isLoading is true", () => {

@@ -5,6 +5,7 @@ import { DesktopAppLayout } from "./DesktopAppLayout";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { AvatarUpload } from "@/components/ui/AvatarUpload";
+import { AvatarSelector } from "@/components/settings/AvatarSelector";
 import { CommunityLinksCard } from "@/components/settings/CommunityLinksCard";
 import { AppInfoCard } from "@/components/settings/AppInfoCard";
 import { UserProfile } from "@/lib/supabase/types";
@@ -29,6 +30,8 @@ export interface DesktopSettingsViewProps {
   setDisplayName: (name: string) => void;
   avatarUrl: string | null;
   setAvatarUrl: (url: string | null) => void;
+  avatarId?: string | null;
+  setAvatarId?: (id: string | null) => void;
   saving: boolean;
   error: string | null;
   success: string | null;
@@ -47,6 +50,8 @@ export const DesktopSettingsView = memo(function DesktopSettingsView({
   setDisplayName,
   avatarUrl,
   setAvatarUrl,
+  avatarId,
+  setAvatarId,
   saving,
   error,
   success,
@@ -137,14 +142,22 @@ export const DesktopSettingsView = memo(function DesktopSettingsView({
                 </p>
               </div>
 
-              {/* Avatar Upload Component */}
+              {/* Avatar Selector Component */}
               {user && (
                 <div className="pt-2 border-t border-zinc-800/60">
-                  <AvatarUpload
+                  <AvatarSelector
                     userId={user.id}
                     displayName={displayName || "User"}
+                    currentAvatarId={avatarId}
                     currentAvatarUrl={avatarUrl}
-                    onAvatarUploaded={(url) => setAvatarUrl(url)}
+                    savedAvatarId={profile?.avatar_id}
+                    savedAvatarUrl={profile?.avatar_url}
+                    defaultExpanded={true}
+                    onAvatarChanged={(newId, newUrl) => {
+                      setAvatarId?.(newId);
+                      setAvatarUrl(newUrl);
+                    }}
+                    disabled={saving}
                   />
                 </div>
               )}

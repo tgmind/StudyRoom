@@ -4,6 +4,7 @@ import React, { useState, useRef } from "react";
 import { Trash2, Loader2, UploadCloud } from "lucide-react";
 import { uploadAvatar } from "@/lib/supabase/storage";
 import { validateAvatarFile } from "@/lib/validation/schemas";
+import { getAvatarScaleStyle } from "@/lib/avatars/manifest";
 
 interface AvatarUploadProps {
   userId: string;
@@ -77,13 +78,18 @@ export function AvatarUpload({
 
       <div className="flex items-center space-x-4">
         {/* Avatar Preview Wrapper */}
-        <div className="relative w-16 h-16 rounded-full bg-zinc-800 border-2 border-zinc-700 overflow-hidden shrink-0 aspect-square flex items-center justify-center text-zinc-100 font-extrabold text-lg shadow-inner">
+        <div
+          className={`relative w-16 h-16 rounded-full ${
+            previewUrl ? "bg-white" : "bg-zinc-800"
+          } border-2 border-zinc-700 overflow-hidden shrink-0 aspect-square flex items-center justify-center text-zinc-100 font-extrabold text-lg shadow-inner`}
+        >
           {previewUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={previewUrl}
               alt="Profile preview"
-              className="w-full h-full object-cover object-center rounded-full block"
+              style={getAvatarScaleStyle(previewUrl)}
+              className="w-full h-full object-cover object-center rounded-full bg-white block"
             />
           ) : (
             <span>{initials}</span>

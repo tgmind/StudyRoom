@@ -4,6 +4,7 @@ import React, { memo, useState, useEffect } from "react";
 import { WeeklyAchieverSnapshot } from "@/lib/supabase/types";
 import { formatMinutesToHours } from "@/lib/time/format";
 import { Trophy, Star, Target, Calendar, Clock, Sparkles } from "lucide-react";
+import { resolveAvatarUrl, getAvatarScaleStyle } from "@/lib/avatars/manifest";
 
 interface AchieverCelebrationCardProps {
   achiever: WeeklyAchieverSnapshot | null;
@@ -161,13 +162,18 @@ export const AchieverCelebrationCard = memo(function AchieverCelebrationCard({
                 : "shadow-[0_0_24px_rgba(245,158,11,0.45)]"
             }`}
           >
-            <div className="w-full h-full rounded-full overflow-hidden bg-zinc-900 flex items-center justify-center border-2 border-zinc-950">
-              {achiever.avatar_url ? (
+            <div
+              className={`w-full h-full rounded-full overflow-hidden ${
+                resolveAvatarUrl(null, achiever.avatar_url) ? "bg-white" : "bg-zinc-900"
+              } flex items-center justify-center border-2 border-zinc-950`}
+            >
+              {resolveAvatarUrl(null, achiever.avatar_url) ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  src={achiever.avatar_url}
+                  src={resolveAvatarUrl(null, achiever.avatar_url)!}
                   alt={achiever.display_name}
-                  className="w-full h-full object-cover"
+                  style={getAvatarScaleStyle(achiever.avatar_url)}
+                  className="w-full h-full object-cover object-center bg-white"
                 />
               ) : (
                 <span className="text-xl sm:text-2xl font-black text-amber-300 tracking-wider">

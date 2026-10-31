@@ -20,6 +20,7 @@ import {
 } from "@/lib/time/rivalry";
 import { computeLiveLeaderboardMap } from "@/lib/scoring/engine";
 import { RivalryWinCelebration } from "./RivalryWinCelebration";
+import { EmptyStudyRoomState } from "./EmptyStudyRoomState";
 import { Users, WifiOff, Flame, Coffee } from "lucide-react";
 import {
   calculateMemberElapsedStudySeconds,
@@ -47,6 +48,7 @@ interface MemberListProps {
   winEvent?: RivalryWinEvent | null;
   onRivalryWin?: (event: RivalryWinEvent) => void;
   onDismissWinEvent?: (eventId?: string) => void;
+  onStartSession?: () => void;
 }
 
 export const MemberList = memo(function MemberList({
@@ -64,6 +66,7 @@ export const MemberList = memo(function MemberList({
   winEvent,
   onRivalryWin,
   onDismissWinEvent,
+  onStartSession,
 }: MemberListProps) {
   // Single shared master tick for all room member cards (calibrated to atomic server clock)
   const [currentTimestamp, setCurrentTimestamp] = useState(() => getServerNow());
@@ -316,6 +319,7 @@ export const MemberList = memo(function MemberList({
               pm.leaderboard_rank === nm.leaderboard_rank &&
               pm.display_name === nm.display_name &&
               pm.avatar_url === nm.avatar_url &&
+              pm.avatar_id === nm.avatar_id &&
               pm.has_achiever_badge === nm.has_achiever_badge
             );
           })
@@ -649,10 +653,10 @@ export const MemberList = memo(function MemberList({
               ))}
             </div>
           ) : rivalries.length === 0 ? (
-            <div className="p-5 rounded-2xl border border-dashed border-zinc-800/80 bg-zinc-950/40 text-center text-xs text-zinc-500 space-y-1">
-              <p className="font-semibold text-zinc-400">No members actively studying right now</p>
-              <p className="text-[11px]">Press <strong>Start Studying</strong> above to lead the session!</p>
-            </div>
+            <EmptyStudyRoomState
+              totalMembers={members.length}
+              onStartSession={onStartSession}
+            />
           ) : null}
         </div>
       )}

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { memo, useState } from "react";
+import { resolveAvatarUrl, getAvatarScaleStyle } from "@/lib/avatars/manifest";
 
 export interface ObservatoryAvatarProps {
   name: string;
@@ -39,13 +40,16 @@ export const ObservatoryAvatar = memo(function ObservatoryAvatar({
         .toUpperCase()
     : "??";
 
-  if (url && !imageError) {
+  const resolvedUrl = resolveAvatarUrl(null, url);
+
+  if (resolvedUrl && !imageError) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
-        src={url}
+        src={resolvedUrl}
         alt={cleanName}
-        className={`w-full h-full object-cover object-center rounded-[inherit] block pointer-events-none ${className}`}
+        style={getAvatarScaleStyle(url)}
+        className={`w-full h-full object-cover object-center rounded-[inherit] bg-white block pointer-events-none ${className}`}
         loading="lazy"
         onError={() => setImageError(true)}
       />
