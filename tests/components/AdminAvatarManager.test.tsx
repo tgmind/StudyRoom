@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { AdminAvatarManager } from "@/components/admin/AdminAvatarManager";
+import { AdminAvatarManager, formatFilenameToLabel } from "@/components/admin/AdminAvatarManager";
 
 // Mock fetch for admin avatar API calls
 const mockAvatars = [
@@ -98,23 +98,20 @@ describe("AdminAvatarManager Component", () => {
         });
       }
 
-      if (url.includes("/api/admin/avatars/sync") && options?.method === "POST") {
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: () =>
-            Promise.resolve({
-              success: true,
-              syncedCount: 1,
-              freedBytes: 15360,
-              cleanedStorageObjects: ["presets/mock.webp"],
-              manifestUpdated: true,
-            }),
-        });
-      }
-
       if (url.includes("/api/admin/avatars") && options?.method === "POST") {
         const body = JSON.parse(options.body || "{}");
+        if (body.action === "batch_create") {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                success: true,
+                count: body.items?.length || 0,
+                assignedOrders: [141, 142],
+              }),
+          });
+        }
         if (body.action === "update") {
           return Promise.resolve({
             ok: true,
@@ -153,7 +150,14 @@ describe("AdminAvatarManager Component", () => {
     });
   });
 
-  it("renders header stats bar with total presets, categories, and custom added", async () => {
+  it("correctly formats filenames to title-cased labels via formatFilenameToLabel", () => {
+    expect(formatFilenameToLabel("cyber_ninja_cat_01.png")).toBe("Cyber Ninja Cat 01");
+    expect(formatFilenameToLabel("student-girl-study.webp")).toBe("Student Girl Study");
+    expect(formatFilenameToLabel("fox-scholar.jpg")).toBe("Fox Scholar");
+    expect(formatFilenameToLabel("AI_BOT_42.png")).toBe("AI BOT 42");
+  });
+
+  it("renders header stats bar with total presets, categories, and cloud CDN", async () => {
     render(<AdminAvatarManager />);
 
     await waitFor(() => {
@@ -163,7 +167,7 @@ describe("AdminAvatarManager Component", () => {
     // Stats bar cards
     expect(screen.getByText("Total Presets")).toBeDefined();
     expect(screen.getByText("Categories")).toBeDefined();
-    expect(screen.getByText("Custom Added")).toBeDefined();
+    expect(screen.getByText("Cloud CDN")).toBeDefined();
     expect(screen.getByText("WebP Engine")).toBeDefined();
     expect(screen.getByText("256 × 256")).toBeDefined();
   });
@@ -326,38 +330,65 @@ describe("AdminAvatarManager Component", () => {
     });
   });
 
-  it("renders Sync to Local button and triggers cloud sync API on click", async () => {
+  it("renders Batch Upload button and opens the Batch Upload modal on click", async () => {
     render(<AdminAvatarManager />);
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Sync to Local/i })).toBeDefined();
+      expect(screen.getByRole("button", { name: /Batch Upload/i })).toBeDefined();
     });
 
-    const syncBtn = screen.getByRole("button", { name: /Sync to Local/i });
-    fireEvent.click(syncBtn);
+    const batchBtn = screen.getByRole("button", { name: /Batch Upload/i });
+    fireEvent.click(batchBtn);
+
+    expect(screen.getByText("Batch Upload Preset Avatars")).toBeDefined();
+    expect(screen.getByText(/Upload multiple avatars simultaneously/i)).toBeDefined();
+    expect(screen.getByText(/Drag and drop multiple images here/i)).toBeDefined();
+    expect(screen.getByText("Destination Category")).toBeDefined();
+  });
+
+  it("handles batch file selection, auto-labeling, and executes batch upload", async () => {
+    render(<AdminAvatarManager />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Batch Upload/i })).toBeDefined();
+    });
+
+    const batchBtn = screen.getByRole("button", { name: /Batch Upload/i });
+    fireEvent.click(batchBtn);
+
+    // Find the batch file input
+    const fileInputs = document.querySelectorAll('input[type="file"]');
+    const batchFileInput = fileInputs[fileInputs.length - 1]; // Batch modal file input
+    expect(batchFileInput).toBeDefined();
+
+    const mockFile1 = new File(["bytes1"], "cyber_samurai.png", { type: "image/png" });
+    const mockFile2 = new File(["bytes2"], "neon_fox.png", { type: "image/png" });
+
+    fireEvent.change(batchFileInput, { target: { files: [mockFile1, mockFile2] } });
+
+    await waitFor(() => {
+      expect(screen.getByText("Queued Avatars (2)")).toBeDefined();
+      expect(screen.getByDisplayValue("Cyber Samurai")).toBeDefined();
+      expect(screen.getByDisplayValue("Neon Fox")).toBeDefined();
+    });
+
+    // Execute upload
+    const uploadBatchBtn = screen.getByRole("button", { name: /Upload 2 Avatars/i });
+    fireEvent.click(uploadBatchBtn);
 
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
-        "/api/admin/avatars/sync",
+        "/api/admin/avatars/upload",
         expect.objectContaining({ method: "POST" })
       );
+      expect(global.fetch).toHaveBeenCalledWith(
+        "/api/admin/avatars",
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining('"action":"batch_create"'),
+        })
+      );
     });
-  });
-
-  it("opens the Avatar Sync & Recovery Handbook modal when clicking the help button", async () => {
-    render(<AdminAvatarManager />);
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Avatar Sync & Disaster Recovery Guide/i })).toBeDefined();
-    });
-
-    const helpBtn = screen.getByRole("button", { name: /Avatar Sync & Disaster Recovery Guide/i });
-    fireEvent.click(helpBtn);
-
-    expect(screen.getByText("Avatar Cloud Sync & Recovery Handbook")).toBeDefined();
-    expect(screen.getByText(/Why Sync from Cloud to Local/i)).toBeDefined();
-    expect(screen.getAllByText("npm run avatars:sync").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("npm install")).toBeDefined();
   });
 
   it("opens Delete Category modal and relocates avatars to another category upon confirmation", async () => {

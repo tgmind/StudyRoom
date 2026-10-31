@@ -4,7 +4,6 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import {
   Sparkles,
   UploadCloud,
-  DownloadCloud,
   Plus,
   Search,
   Trash2,
@@ -22,16 +21,45 @@ import {
   Info,
   Sliders,
   ExternalLink,
-  HelpCircle,
 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
-import { AvatarSyncGuideModal } from "@/components/admin/AvatarSyncGuideModal";
 import {
   analyzeAndOptimizeAvatarImage,
   OptimizedAvatarResult,
 } from "@/lib/avatars/imageOptimizer";
 import { resolveAvatarUrl, getAvatarScaleStyle } from "@/lib/avatars/manifest";
+
+export interface BatchUploadItem {
+  id: string;
+  file: File;
+  label: string;
+  previewUrl: string;
+  optimizedBlob?: Blob;
+  optimizedFile?: File;
+  originalSize: number;
+  optimizedSize?: number;
+  status: "optimizing" | "ready" | "uploading" | "complete" | "error";
+  errorMessage?: string;
+}
+
+/**
+ * Automatically formats a filename into a clean, human-readable title-cased label.
+ */
+export function formatFilenameToLabel(filename: string): string {
+  const withoutExt = filename.replace(/\.[a-zA-Z0-9]+$/, "");
+  const withSpaces = withoutExt.replace(/[_\-+.]+/g, " ");
+  const cleaned = withSpaces.replace(/[^a-zA-Z0-9\s#]/g, " ").trim();
+  const words = cleaned.split(/\s+/).filter(Boolean);
+  const titleCased = words
+    .map((w) => {
+      if (w.length <= 3 && w === w.toUpperCase() && !/\d/.test(w)) return w;
+      return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+    })
+    .join(" ");
+
+  return titleCased || "New Avatar";
+}
 
 export interface PresetAvatar {
   id: string;
@@ -153,13 +181,28 @@ export function AdminAvatarManager() {
   const [editOrder, setEditOrder] = useState<number>(1);
   const [editActive, setEditActive] = useState(true);
   const [isUpdating, setIsUpdating] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [isSyncGuideOpen, setIsSyncGuideOpen] = useState(false);
   const [editOptimizedItem, setEditOptimizedItem] = useState<OptimizedAvatarResult | null>(null);
   const [isEditOptimizing, setIsEditOptimizing] = useState(false);
   const [editOptimizeProgress, setEditOptimizeProgress] = useState<{ step: string; percent: number }>({ step: "", percent: 0 });
   const [isEditDragging, setIsEditDragging] = useState(false);
   const editFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Batch Upload Modal State
+  const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
+  const [batchCategory, setBatchCategory] = useState("");
+  const [isCustomBatchCategory, setIsCustomBatchCategory] = useState(false);
+  const [customBatchCategoryInput, setCustomBatchCategoryInput] = useState("");
+  const [batchItems, setBatchItems] = useState<BatchUploadItem[]>([]);
+  const [isProcessingBatch, setIsProcessingBatch] = useState(false);
+  const [isUploadingBatch, setIsUploadingBatch] = useState(false);
+  const [batchProgress, setBatchProgress] = useState<{
+    current: number;
+    total: number;
+    percent: number;
+    statusText: string;
+  }>({ current: 0, total: 0, percent: 0, statusText: "" });
+  const [isBatchDragging, setIsBatchDragging] = useState(false);
+  const batchFileInputRef = useRef<HTMLInputElement>(null);
 
   // Delete Avatar Modal State
   const [deletingAvatar, setDeletingAvatar] = useState<PresetAvatar | null>(null);
@@ -206,34 +249,221 @@ export function AdminAvatarManager() {
     fetchAvatars();
   }, [fetchAvatars]);
 
-  // Sync Cloud Avatars into public/avatars/optimized/ and clean up Supabase storage
-  const handleSyncCloudAvatars = async () => {
-    setIsSyncing(true);
-    try {
-      const res = await fetch("/api/admin/avatars/sync", {
-        method: "POST",
+  // Batch Files Selected Handler
+  const handleBatchFilesSelected = async (files: FileList | File[]) => {
+    const fileArray = Array.from(files).filter(
+      (f) => f.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|svg)$/i.test(f.name)
+    );
+
+    if (fileArray.length === 0) {
+      notify("error", "No valid image files detected.");
+      return;
+    }
+
+    setIsProcessingBatch(true);
+    setBatchProgress({
+      current: 0,
+      total: fileArray.length,
+      percent: 0,
+      statusText: `Optimizing ${fileArray.length} image(s) to 256×256 WebP...`,
+    });
+
+    const targetCat = isCustomBatchCategory
+      ? customBatchCategoryInput.trim()
+      : batchCategory.trim() || categories.find((c) => c !== "All") || "Study Buddies";
+
+    const newItems: BatchUploadItem[] = [];
+
+    for (let i = 0; i < fileArray.length; i++) {
+      const file = fileArray[i];
+      const autoLabel = formatFilenameToLabel(file.name);
+      const tempId = `batch-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`;
+
+      setBatchProgress({
+        current: i + 1,
+        total: fileArray.length,
+        percent: Math.round(((i + 1) / fileArray.length) * 100),
+        statusText: `Optimizing ${i + 1} of ${fileArray.length}: "${autoLabel}"...`,
       });
 
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.error || "Sync failed");
+      try {
+        const optimized = await analyzeAndOptimizeAvatarImage(file, {
+          preferredCategory: targetCat,
+        });
+
+        newItems.push({
+          id: tempId,
+          file,
+          label: autoLabel,
+          previewUrl: optimized.previewUrl,
+          optimizedBlob: optimized.blob,
+          optimizedFile: optimized.file,
+          originalSize: file.size,
+          optimizedSize: optimized.optimizedSize,
+          status: "ready",
+        });
+      } catch (err: any) {
+        console.warn(`Could not optimize file ${file.name}:`, err);
+        const fallbackUrl = URL.createObjectURL(file);
+        newItems.push({
+          id: tempId,
+          file,
+          label: autoLabel,
+          previewUrl: fallbackUrl,
+          originalSize: file.size,
+          status: "ready",
+        });
+      }
+    }
+
+    setBatchItems((prev) => [...prev, ...newItems]);
+    setIsProcessingBatch(false);
+    setBatchProgress({ current: 0, total: 0, percent: 0, statusText: "" });
+  };
+
+  const handleRemoveBatchItem = (id: string) => {
+    setBatchItems((prev) => {
+      const target = prev.find((it) => it.id === id);
+      if (target) safeRevokeUrl(target.previewUrl);
+      return prev.filter((it) => it.id !== id);
+    });
+  };
+
+  const handleBatchDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsBatchDragging(true);
+  }, []);
+
+  const handleBatchDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsBatchDragging(false);
+  }, []);
+
+  const handleBatchDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsBatchDragging(false);
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        handleBatchFilesSelected(e.dataTransfer.files);
+      }
+    },
+    [handleBatchFilesSelected]
+  );
+
+  // Execute Batch Upload to Supabase Storage CDN and Database
+  const handleExecuteBatchUpload = async () => {
+    if (batchItems.length === 0) return;
+
+    const finalCategory = isCustomBatchCategory
+      ? customBatchCategoryInput.trim()
+      : batchCategory.trim() || categories.find((c) => c !== "All") || "Study Buddies";
+
+    if (!finalCategory) {
+      notify("error", "Please specify a category for this batch.");
+      return;
+    }
+
+    setIsUploadingBatch(true);
+    const total = batchItems.length;
+    const uploadedRecords: Array<{
+      id: string;
+      label: string;
+      category: string;
+      asset_path: string;
+      is_active: boolean;
+    }> = [];
+
+    try {
+      for (let i = 0; i < batchItems.length; i++) {
+        const item = batchItems[i];
+        setBatchItems((prev) =>
+          prev.map((it) => (it.id === item.id ? { ...it, status: "uploading" } : it))
+        );
+
+        setBatchProgress({
+          current: i + 1,
+          total,
+          percent: Math.round(((i + 1) / total) * 100),
+          statusText: `Uploading ${i + 1} of ${total}: "${item.label}"...`,
+        });
+
+        try {
+          const fileToUpload = item.optimizedFile || item.file;
+          const formData = new FormData();
+          formData.append("file", fileToUpload);
+
+          const uploadRes = await fetch("/api/admin/avatars/upload", {
+            method: "POST",
+            body: formData,
+          });
+
+          if (!uploadRes.ok) {
+            const errData = await uploadRes.json();
+            throw new Error(errData.error || "Upload failed");
+          }
+
+          const uploadData = await uploadRes.json();
+
+          uploadedRecords.push({
+            id: uploadData.id,
+            label: item.label.trim(),
+            category: finalCategory,
+            asset_path: uploadData.publicUrl || uploadData.asset_path,
+            is_active: true,
+          });
+
+          setBatchItems((prev) =>
+            prev.map((it) => (it.id === item.id ? { ...it, status: "complete" } : it))
+          );
+        } catch (itemErr: any) {
+          console.error(`Error uploading item "${item.label}":`, itemErr);
+          setBatchItems((prev) =>
+            prev.map((it) =>
+              it.id === item.id
+                ? { ...it, status: "error", errorMessage: itemErr.message }
+                : it
+            )
+          );
+        }
       }
 
-      const data = await res.json();
-      if (data.syncedCount === 0) {
-        notify("success", "All avatars are already synced to local public/avatars/optimized/!");
-      } else {
+      if (uploadedRecords.length > 0) {
+        const batchCreateRes = await fetch("/api/admin/avatars", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "batch_create",
+            items: uploadedRecords,
+          }),
+        });
+
+        if (!batchCreateRes.ok) {
+          const errData = await batchCreateRes.json();
+          throw new Error(errData.error || "Failed to record batch avatars in database");
+        }
+
         notify(
           "success",
-          `Synced ${data.syncedCount} avatar(s) to public/avatars/optimized/ and freed ${(data.freedBytes / 1024).toFixed(1)} KB from Supabase Storage!`
+          `Successfully uploaded ${uploadedRecords.length} avatars into "${finalCategory}" with automatic sequential ordering!`
         );
+
+        batchItems.forEach((it) => safeRevokeUrl(it.previewUrl));
+        setBatchItems([]);
+        setIsBatchModalOpen(false);
+        setSelectedCategory(finalCategory);
+        await fetchAvatars();
+      } else {
+        notify("error", "No avatars were successfully uploaded.");
       }
-      await fetchAvatars();
     } catch (err: any) {
-      console.error("Sync error:", err);
-      notify("error", err.message || "Failed to sync avatars");
+      console.error("Batch upload execution error:", err);
+      notify("error", err.message || "Failed to complete batch upload");
     } finally {
-      setIsSyncing(false);
+      setIsUploadingBatch(false);
+      setBatchProgress({ current: 0, total: 0, percent: 0, statusText: "" });
     }
   };
 
@@ -340,7 +570,7 @@ export function AdminAvatarManager() {
           id: uploadData.id,
           label: formLabel.trim(),
           category: finalCategory,
-          asset_path: uploadData.localPath || uploadData.publicUrl,
+          asset_path: uploadData.publicUrl || uploadData.asset_path || uploadData.localPath,
           is_active: true,
         }),
       });
@@ -476,7 +706,7 @@ export function AdminAvatarManager() {
         }
 
         const uploadData = await uploadRes.json();
-        finalAssetPath = uploadData.localPath || uploadData.publicUrl;
+        finalAssetPath = uploadData.publicUrl || uploadData.asset_path || uploadData.localPath;
       }
 
       // 2. Update record in preset_avatars table
@@ -767,12 +997,12 @@ export function AdminAvatarManager() {
         <div className="p-4 rounded-2xl bg-zinc-900/80 border border-zinc-800/90 shadow-sm backdrop-blur-md">
           <div className="flex items-center space-x-2 text-zinc-400 text-xs font-semibold">
             <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span>Custom Added</span>
+            <span>Cloud CDN</span>
           </div>
           <div className="text-xl sm:text-2xl font-black text-amber-300 mt-1">
-            {stats.customCount}
+            {stats.cloudCount || stats.total}
           </div>
-          <div className="text-[10px] text-zinc-500 mt-0.5">Admin-uploaded avatars</div>
+          <div className="text-[10px] text-zinc-500 mt-0.5">Cloud-native Supabase CDN</div>
         </div>
 
         <div className="p-4 rounded-2xl bg-zinc-900/80 border border-zinc-800/90 shadow-sm backdrop-blur-md">
@@ -813,44 +1043,25 @@ export function AdminAvatarManager() {
 
           {/* Action Buttons */}
           <div className="flex items-center space-x-2 shrink-0">
-            {/* 1-Click Sync Cloud Avatars to Local */}
+            {/* Batch Upload Button */}
             <button
               type="button"
-              onClick={handleSyncCloudAvatars}
-              disabled={isSyncing || refreshing}
-              className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all flex items-center space-x-1.5 cursor-pointer shadow-sm ${
-                stats.cloudCount > 0
-                  ? "bg-amber-500/15 hover:bg-amber-500/25 border-amber-500/35 text-amber-200"
-                  : "bg-zinc-800/80 hover:bg-zinc-700 active:bg-zinc-600 border-zinc-700/60 text-zinc-300 hover:text-white"
-              }`}
-              title="Download cloud avatars to public/avatars/optimized/ and clean up Supabase storage"
+              onClick={() => {
+                setBatchItems([]);
+                setBatchCategory(
+                  selectedCategory !== "All"
+                    ? selectedCategory
+                    : categories.find((c) => c !== "All") || "Study Buddies"
+                );
+                setIsCustomBatchCategory(false);
+                setCustomBatchCategoryInput("");
+                setIsBatchModalOpen(true);
+              }}
+              className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-violet-950/80 hover:bg-violet-900/80 border border-violet-700/60 text-violet-200 text-xs font-bold transition-all shadow-sm cursor-pointer"
+              title="Batch Upload Multiple Avatars"
             >
-              <DownloadCloud
-                className={`w-4 h-4 ${
-                  isSyncing
-                    ? "animate-bounce text-amber-400"
-                    : stats.cloudCount > 0
-                    ? "text-amber-400"
-                    : "text-zinc-400"
-                }`}
-              />
-              <span>{isSyncing ? "Syncing..." : "Sync to Local"}</span>
-              {stats.cloudCount > 0 && !isSyncing && (
-                <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-amber-400 text-zinc-950 font-black">
-                  {stats.cloudCount}
-                </span>
-              )}
-            </button>
-
-            {/* Avatar Sync & Recovery Handbook Help Button */}
-            <button
-              type="button"
-              onClick={() => setIsSyncGuideOpen(true)}
-              className="p-2 rounded-xl bg-zinc-800/80 hover:bg-zinc-700 active:bg-zinc-600 border border-zinc-700/60 text-zinc-400 hover:text-violet-300 transition-all touch-manipulation cursor-pointer"
-              title="Avatar Sync & Disaster Recovery Guide"
-              aria-label="Avatar Sync & Disaster Recovery Guide"
-            >
-              <HelpCircle className="w-4 h-4 text-violet-400" />
+              <UploadCloud className="w-4 h-4 text-violet-400" />
+              <span>Batch Upload</span>
             </button>
 
             <button
@@ -1516,6 +1727,284 @@ export function AdminAvatarManager() {
         )}
       </Modal>
 
+      {/* 5. BATCH UPLOAD MODAL */}
+      <Modal
+        isOpen={isBatchModalOpen}
+        onClose={() => {
+          if (isUploadingBatch || isProcessingBatch) return;
+          batchItems.forEach((it) => safeRevokeUrl(it.previewUrl));
+          setBatchItems([]);
+          setIsBatchModalOpen(false);
+        }}
+        title="Batch Upload Preset Avatars"
+        subtitle="Upload multiple avatars simultaneously with automated WebP compression, automatic title casing, and sequential display ordering."
+      >
+        <div className="space-y-4 pt-1">
+          {/* Target Category Selector */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-zinc-300">
+                Destination Category
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCustomBatchCategory(!isCustomBatchCategory);
+                  if (!isCustomBatchCategory) setCustomBatchCategoryInput("");
+                }}
+                className="text-[11px] font-semibold text-violet-400 hover:text-violet-300"
+              >
+                {isCustomBatchCategory ? "Choose Existing" : "+ New Category"}
+              </button>
+            </div>
+
+            {isCustomBatchCategory ? (
+              <input
+                type="text"
+                value={customBatchCategoryInput}
+                onChange={(e) => setCustomBatchCategoryInput(e.target.value)}
+                placeholder="e.g., Cyberpunk Characters, Cute Pets..."
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-violet-500"
+              />
+            ) : (
+              <select
+                value={batchCategory}
+                onChange={(e) => setBatchCategory(e.target.value)}
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-100 focus:outline-none focus:border-violet-500"
+              >
+                {categories
+                  .filter((c) => c !== "All")
+                  .map((cat) => (
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
+                  ))}
+              </select>
+            )}
+          </div>
+
+          {/* Multi-File Dropzone */}
+          <div
+            onDragOver={handleBatchDragOver}
+            onDragLeave={handleBatchDragLeave}
+            onDrop={handleBatchDrop}
+            onClick={() => !isProcessingBatch && !isUploadingBatch && batchFileInputRef.current?.click()}
+            className={`p-5 sm:p-6 rounded-2xl border-2 border-dashed transition-all cursor-pointer flex flex-col items-center justify-center space-y-2 text-center ${
+              isBatchDragging
+                ? "border-violet-500 bg-violet-500/10 scale-[1.01]"
+                : "border-zinc-700/80 hover:border-violet-500/60 bg-zinc-950/60 hover:bg-zinc-950/90"
+            }`}
+          >
+            <input
+              ref={batchFileInputRef}
+              type="file"
+              multiple
+              accept="image/png,image/jpeg,image/jpg,image/webp,image/svg+xml,image/avif"
+              onChange={(e) => {
+                if (e.target.files && e.target.files.length > 0) {
+                  handleBatchFilesSelected(e.target.files);
+                }
+              }}
+              className="hidden"
+            />
+
+            <div className="p-2.5 rounded-xl bg-violet-600/15 border border-violet-500/30 text-violet-300">
+              <UploadCloud className="w-6 h-6" />
+            </div>
+
+            <div>
+              <p className="text-xs sm:text-sm font-bold text-zinc-200">
+                Drag and drop multiple images here, or{" "}
+                <span className="text-violet-400 underline decoration-violet-500/40">browse files</span>
+              </p>
+              <p className="text-[10px] sm:text-[11px] text-zinc-500 mt-0.5">
+                PNG, JPG, WebP, SVG, AVIF. Each image is converted to 256×256 WebP on pure white background (#FFFFFF).
+              </p>
+            </div>
+          </div>
+
+          {/* Processing Indicator */}
+          {isProcessingBatch && (
+            <div className="p-3 rounded-xl bg-violet-950/40 border border-violet-800/60 space-y-2 animate-in fade-in">
+              <div className="flex items-center justify-between text-xs font-semibold text-violet-300">
+                <span className="flex items-center space-x-2">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>{batchProgress.statusText}</span>
+                </span>
+                <span>{batchProgress.percent}%</span>
+              </div>
+              <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-violet-500 transition-all duration-200"
+                  style={{ width: `${batchProgress.percent}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Upload Progress Indicator */}
+          {isUploadingBatch && (
+            <div className="p-3 rounded-xl bg-violet-950/40 border border-violet-800/60 space-y-2 animate-in fade-in">
+              <div className="flex items-center justify-between text-xs font-semibold text-violet-300">
+                <span className="flex items-center space-x-2">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-violet-400" />
+                  <span>{batchProgress.statusText}</span>
+                </span>
+                <span className="font-mono">{batchProgress.percent}%</span>
+              </div>
+              <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-emerald-500 transition-all duration-200"
+                  style={{ width: `${batchProgress.percent}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Batch Items Queue Review List */}
+          {batchItems.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs font-semibold text-zinc-300 px-1">
+                <span>
+                  Queued Avatars ({batchItems.length})
+                </span>
+                <button
+                  type="button"
+                  disabled={isUploadingBatch || isProcessingBatch}
+                  onClick={() => {
+                    batchItems.forEach((it) => safeRevokeUrl(it.previewUrl));
+                    setBatchItems([]);
+                  }}
+                  className="text-[11px] text-zinc-500 hover:text-rose-400 transition-colors cursor-pointer"
+                >
+                  Clear Queue
+                </button>
+              </div>
+
+              <div className="max-h-60 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                {batchItems.map((item, idx) => (
+                  <div
+                    key={item.id}
+                    className="flex items-center space-x-3 p-2.5 rounded-xl bg-zinc-950/70 border border-zinc-800/80 hover:border-zinc-700/80 transition-all"
+                  >
+                    {/* Index & Circular Preview */}
+                    <div className="flex items-center space-x-2 shrink-0">
+                      <span className="text-[10px] font-mono text-zinc-500 w-4 text-right">
+                        {idx + 1}
+                      </span>
+                      <div className="w-10 h-10 rounded-full bg-white border border-zinc-700 p-0.5 overflow-hidden shrink-0 shadow-xs">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={item.previewUrl}
+                          alt={item.label}
+                          className="w-full h-full object-cover rounded-full bg-white block"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Editable Title Label */}
+                    <div className="flex-1 min-w-0">
+                      <input
+                        type="text"
+                        value={item.label}
+                        disabled={isUploadingBatch}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setBatchItems((prev) =>
+                            prev.map((it) => (it.id === item.id ? { ...it, label: val } : it))
+                          );
+                        }}
+                        placeholder="Avatar label..."
+                        className="w-full px-2 py-1 bg-zinc-900 border border-zinc-800 rounded-lg text-xs font-medium text-zinc-200 focus:outline-none focus:border-violet-500"
+                      />
+                      <div className="flex items-center space-x-2 mt-1 text-[10px] text-zinc-500">
+                        <span>Original: {(item.originalSize / 1024).toFixed(0)} KB</span>
+                        {item.optimizedSize && (
+                          <>
+                            <span>•</span>
+                            <span className="text-emerald-400 font-semibold">
+                              WebP: {(item.optimizedSize / 1024).toFixed(0)} KB (-
+                              {Math.max(
+                                0,
+                                Math.round(
+                                  ((item.originalSize - item.optimizedSize) / item.originalSize) * 100
+                                )
+                              )}
+                              %)
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Status Badge & Remove Button */}
+                    <div className="flex items-center space-x-1.5 shrink-0">
+                      {item.status === "uploading" && (
+                        <Loader2 className="w-4 h-4 text-violet-400 animate-spin" />
+                      )}
+                      {item.status === "complete" && (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                      )}
+                      {item.status === "error" && (
+                        <span title={item.errorMessage}>
+                          <AlertCircle className="w-4 h-4 text-rose-400" />
+                        </span>
+                      )}
+                      {!isUploadingBatch && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveBatchItem(item.id)}
+                          className="p-1 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                          title="Remove item"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Informational Footer Note */}
+              <div className="p-2.5 rounded-xl bg-zinc-950/50 border border-zinc-800/60 text-[11px] text-zinc-400 flex items-center space-x-2">
+                <Info className="w-4 h-4 text-violet-400 shrink-0" />
+                <span>
+                  Automatic ordering: Avatars will be sequentially ordered starting right after the highest existing display order in the system.
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="flex items-center justify-end space-x-2.5 pt-3 border-t border-zinc-800">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={isUploadingBatch || isProcessingBatch}
+              onClick={() => {
+                batchItems.forEach((it) => safeRevokeUrl(it.previewUrl));
+                setBatchItems([]);
+                setIsBatchModalOpen(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              isLoading={isUploadingBatch || isProcessingBatch}
+              disabled={batchItems.length === 0 || isUploadingBatch || isProcessingBatch}
+              onClick={handleExecuteBatchUpload}
+            >
+              <UploadCloud className="w-3.5 h-3.5 mr-1.5" />
+              Upload {batchItems.length > 0 ? `${batchItems.length} Avatars` : "Batch"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
       {/* 6. DELETE CONFIRMATION MODAL */}
       <Modal
         isOpen={!!deletingAvatar}
@@ -1727,15 +2216,6 @@ export function AdminAvatarManager() {
           );
         })()}
       </Modal>
-
-      {/* 8. AVATAR SYNC & DISASTER RECOVERY HANDBOOK MODAL */}
-      <AvatarSyncGuideModal
-        isOpen={isSyncGuideOpen}
-        onClose={() => setIsSyncGuideOpen(false)}
-        pendingCloudCount={stats.cloudCount}
-        onTriggerSync={handleSyncCloudAvatars}
-        isSyncing={isSyncing}
-      />
     </div>
   );
 }

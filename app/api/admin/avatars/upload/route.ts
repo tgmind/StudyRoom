@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isAdminEmail, isAdminUserId } from "@/lib/admin";
@@ -118,25 +116,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Failed to resolve public URL" }, { status: 500 });
     }
 
-    // Immediately mirror to local public/avatars/optimized directory if writable (0ms local availability)
-    const localAssetPath = `/avatars/optimized/${avatarId}.${ext}`;
-    try {
-      const localDir = path.resolve(process.cwd(), "public", "avatars", "optimized");
-      if (!fs.existsSync(localDir)) {
-        fs.mkdirSync(localDir, { recursive: true });
-      }
-      const localDiskPath = path.join(localDir, `${avatarId}.${ext}`);
-      fs.writeFileSync(localDiskPath, fileBuffer);
-    } catch (diskErr) {
-      // In read-only environments (e.g. serverless Vercel), storage serves as the authority
-      console.warn("Could not write directly to local disk (expected in serverless):", diskErr);
-    }
-
     return NextResponse.json({
       success: true,
       id: avatarId,
       publicUrl: urlData.publicUrl,
-      localPath: localAssetPath,
+      asset_path: urlData.publicUrl,
       filePath,
       sizeBytes: fileBuffer.length,
     });

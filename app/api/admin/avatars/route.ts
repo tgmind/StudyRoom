@@ -3,7 +3,6 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isAdminEmail, isAdminUserId } from "@/lib/admin";
 import { getAllAvatars, AVATAR_CATEGORIES } from "@/lib/avatars/manifest";
-import { syncAvatarsFromCloud } from "@/lib/avatars/avatarSyncEngine";
 
 /**
  * Server-Side Admin Verification
@@ -443,19 +442,57 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Re-sync manifests immediately so manifest.json & manifest.ts cleanly drop the deleted category
-      try {
-        await syncAvatarsFromCloud({ client });
-      } catch (syncErr) {
-        console.warn("Manifest re-sync warning upon category deletion:", syncErr);
-      }
-
       return NextResponse.json({
         success: true,
         action: resultAction,
         category: trimmedCategory,
         relocatedTo: targetCategory,
         count: affectedCount,
+      });
+    }
+
+    // 6. BATCH CREATE PRESET AVATARS (WITH AUTOMATIC ORDERING)
+    if (action === "batch_create") {
+      const { items } = body;
+      if (!Array.isArray(items) || items.length === 0) {
+        return NextResponse.json({ error: "Missing or empty items array" }, { status: 400 });
+      }
+
+      // Query current max display_order for automatic sequential ordering
+      const { data: maxRow } = await client
+        .from("preset_avatars")
+        .select("display_order")
+        .order("display_order", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      let nextOrder = (maxRow?.display_order || 0) + 1;
+
+      const recordsToInsert = items.map((item: any, idx: number) => ({
+        id: item.id.trim(),
+        label: item.label.trim(),
+        category: item.category.trim(),
+        asset_path: item.asset_path.trim(),
+        display_order: typeof item.display_order === "number" ? item.display_order : nextOrder + idx,
+        is_active: item.is_active !== false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }));
+
+      const { data, error } = await client
+        .from("preset_avatars")
+        .insert(recordsToInsert)
+        .select();
+
+      if (error) {
+        console.error("Batch create preset avatars error:", error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+
+      return NextResponse.json({
+        success: true,
+        count: data?.length || 0,
+        avatars: data,
       });
     }
 
