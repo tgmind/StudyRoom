@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isAdminEmail, isAdminUserId } from "@/lib/admin";
 import { getAllAvatars, AVATAR_CATEGORIES } from "@/lib/avatars/manifest";
+import { syncAvatarsFromCloud } from "@/lib/avatars/avatarSyncEngine";
 
 /**
  * Server-Side Admin Verification
@@ -337,6 +338,125 @@ export async function POST(request: NextRequest) {
 
       await Promise.allSettled(updates);
       return NextResponse.json({ success: true });
+    }
+
+    // 5. DELETE CATEGORY (WITH OPTIONAL RELOCATION OR BULK REMOVAL)
+    if (action === "delete_category") {
+      const { category, relocateToCategory, deleteAvatars } = body;
+
+      if (!category || typeof category !== "string" || category.trim().toLowerCase() === "all") {
+        return NextResponse.json({ error: "Invalid category to delete" }, { status: 400 });
+      }
+
+      const trimmedCategory = category.trim();
+      const targetCategory = typeof relocateToCategory === "string" ? relocateToCategory.trim() : null;
+
+      // Try calling authoritative PostgreSQL RPC function first
+      const { data: rpcData, error: rpcError } = await client.rpc(
+        "rpc_admin_delete_avatar_category",
+        {
+          p_category: trimmedCategory,
+          p_relocate_to_category: targetCategory,
+          p_delete_avatars: deleteAvatars === true,
+        }
+      );
+
+      let resultAction = "";
+      let affectedCount = 0;
+      let deletedIds: string[] = [];
+      let assetPaths: string[] = [];
+
+      if (!rpcError && rpcData?.success) {
+        resultAction = rpcData.action;
+        affectedCount = rpcData.count || 0;
+        deletedIds = rpcData.deleted_ids || [];
+        assetPaths = rpcData.asset_paths || [];
+      } else {
+        // Fallback to direct client mutations if RPC is bypassed or fails
+        if (targetCategory && targetCategory.toLowerCase() !== trimmedCategory.toLowerCase()) {
+          const { data: updated, error: updateError } = await client
+            .from("preset_avatars")
+            .update({
+              category: targetCategory,
+              updated_at: new Date().toISOString(),
+            })
+            .ilike("category", trimmedCategory)
+            .select("id");
+
+          if (updateError) {
+            return NextResponse.json({ error: updateError.message }, { status: 500 });
+          }
+          resultAction = "relocate";
+          affectedCount = updated?.length || 0;
+        } else if (deleteAvatars === true) {
+          const { data: existing, error: fetchErr } = await client
+            .from("preset_avatars")
+            .select("id, asset_path")
+            .ilike("category", trimmedCategory);
+
+          if (fetchErr) {
+            return NextResponse.json({ error: fetchErr.message }, { status: 500 });
+          }
+
+          deletedIds = (existing || []).map((e: any) => e.id);
+          assetPaths = (existing || []).map((e: any) => e.asset_path);
+
+          const { error: delErr } = await client
+            .from("preset_avatars")
+            .delete()
+            .ilike("category", trimmedCategory);
+
+          if (delErr) {
+            return NextResponse.json({ error: delErr.message }, { status: 500 });
+          }
+
+          resultAction = "delete_avatars";
+          affectedCount = deletedIds.length;
+        } else {
+          return NextResponse.json(
+            { error: "Must specify either relocateToCategory or deleteAvatars: true" },
+            { status: 400 }
+          );
+        }
+      }
+
+      // If avatars were permanently deleted, clean up cloud storage objects
+      if (resultAction === "delete_avatars" && deletedIds.length > 0) {
+        const storagePathsToDelete: string[] = [];
+        for (let i = 0; i < deletedIds.length; i++) {
+          const id = deletedIds[i];
+          const path = assetPaths[i] || "";
+          if (path.includes("/avatars/presets/")) {
+            const match = path.match(/presets\/[^?#]+/);
+            if (match && match[0]) storagePathsToDelete.push(match[0]);
+          } else {
+            storagePathsToDelete.push(`presets/${id}.webp`);
+          }
+        }
+
+        if (storagePathsToDelete.length > 0) {
+          try {
+            await client.storage.from("avatars").remove(storagePathsToDelete);
+          } catch (stErr) {
+            console.warn("Storage removal warning:", stErr);
+          }
+        }
+      }
+
+      // Re-sync manifests immediately so manifest.json & manifest.ts cleanly drop the deleted category
+      try {
+        await syncAvatarsFromCloud({ client });
+      } catch (syncErr) {
+        console.warn("Manifest re-sync warning upon category deletion:", syncErr);
+      }
+
+      return NextResponse.json({
+        success: true,
+        action: resultAction,
+        category: trimmedCategory,
+        relocatedTo: targetCategory,
+        count: affectedCount,
+      });
     }
 
     return NextResponse.json({ error: `Unknown action: "${action}"` }, { status: 400 });

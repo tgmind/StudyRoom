@@ -129,6 +129,20 @@ describe("AdminAvatarManager Component", () => {
             json: () => Promise.resolve({ success: true, deletedId: body.id }),
           });
         }
+        if (body.action === "delete_category") {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                success: true,
+                action: body.relocateToCategory ? "relocate" : "delete_avatars",
+                count: 1,
+                category: body.category,
+                relocatedTo: body.relocateToCategory,
+              }),
+          });
+        }
       }
 
       return Promise.resolve({
@@ -344,5 +358,70 @@ describe("AdminAvatarManager Component", () => {
     expect(screen.getByText(/Why Sync from Cloud to Local/i)).toBeDefined();
     expect(screen.getAllByText("npm run avatars:sync").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("npm install")).toBeDefined();
+  });
+
+  it("opens Delete Category modal and relocates avatars to another category upon confirmation", async () => {
+    render(<AdminAvatarManager />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Delete category Study Buddies/i })).toBeDefined();
+    });
+
+    const deleteCatBtn = screen.getByRole("button", { name: /Delete category Study Buddies/i });
+    fireEvent.click(deleteCatBtn);
+
+    // Modal should open
+    await waitFor(() => {
+      expect(screen.getByText('Delete Category: "Study Buddies"')).toBeDefined();
+    });
+
+    expect(screen.getByText(/Relocate avatars to another category/i)).toBeDefined();
+    expect(screen.getByText(/Permanently delete all/i)).toBeDefined();
+
+    // Confirm button
+    const confirmBtn = screen.getByRole("button", { name: /Relocate & Delete/i });
+    fireEvent.click(confirmBtn);
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        "/api/admin/avatars",
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining('"action":"delete_category"'),
+        })
+      );
+    });
+  });
+
+  it("opens Delete Category modal and permanently deletes avatars when delete option is selected", async () => {
+    render(<AdminAvatarManager />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Delete category Playful Icons/i })).toBeDefined();
+    });
+
+    const deleteCatBtn = screen.getByRole("button", { name: /Delete category Playful Icons/i });
+    fireEvent.click(deleteCatBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText('Delete Category: "Playful Icons"')).toBeDefined();
+    });
+
+    // Select permanent delete radio
+    const radioDelete = screen.getByDisplayValue("delete");
+    fireEvent.click(radioDelete);
+
+    const confirmBtn = screen.getByRole("button", { name: /Permanently Delete Category/i });
+    fireEvent.click(confirmBtn);
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        "/api/admin/avatars",
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining('"deleteAvatars":true'),
+        })
+      );
+    });
   });
 });

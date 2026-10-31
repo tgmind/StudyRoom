@@ -55,9 +55,9 @@ const safeRevokeUrl = (url?: string | null) => {
 };
 
 /**
- * Resilient, self-healing Avatar thumbnail component with automatic dual-resolution fallback.
- * Attempts primary asset_path (with cache buster), then fails over to Supabase Storage CDN,
- * and if completely unreachable, renders a stylized initial badge instead of a broken image alt.
+ * Resilient, self-healing Avatar thumbnail component with automatic multi-tier fallback.
+ * Attempts local optimized asset, fails over to Supabase Storage CDN (or vice versa),
+ * and if completely unreachable across all sources, renders a stylized initial badge.
  */
 function AdminAvatarThumbnail({
   avatar,
@@ -67,24 +67,32 @@ function AdminAvatarThumbnail({
   className?: string;
 }) {
   const [hasError, setHasError] = useState(false);
-  const [retryWithCloud, setRetryWithCloud] = useState(false);
+  const [attempt, setAttempt] = useState<number>(0);
 
-  const primarySrc = useMemo(() => {
-    const raw = avatar.asset_path || `/avatars/optimized/${avatar.id}.webp`;
-    const buster = avatar.updated_at ? `v=${new Date(avatar.updated_at).getTime()}` : "";
-    if (!buster) return raw;
-    const sep = raw.includes("?") ? "&" : "?";
-    return `${raw}${sep}${buster}`;
-  }, [avatar.asset_path, avatar.id, avatar.updated_at]);
+  useEffect(() => {
+    setHasError(false);
+    setAttempt(0);
+  }, [avatar.id, avatar.asset_path, avatar.updated_at]);
 
-  const cloudFallbackSrc = useMemo(() => {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://mshudehtxhsmnojirjls.supabase.co";
-    return `${supabaseUrl}/storage/v1/object/public/avatars/presets/${avatar.id}.webp`;
-  }, [avatar.id]);
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://mshudehtxhsmnojirjls.supabase.co";
+  const localUrl = `/avatars/optimized/${avatar.id}.webp`;
+  const cloudUrl = `${supabaseUrl}/storage/v1/object/public/avatars/presets/${avatar.id}.webp`;
 
-  const currentSrc = retryWithCloud ? cloudFallbackSrc : primarySrc;
+  const candidateUrls = useMemo(() => {
+    const list: string[] = [];
+    if (avatar.asset_path) {
+      list.push(avatar.asset_path);
+    }
+    if (!list.includes(localUrl)) {
+      list.push(localUrl);
+    }
+    if (!list.includes(cloudUrl)) {
+      list.push(cloudUrl);
+    }
+    return list;
+  }, [avatar.asset_path, localUrl, cloudUrl]);
 
-  if (hasError) {
+  if (hasError || attempt >= candidateUrls.length) {
     const initial = avatar.label?.trim()?.charAt(0)?.toUpperCase() || "A";
     return (
       <div className="w-full h-full rounded-full bg-gradient-to-br from-violet-600 via-purple-600 to-indigo-700 flex items-center justify-center text-white font-black text-xs select-none shadow-inner">
@@ -93,16 +101,18 @@ function AdminAvatarThumbnail({
     );
   }
 
+  const currentSrc = candidateUrls[attempt];
+
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      key={currentSrc}
       src={currentSrc}
       alt={avatar.label}
       loading="lazy"
+      decoding="async"
       onError={() => {
-        if (!retryWithCloud && !avatar.asset_path.startsWith("http")) {
-          setRetryWithCloud(true);
+        if (attempt + 1 < candidateUrls.length) {
+          setAttempt((prev) => prev + 1);
         } else {
           setHasError(true);
         }
@@ -151,9 +161,15 @@ export function AdminAvatarManager() {
   const [isEditDragging, setIsEditDragging] = useState(false);
   const editFileInputRef = useRef<HTMLInputElement>(null);
 
-  // Delete Modal State
+  // Delete Avatar Modal State
   const [deletingAvatar, setDeletingAvatar] = useState<PresetAvatar | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Delete Category Modal State
+  const [categoryToDelete, setCategoryToDelete] = useState<string | null>(null);
+  const [relocationMode, setRelocationMode] = useState<"relocate" | "delete">("relocate");
+  const [targetCategory, setTargetCategory] = useState<string>("");
+  const [isDeletingCategory, setIsDeletingCategory] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -564,6 +580,80 @@ export function AdminAvatarManager() {
     }
   };
 
+  // Open Delete Category Modal
+  const openDeleteCategoryModal = useCallback(
+    (cat: string) => {
+      if (!cat || cat === "All") return;
+      setCategoryToDelete(cat);
+      setRelocationMode("relocate");
+      const otherCats = categories.filter((c) => c !== "All" && c.toLowerCase() !== cat.toLowerCase());
+      setTargetCategory(otherCats[0] || "");
+    },
+    [categories]
+  );
+
+  // Confirm Delete Category (with Relocation or Permanent Removal)
+  const handleConfirmDeleteCategory = async () => {
+    if (!categoryToDelete) return;
+    setIsDeletingCategory(true);
+
+    try {
+      const res = await fetch("/api/admin/avatars", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "delete_category",
+          category: categoryToDelete,
+          relocateToCategory: relocationMode === "relocate" ? targetCategory : undefined,
+          deleteAvatars: relocationMode === "delete",
+        }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || "Failed to delete category");
+      }
+
+      const data = await res.json();
+
+      if (relocationMode === "relocate") {
+        setAvatars((prev) =>
+          prev.map((a) =>
+            a.category.toLowerCase() === categoryToDelete.toLowerCase()
+              ? { ...a, category: targetCategory }
+              : a
+          )
+        );
+        notify(
+          "success",
+          `Category "${categoryToDelete}" deleted. Relocated ${data.count || 0} avatar(s) to "${targetCategory}".`
+        );
+      } else {
+        setAvatars((prev) =>
+          prev.filter(
+            (a) => a.category.toLowerCase() !== categoryToDelete.toLowerCase()
+          )
+        );
+        notify(
+          "success",
+          `Category "${categoryToDelete}" and ${data.count || 0} avatar(s) permanently deleted.`
+        );
+      }
+
+      setCategories((prev) => prev.filter((c) => c.toLowerCase() !== categoryToDelete.toLowerCase()));
+      if (selectedCategory.toLowerCase() === categoryToDelete.toLowerCase()) {
+        setSelectedCategory("All");
+      }
+      setCategoryToDelete(null);
+      await fetchAvatars();
+    } catch (err: any) {
+      console.error("Delete category error:", err);
+      notify("error", err.message || "Failed to delete category");
+    } finally {
+      setIsDeletingCategory(false);
+    }
+  };
+
   // Filtered and Sorted Avatars
   const filteredAvatars = useMemo(() => {
     return avatars
@@ -806,19 +896,38 @@ export function AdminAvatarManager() {
             </button>
             {categories.filter((c) => c !== "All").map((cat) => {
               const count = avatars.filter((a) => a.category === cat).length;
+              const isSelected = selectedCategory === cat;
               return (
-                <button
+                <div
                   key={cat}
-                  type="button"
-                  onClick={() => setSelectedCategory(cat)}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-                    selectedCategory === cat
+                  className={`inline-flex items-center space-x-1 pl-2.5 pr-1.5 py-1 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                    isSelected
                       ? "bg-violet-600 text-white shadow-xs"
                       : "bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300"
                   }`}
                 >
-                  {cat} ({count})
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCategory(cat)}
+                    className="cursor-pointer"
+                  >
+                    {cat} ({count})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openDeleteCategoryModal(cat);
+                    }}
+                    title={`Delete category "${cat}"`}
+                    aria-label={`Delete category ${cat}`}
+                    className={`p-0.5 rounded opacity-65 hover:opacity-100 hover:bg-rose-500/30 text-rose-300 transition-all cursor-pointer ${
+                      isSelected ? "text-violet-100 hover:text-white" : ""
+                    }`}
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
               );
             })}
           </div>
@@ -849,6 +958,29 @@ export function AdminAvatarManager() {
             </select>
           </div>
         </div>
+
+        {/* Selected Category Action Banner (Active when specific category is filtered) */}
+        {selectedCategory !== "All" && (
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-3 py-2 rounded-xl bg-violet-950/25 border border-violet-800/35 text-xs animate-in fade-in duration-150">
+            <div className="flex items-center space-x-2">
+              <Layers className="w-4 h-4 text-violet-400 shrink-0" />
+              <span className="text-zinc-300">
+                Viewing category: <strong className="text-violet-200 font-bold">{selectedCategory}</strong>
+                <span className="text-zinc-500 ml-1.5 font-mono">
+                  ({avatars.filter((a) => a.category === selectedCategory).length} avatars)
+                </span>
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => openDeleteCategoryModal(selectedCategory)}
+              className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/35 text-rose-300 hover:text-rose-200 text-xs font-bold transition-all cursor-pointer self-start sm:self-auto"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete Category &ldquo;{selectedCategory}&rdquo;</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* 3. AVATAR GRID GALLERY */}
@@ -1442,7 +1574,161 @@ export function AdminAvatarManager() {
         )}
       </Modal>
 
-      {/* 7. AVATAR SYNC & DISASTER RECOVERY HANDBOOK MODAL */}
+      {/* 7. DELETE CATEGORY MODAL WITH RELOCATION CHOICE */}
+      <Modal
+        isOpen={Boolean(categoryToDelete)}
+        onClose={() => !isDeletingCategory && setCategoryToDelete(null)}
+        title={`Delete Category: "${categoryToDelete}"`}
+        subtitle="Manage category removal and choose how existing avatars are handled"
+      >
+        {categoryToDelete && (() => {
+          const categoryAvatars = avatars.filter(
+            (a) => a.category.toLowerCase() === categoryToDelete.toLowerCase()
+          );
+          const count = categoryAvatars.length;
+          const otherCategories = categories.filter(
+            (c) => c !== "All" && c.toLowerCase() !== categoryToDelete.toLowerCase()
+          );
+
+          return (
+            <div className="space-y-4 pt-1">
+              <div className="p-3.5 rounded-xl bg-zinc-950/70 border border-zinc-800/80 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <Layers className="w-4 h-4 text-violet-400" />
+                    <span className="text-xs font-bold text-zinc-200">{categoryToDelete}</span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-md text-[11px] font-mono bg-violet-950/60 text-violet-300 border border-violet-800/50">
+                    {count} {count === 1 ? "avatar" : "avatars"}
+                  </span>
+                </div>
+                <p className="text-[11.5px] text-zinc-400">
+                  {count === 0
+                    ? "This category currently contains no avatars. Deleting it will permanently remove it from the system."
+                    : `This category currently contains ${count} avatar${count === 1 ? "" : "s"}. Choose whether to relocate these avatars to another category or permanently delete them.`}
+                </p>
+              </div>
+
+              {count > 0 && (
+                <div className="space-y-2.5">
+                  <label className="text-xs font-semibold text-zinc-300 block">
+                    Choose what to do with the {count} avatar{count === 1 ? "" : "s"}:
+                  </label>
+
+                  {/* Option 1: Relocate */}
+                  <label
+                    className={`flex items-start space-x-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                      relocationMode === "relocate"
+                        ? "bg-violet-950/30 border-violet-500/60 shadow-xs"
+                        : "bg-zinc-900/60 border-zinc-800/80 hover:border-zinc-700"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="relocationMode"
+                      value="relocate"
+                      checked={relocationMode === "relocate"}
+                      onChange={() => setRelocationMode("relocate")}
+                      className="mt-0.5 accent-violet-600"
+                    />
+                    <div className="space-y-1.5 flex-1">
+                      <span className="text-xs font-bold text-zinc-100 block">
+                        Relocate avatars to another category (Recommended)
+                      </span>
+                      <p className="text-[11px] text-zinc-400">
+                        Preserve all avatars and move them to an existing category.
+                      </p>
+                      {relocationMode === "relocate" && (
+                        <div className="pt-1">
+                          <label className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider block mb-1">
+                            Destination Category:
+                          </label>
+                          {otherCategories.length > 0 ? (
+                            <select
+                              value={targetCategory}
+                              onChange={(e) => setTargetCategory(e.target.value)}
+                              aria-label="Destination Category"
+                              className="w-full px-2.5 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg text-xs text-zinc-200 focus:outline-none focus:border-violet-500"
+                            >
+                              {otherCategories.map((cat) => (
+                                <option key={cat} value={cat}>
+                                  {cat}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <input
+                              type="text"
+                              value={targetCategory}
+                              onChange={(e) => setTargetCategory(e.target.value)}
+                              placeholder="Type destination category name..."
+                              aria-label="Destination Category"
+                              className="w-full px-2.5 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg text-xs text-zinc-200 focus:outline-none focus:border-violet-500"
+                            />
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </label>
+
+                  {/* Option 2: Permanently Delete */}
+                  <label
+                    className={`flex items-start space-x-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                      relocationMode === "delete"
+                        ? "bg-rose-950/30 border-rose-500/60 shadow-xs"
+                        : "bg-zinc-900/60 border-zinc-800/80 hover:border-zinc-700"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="relocationMode"
+                      value="delete"
+                      checked={relocationMode === "delete"}
+                      onChange={() => setRelocationMode("delete")}
+                      className="mt-0.5 accent-rose-600"
+                    />
+                    <div className="space-y-1 flex-1">
+                      <span className="text-xs font-bold text-rose-300 block">
+                        Permanently delete all {count} avatar{count === 1 ? "" : "s"}
+                      </span>
+                      <p className="text-[11px] text-zinc-400">
+                        Permanently erases all {count} avatar{count === 1 ? "" : "s"} in this category from the database, manifests, and cloud storage.
+                      </p>
+                    </div>
+                  </label>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end space-x-2.5 pt-3 border-t border-zinc-800">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={isDeletingCategory}
+                  onClick={() => setCategoryToDelete(null)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  variant="danger"
+                  size="sm"
+                  isLoading={isDeletingCategory}
+                  onClick={handleConfirmDeleteCategory}
+                >
+                  {count === 0
+                    ? "Delete Empty Category"
+                    : relocationMode === "relocate"
+                    ? `Relocate & Delete "${categoryToDelete}"`
+                    : `Permanently Delete Category & ${count} Avatars`}
+                </Button>
+              </div>
+            </div>
+          );
+        })()}
+      </Modal>
+
+      {/* 8. AVATAR SYNC & DISASTER RECOVERY HANDBOOK MODAL */}
       <AvatarSyncGuideModal
         isOpen={isSyncGuideOpen}
         onClose={() => setIsSyncGuideOpen(false)}

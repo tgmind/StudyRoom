@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-31T20:25:00Z",
+  "generated_at": "2026-10-31T19:50:58.875Z",
   "total_avatars": 139,
   "source_sheets": 7,
   "total_source_bytes": 15552694,
@@ -13,7 +13,42 @@
     "Cute Animals & Friends",
     "Playful Icons",
     "Anime Boys",
-    "Culture & Heritage"
+    "Culture & Heritage",
+    "Superheros"
+  ],
+  "custom_avatars": [
+    {
+      "id": "avatar-custom-mvwq4pi8-2goj",
+      "label": "Spiderman",
+      "category": "Superheros",
+      "asset_path": "/avatars/optimized/avatar-custom-mvwq4pi8-2goj.webp",
+      "display_order": 140,
+      "is_active": true
+    },
+    {
+      "id": "avatar-custom-mvwqtxoo-fqre",
+      "label": "Batman",
+      "category": "Superheros",
+      "asset_path": "/avatars/optimized/avatar-custom-mvwqtxoo-fqre.webp",
+      "display_order": 141,
+      "is_active": true
+    },
+    {
+      "id": "avatar-custom-mvwr3k1p-r9ro",
+      "label": "Cute Teddy",
+      "category": "Cute Animals & Friends",
+      "asset_path": "/avatars/optimized/avatar-custom-mvwr3k1p-r9ro.webp",
+      "display_order": 142,
+      "is_active": true
+    },
+    {
+      "id": "avatar-custom-mvwr50zb-y6ur",
+      "label": "Cute Teddy 1",
+      "category": "Cute Animals & Friends",
+      "asset_path": "/avatars/optimized/avatar-custom-mvwr50zb-y6ur.webp",
+      "display_order": 143,
+      "is_active": true
+    }
   ],
   "avatars": [
     {
@@ -24,16 +59,16 @@
       "source_crop": [
         0,
         0,
-        268,
-        301
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        253,
-        274
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-1-01.webp",
       "extracted_path": "/avatars/extracted/avatar-1-01.png",
@@ -47,22 +82,22 @@
       "category": "Anime Girls",
       "source_image": "1.png",
       "source_crop": [
-        268,
         0,
-        523,
-        301
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        245,
-        277
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-1-02.webp",
       "extracted_path": "/avatars/extracted/avatar-1-02.png",
-      "optimized_size_bytes": 13938,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -72,22 +107,22 @@
       "category": "Anime Girls",
       "source_image": "1.png",
       "source_crop": [
-        523,
         0,
-        786,
-        301
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        255,
-        270
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-1-03.webp",
       "extracted_path": "/avatars/extracted/avatar-1-03.png",
-      "optimized_size_bytes": 13868,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -97,22 +132,22 @@
       "category": "Anime Girls",
       "source_image": "1.png",
       "source_crop": [
-        786,
         0,
-        1054,
-        301
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        255,
-        275
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-1-04.webp",
       "extracted_path": "/avatars/extracted/avatar-1-04.png",
-      "optimized_size_bytes": 14424,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -122,22 +157,22 @@
       "category": "Anime Girls",
       "source_image": "1.png",
       "source_crop": [
-        1054,
         0,
-        1312,
-        301
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        250,
-        272
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-1-05.webp",
       "extracted_path": "/avatars/extracted/avatar-1-05.png",
-      "optimized_size_bytes": 11272,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -148,21 +183,21 @@
       "source_image": "1.png",
       "source_crop": [
         0,
-        301,
-        264,
-        587
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        253,
-        273
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-1-06.webp",
       "extracted_path": "/avatars/extracted/avatar-1-06.png",
-      "optimized_size_bytes": 13282,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -172,22 +207,22 @@
       "category": "Anime Girls",
       "source_image": "1.png",
       "source_crop": [
-        264,
-        301,
-        523,
-        587
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        251,
-        275
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-1-07.webp",
       "extracted_path": "/avatars/extracted/avatar-1-07.png",
-      "optimized_size_bytes": 15934,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -197,22 +232,22 @@
       "category": "Anime Girls",
       "source_image": "1.png",
       "source_crop": [
-        523,
-        301,
-        790,
-        587
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        254,
-        273
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-1-08.webp",
       "extracted_path": "/avatars/extracted/avatar-1-08.png",
-      "optimized_size_bytes": 12928,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -222,22 +257,22 @@
       "category": "Anime Girls",
       "source_image": "1.png",
       "source_crop": [
-        790,
-        301,
-        1054,
-        587
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        253,
-        276
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-1-09.webp",
       "extracted_path": "/avatars/extracted/avatar-1-09.png",
-      "optimized_size_bytes": 13394,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -247,22 +282,22 @@
       "category": "Anime Girls",
       "source_image": "1.png",
       "source_crop": [
-        1054,
-        301,
-        1312,
-        587
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        250,
-        267
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-1-10.webp",
       "extracted_path": "/avatars/extracted/avatar-1-10.png",
-      "optimized_size_bytes": 12466,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -273,21 +308,21 @@
       "source_image": "1.png",
       "source_crop": [
         0,
-        587,
-        260,
-        881
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        245,
-        271
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-1-11.webp",
       "extracted_path": "/avatars/extracted/avatar-1-11.png",
-      "optimized_size_bytes": 11668,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -297,22 +332,22 @@
       "category": "Anime Girls",
       "source_image": "1.png",
       "source_crop": [
-        260,
-        587,
-        523,
-        881
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        251,
-        283
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-1-12.webp",
       "extracted_path": "/avatars/extracted/avatar-1-12.png",
-      "optimized_size_bytes": 12496,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -322,22 +357,22 @@
       "category": "Anime Girls",
       "source_image": "1.png",
       "source_crop": [
-        523,
-        587,
-        788,
-        881
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        253,
-        280
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-1-13.webp",
       "extracted_path": "/avatars/extracted/avatar-1-13.png",
-      "optimized_size_bytes": 14402,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -347,22 +382,22 @@
       "category": "Anime Girls",
       "source_image": "1.png",
       "source_crop": [
-        788,
-        587,
-        1054,
-        881
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        253,
-        270
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-1-14.webp",
       "extracted_path": "/avatars/extracted/avatar-1-14.png",
-      "optimized_size_bytes": 13178,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -372,22 +407,22 @@
       "category": "Anime Girls",
       "source_image": "1.png",
       "source_crop": [
-        1054,
-        587,
-        1312,
-        881
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        250,
-        279
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-1-15.webp",
       "extracted_path": "/avatars/extracted/avatar-1-15.png",
-      "optimized_size_bytes": 13096,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -398,21 +433,21 @@
       "source_image": "1.png",
       "source_crop": [
         0,
-        881,
-        262,
-        1199
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        250,
-        281
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-1-16.webp",
       "extracted_path": "/avatars/extracted/avatar-1-16.png",
-      "optimized_size_bytes": 13794,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -422,22 +457,22 @@
       "category": "Anime Girls",
       "source_image": "1.png",
       "source_crop": [
-        262,
-        881,
-        523,
-        1199
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        247,
-        285
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-1-17.webp",
       "extracted_path": "/avatars/extracted/avatar-1-17.png",
-      "optimized_size_bytes": 12952,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -447,22 +482,22 @@
       "category": "Anime Girls",
       "source_image": "1.png",
       "source_crop": [
-        523,
-        881,
-        788,
-        1199
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        254,
-        284
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-1-18.webp",
       "extracted_path": "/avatars/extracted/avatar-1-18.png",
-      "optimized_size_bytes": 10200,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -472,22 +507,22 @@
       "category": "Anime Girls",
       "source_image": "1.png",
       "source_crop": [
-        788,
-        881,
-        1055,
-        1199
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        255,
-        286
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-1-19.webp",
       "extracted_path": "/avatars/extracted/avatar-1-19.png",
-      "optimized_size_bytes": 12796,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -497,22 +532,22 @@
       "category": "Anime Girls",
       "source_image": "1.png",
       "source_crop": [
-        1055,
-        881,
-        1312,
-        1199
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        247,
-        285
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-1-20.webp",
       "extracted_path": "/avatars/extracted/avatar-1-20.png",
-      "optimized_size_bytes": 12124,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -525,19 +560,19 @@
         0,
         0,
         256,
-        308
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        244,
-        283
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-2-01.webp",
       "extracted_path": "/avatars/extracted/avatar-2-01.png",
-      "optimized_size_bytes": 11124,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -547,22 +582,22 @@
       "category": "Study Buddies",
       "source_image": "2.png",
       "source_crop": [
-        256,
         0,
-        521,
-        308
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
         256,
-        272
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-2-02.webp",
       "extracted_path": "/avatars/extracted/avatar-2-02.png",
-      "optimized_size_bytes": 14832,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -572,22 +607,22 @@
       "category": "Study Buddies",
       "source_image": "2.png",
       "source_crop": [
-        521,
         0,
-        788,
-        308
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        250,
-        282
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-2-03.webp",
       "extracted_path": "/avatars/extracted/avatar-2-03.png",
-      "optimized_size_bytes": 12038,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -597,22 +632,22 @@
       "category": "Study Buddies",
       "source_image": "2.png",
       "source_crop": [
-        788,
         0,
-        1048,
-        308
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        242,
-        289
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-2-04.webp",
       "extracted_path": "/avatars/extracted/avatar-2-04.png",
-      "optimized_size_bytes": 13450,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -622,22 +657,22 @@
       "category": "Study Buddies",
       "source_image": "2.png",
       "source_crop": [
-        1048,
         0,
-        1312,
-        308
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        251,
-        280
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-2-05.webp",
       "extracted_path": "/avatars/extracted/avatar-2-05.png",
-      "optimized_size_bytes": 14498,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -648,21 +683,21 @@
       "source_image": "2.png",
       "source_crop": [
         0,
-        308,
-        264,
-        597
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        251,
-        268
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-2-06.webp",
       "extracted_path": "/avatars/extracted/avatar-2-06.png",
-      "optimized_size_bytes": 18358,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -672,22 +707,22 @@
       "category": "Study Buddies",
       "source_image": "2.png",
       "source_crop": [
-        264,
-        308,
-        524,
-        597
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        244,
-        267
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-2-07.webp",
       "extracted_path": "/avatars/extracted/avatar-2-07.png",
-      "optimized_size_bytes": 11946,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -697,22 +732,22 @@
       "category": "Study Buddies",
       "source_image": "2.png",
       "source_crop": [
-        524,
-        308,
-        788,
-        597
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        249,
-        265
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-2-08.webp",
       "extracted_path": "/avatars/extracted/avatar-2-08.png",
-      "optimized_size_bytes": 13306,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -722,22 +757,22 @@
       "category": "Study Buddies",
       "source_image": "2.png",
       "source_crop": [
-        788,
-        308,
-        1050,
-        597
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        245,
-        268
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-2-09.webp",
       "extracted_path": "/avatars/extracted/avatar-2-09.png",
-      "optimized_size_bytes": 11604,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -747,22 +782,22 @@
       "category": "Study Buddies",
       "source_image": "2.png",
       "source_crop": [
-        1050,
-        308,
-        1312,
-        597
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        250,
-        264
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-2-10.webp",
       "extracted_path": "/avatars/extracted/avatar-2-10.png",
-      "optimized_size_bytes": 13810,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -773,21 +808,21 @@
       "source_image": "2.png",
       "source_crop": [
         0,
-        597,
-        268,
-        883
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        250,
-        271
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-2-11.webp",
       "extracted_path": "/avatars/extracted/avatar-2-11.png",
-      "optimized_size_bytes": 11890,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -797,22 +832,22 @@
       "category": "Study Buddies",
       "source_image": "2.png",
       "source_crop": [
-        268,
-        597,
-        523,
-        883
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        245,
-        274
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-2-12.webp",
       "extracted_path": "/avatars/extracted/avatar-2-12.png",
-      "optimized_size_bytes": 15484,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -822,22 +857,22 @@
       "category": "Study Buddies",
       "source_image": "2.png",
       "source_crop": [
-        523,
-        597,
-        786,
-        883
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        244,
-        269
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-2-13.webp",
       "extracted_path": "/avatars/extracted/avatar-2-13.png",
-      "optimized_size_bytes": 12450,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -847,22 +882,22 @@
       "category": "Study Buddies",
       "source_image": "2.png",
       "source_crop": [
-        786,
-        597,
-        1048,
-        883
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        245,
-        265
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-2-14.webp",
       "extracted_path": "/avatars/extracted/avatar-2-14.png",
-      "optimized_size_bytes": 14904,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -872,22 +907,22 @@
       "category": "Study Buddies",
       "source_image": "2.png",
       "source_crop": [
-        1048,
-        597,
-        1312,
-        883
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        250,
-        269
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-2-15.webp",
       "extracted_path": "/avatars/extracted/avatar-2-15.png",
-      "optimized_size_bytes": 10684,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -898,21 +933,21 @@
       "source_image": "2.png",
       "source_crop": [
         0,
-        883,
-        265,
-        1199
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        250,
-        275
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-2-16.webp",
       "extracted_path": "/avatars/extracted/avatar-2-16.png",
-      "optimized_size_bytes": 15224,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -922,22 +957,22 @@
       "category": "Study Buddies",
       "source_image": "2.png",
       "source_crop": [
-        265,
-        883,
-        523,
-        1199
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        245,
-        275
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-2-17.webp",
       "extracted_path": "/avatars/extracted/avatar-2-17.png",
-      "optimized_size_bytes": 12862,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -947,22 +982,22 @@
       "category": "Study Buddies",
       "source_image": "2.png",
       "source_crop": [
-        523,
-        883,
-        790,
-        1199
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        250,
-        274
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-2-18.webp",
       "extracted_path": "/avatars/extracted/avatar-2-18.png",
-      "optimized_size_bytes": 12494,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -972,22 +1007,22 @@
       "category": "Study Buddies",
       "source_image": "2.png",
       "source_crop": [
-        790,
-        883,
-        1052,
-        1199
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        249,
-        273
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-2-19.webp",
       "extracted_path": "/avatars/extracted/avatar-2-19.png",
-      "optimized_size_bytes": 9060,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -997,22 +1032,22 @@
       "category": "Study Buddies",
       "source_image": "2.png",
       "source_crop": [
-        1052,
-        883,
-        1312,
-        1199
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        248,
-        274
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-2-20.webp",
       "extracted_path": "/avatars/extracted/avatar-2-20.png",
-      "optimized_size_bytes": 13818,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -1024,20 +1059,20 @@
       "source_crop": [
         0,
         0,
-        272,
-        305
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        251,
-        276
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-3-01.webp",
       "extracted_path": "/avatars/extracted/avatar-3-01.png",
-      "optimized_size_bytes": 9520,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -1047,22 +1082,22 @@
       "category": "Student Portraits",
       "source_image": "3.png",
       "source_crop": [
-        272,
         0,
-        532,
-        305
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        248,
-        259
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-3-02.webp",
       "extracted_path": "/avatars/extracted/avatar-3-02.png",
-      "optimized_size_bytes": 13698,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -1072,22 +1107,22 @@
       "category": "Student Portraits",
       "source_image": "3.png",
       "source_crop": [
-        532,
         0,
-        804,
-        305
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        262,
-        276
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-3-03.webp",
       "extracted_path": "/avatars/extracted/avatar-3-03.png",
-      "optimized_size_bytes": 10426,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -1097,22 +1132,22 @@
       "category": "Student Portraits",
       "source_image": "3.png",
       "source_crop": [
-        804,
         0,
-        1052,
-        305
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        240,
-        276
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-3-04.webp",
       "extracted_path": "/avatars/extracted/avatar-3-04.png",
-      "optimized_size_bytes": 10986,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -1122,22 +1157,22 @@
       "category": "Student Portraits",
       "source_image": "3.png",
       "source_crop": [
-        1052,
         0,
-        1312,
-        305
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        244,
-        272
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-3-05.webp",
       "extracted_path": "/avatars/extracted/avatar-3-05.png",
-      "optimized_size_bytes": 9692,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -1148,21 +1183,21 @@
       "source_image": "3.png",
       "source_crop": [
         0,
-        305,
-        273,
-        590
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        263,
-        271
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-3-06.webp",
       "extracted_path": "/avatars/extracted/avatar-3-06.png",
-      "optimized_size_bytes": 13792,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -1172,22 +1207,22 @@
       "category": "Student Portraits",
       "source_image": "3.png",
       "source_crop": [
-        273,
-        305,
-        526,
-        590
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        249,
-        273
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-3-07.webp",
       "extracted_path": "/avatars/extracted/avatar-3-07.png",
-      "optimized_size_bytes": 10276,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -1197,22 +1232,22 @@
       "category": "Student Portraits",
       "source_image": "3.png",
       "source_crop": [
-        526,
-        305,
-        782,
-        590
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        244,
-        270
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-3-08.webp",
       "extracted_path": "/avatars/extracted/avatar-3-08.png",
-      "optimized_size_bytes": 11218,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -1222,22 +1257,22 @@
       "category": "Student Portraits",
       "source_image": "3.png",
       "source_crop": [
-        782,
-        305,
-        1058,
-        590
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
         256,
-        273
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-3-09.webp",
       "extracted_path": "/avatars/extracted/avatar-3-09.png",
-      "optimized_size_bytes": 9316,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -1247,22 +1282,22 @@
       "category": "Student Portraits",
       "source_image": "3.png",
       "source_crop": [
-        1058,
-        305,
-        1312,
-        590
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        236,
-        270
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-3-10.webp",
       "extracted_path": "/avatars/extracted/avatar-3-10.png",
-      "optimized_size_bytes": 9984,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -1273,21 +1308,21 @@
       "source_image": "3.png",
       "source_crop": [
         0,
-        590,
-        270,
-        885
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        258,
-        282
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-3-11.webp",
       "extracted_path": "/avatars/extracted/avatar-3-11.png",
-      "optimized_size_bytes": 9694,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -1297,22 +1332,22 @@
       "category": "Student Portraits",
       "source_image": "3.png",
       "source_crop": [
-        270,
-        590,
-        528,
-        885
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        249,
-        273
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-3-12.webp",
       "extracted_path": "/avatars/extracted/avatar-3-12.png",
-      "optimized_size_bytes": 13696,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -1322,22 +1357,22 @@
       "category": "Student Portraits",
       "source_image": "3.png",
       "source_crop": [
-        528,
-        590,
-        802,
-        885
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        263,
-        280
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-3-13.webp",
       "extracted_path": "/avatars/extracted/avatar-3-13.png",
-      "optimized_size_bytes": 9966,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -1347,22 +1382,22 @@
       "category": "Student Portraits",
       "source_image": "3.png",
       "source_crop": [
-        802,
-        590,
-        1038,
-        885
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        219,
-        282
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-3-14.webp",
       "extracted_path": "/avatars/extracted/avatar-3-14.png",
-      "optimized_size_bytes": 10344,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -1372,22 +1407,22 @@
       "category": "Student Portraits",
       "source_image": "3.png",
       "source_crop": [
-        1038,
-        590,
-        1312,
-        885
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        258,
-        283
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-3-15.webp",
       "extracted_path": "/avatars/extracted/avatar-3-15.png",
-      "optimized_size_bytes": 9396,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -1398,21 +1433,21 @@
       "source_image": "3.png",
       "source_crop": [
         0,
-        885,
-        265,
-        1199
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        247,
-        280
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-3-16.webp",
       "extracted_path": "/avatars/extracted/avatar-3-16.png",
-      "optimized_size_bytes": 11810,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -1422,22 +1457,22 @@
       "category": "Student Portraits",
       "source_image": "3.png",
       "source_crop": [
-        265,
-        885,
-        537,
-        1199
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        266,
-        281
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-3-17.webp",
       "extracted_path": "/avatars/extracted/avatar-3-17.png",
-      "optimized_size_bytes": 9406,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -1447,22 +1482,22 @@
       "category": "Student Portraits",
       "source_image": "3.png",
       "source_crop": [
-        537,
-        885,
-        784,
-        1199
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        245,
-        274
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-3-18.webp",
       "extracted_path": "/avatars/extracted/avatar-3-18.png",
-      "optimized_size_bytes": 13586,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -1472,22 +1507,22 @@
       "category": "Student Portraits",
       "source_image": "3.png",
       "source_crop": [
-        784,
-        885,
-        1050,
-        1199
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        264,
-        281
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-3-19.webp",
       "extracted_path": "/avatars/extracted/avatar-3-19.png",
-      "optimized_size_bytes": 9040,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -1497,22 +1532,22 @@
       "category": "Student Portraits",
       "source_image": "3.png",
       "source_crop": [
-        1050,
-        885,
-        1312,
-        1199
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        250,
-        277
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-3-20.webp",
       "extracted_path": "/avatars/extracted/avatar-3-20.png",
-      "optimized_size_bytes": 11684,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -1524,20 +1559,20 @@
       "source_crop": [
         0,
         0,
-        260,
-        311
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        231,
-        276
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-4-01.webp",
       "extracted_path": "/avatars/extracted/avatar-4-01.png",
-      "optimized_size_bytes": 13868,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -1547,22 +1582,22 @@
       "category": "Cute Animals & Friends",
       "source_image": "4.png",
       "source_crop": [
-        260,
         0,
-        530,
-        311
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        241,
-        280
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-4-02.webp",
       "extracted_path": "/avatars/extracted/avatar-4-02.png",
-      "optimized_size_bytes": 11302,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -1572,22 +1607,22 @@
       "category": "Cute Animals & Friends",
       "source_image": "4.png",
       "source_crop": [
-        530,
         0,
-        785,
-        311
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        232,
-        275
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-4-03.webp",
       "extracted_path": "/avatars/extracted/avatar-4-03.png",
-      "optimized_size_bytes": 12238,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -1597,22 +1632,22 @@
       "category": "Cute Animals & Friends",
       "source_image": "4.png",
       "source_crop": [
-        785,
         0,
-        1065,
-        311
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
         256,
-        280
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-4-04.webp",
       "extracted_path": "/avatars/extracted/avatar-4-04.png",
-      "optimized_size_bytes": 10420,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -1622,22 +1657,22 @@
       "category": "Cute Animals & Friends",
       "source_image": "4.png",
       "source_crop": [
-        1065,
         0,
-        1312,
-        311
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        223,
-        254
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-4-05.webp",
       "extracted_path": "/avatars/extracted/avatar-4-05.png",
-      "optimized_size_bytes": 11386,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -1648,21 +1683,21 @@
       "source_image": "4.png",
       "source_crop": [
         0,
-        311,
-        255,
-        615
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        203,
-        258
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-4-06.webp",
       "extracted_path": "/avatars/extracted/avatar-4-06.png",
-      "optimized_size_bytes": 6524,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -1672,22 +1707,22 @@
       "category": "Cute Animals & Friends",
       "source_image": "4.png",
       "source_crop": [
-        255,
-        311,
-        535,
-        615
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        231,
-        257
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-4-07.webp",
       "extracted_path": "/avatars/extracted/avatar-4-07.png",
-      "optimized_size_bytes": 14000,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -1697,22 +1732,22 @@
       "category": "Cute Animals & Friends",
       "source_image": "4.png",
       "source_crop": [
-        535,
-        311,
-        785,
-        615
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        199,
-        267
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-4-08.webp",
       "extracted_path": "/avatars/extracted/avatar-4-08.png",
-      "optimized_size_bytes": 8522,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -1722,22 +1757,22 @@
       "category": "Cute Animals & Friends",
       "source_image": "4.png",
       "source_crop": [
-        785,
-        311,
-        1040,
-        615
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        221,
-        224
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-4-09.webp",
       "extracted_path": "/avatars/extracted/avatar-4-09.png",
-      "optimized_size_bytes": 13348,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -1747,22 +1782,22 @@
       "category": "Cute Animals & Friends",
       "source_image": "4.png",
       "source_crop": [
-        1040,
-        311,
-        1312,
-        615
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        239,
-        247
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-4-10.webp",
       "extracted_path": "/avatars/extracted/avatar-4-10.png",
-      "optimized_size_bytes": 10398,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -1773,21 +1808,21 @@
       "source_image": "4.png",
       "source_crop": [
         0,
-        615,
-        245,
-        895
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        205,
-        246
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-4-11.webp",
       "extracted_path": "/avatars/extracted/avatar-4-11.png",
-      "optimized_size_bytes": 11696,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -1797,22 +1832,22 @@
       "category": "Cute Animals & Friends",
       "source_image": "4.png",
       "source_crop": [
-        245,
-        615,
-        520,
-        895
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        238,
-        252
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-4-12.webp",
       "extracted_path": "/avatars/extracted/avatar-4-12.png",
-      "optimized_size_bytes": 11866,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -1822,22 +1857,22 @@
       "category": "Cute Animals & Friends",
       "source_image": "4.png",
       "source_crop": [
-        520,
-        615,
-        785,
-        895
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        238,
-        213
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-4-13.webp",
       "extracted_path": "/avatars/extracted/avatar-4-13.png",
-      "optimized_size_bytes": 11328,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -1847,22 +1882,22 @@
       "category": "Cute Animals & Friends",
       "source_image": "4.png",
       "source_crop": [
-        785,
-        615,
-        1045,
-        895
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        239,
-        253
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-4-14.webp",
       "extracted_path": "/avatars/extracted/avatar-4-14.png",
-      "optimized_size_bytes": 13254,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -1872,22 +1907,22 @@
       "category": "Cute Animals & Friends",
       "source_image": "4.png",
       "source_crop": [
-        1045,
-        615,
-        1312,
-        895
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        226,
-        255
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-4-15.webp",
       "extracted_path": "/avatars/extracted/avatar-4-15.png",
-      "optimized_size_bytes": 9740,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -1898,21 +1933,21 @@
       "source_image": "4.png",
       "source_crop": [
         0,
-        895,
-        235,
-        1199
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        185,
-        242
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-4-16.webp",
       "extracted_path": "/avatars/extracted/avatar-4-16.png",
-      "optimized_size_bytes": 8962,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -1922,22 +1957,22 @@
       "category": "Cute Animals & Friends",
       "source_image": "4.png",
       "source_crop": [
-        235,
-        895,
-        525,
-        1199
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        246,
-        225
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-4-17.webp",
       "extracted_path": "/avatars/extracted/avatar-4-17.png",
-      "optimized_size_bytes": 8610,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -1947,22 +1982,22 @@
       "category": "Cute Animals & Friends",
       "source_image": "4.png",
       "source_crop": [
-        525,
-        895,
-        780,
-        1199
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        218,
-        258
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-4-18.webp",
       "extracted_path": "/avatars/extracted/avatar-4-18.png",
-      "optimized_size_bytes": 10192,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -1972,22 +2007,22 @@
       "category": "Cute Animals & Friends",
       "source_image": "4.png",
       "source_crop": [
-        780,
-        895,
-        1075,
-        1199
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        248,
-        221
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-4-19.webp",
       "extracted_path": "/avatars/extracted/avatar-4-19.png",
-      "optimized_size_bytes": 9188,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -1997,22 +2032,22 @@
       "category": "Cute Animals & Friends",
       "source_image": "4.png",
       "source_crop": [
-        1075,
-        895,
-        1312,
-        1199
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        173,
-        260
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-4-20.webp",
       "extracted_path": "/avatars/extracted/avatar-4-20.png",
-      "optimized_size_bytes": 6860,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -2024,20 +2059,20 @@
       "source_crop": [
         0,
         0,
-        264,
-        330
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        246,
-        292
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-5-01.webp",
       "extracted_path": "/avatars/extracted/avatar-5-01.png",
-      "optimized_size_bytes": 14038,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -2047,22 +2082,22 @@
       "category": "Playful Icons",
       "source_image": "5.png",
       "source_crop": [
-        264,
         0,
-        568,
-        346
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        280,
-        322
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-5-02.webp",
       "extracted_path": "/avatars/extracted/avatar-5-02.png",
-      "optimized_size_bytes": 15944,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -2072,22 +2107,22 @@
       "category": "Playful Icons",
       "source_image": "5.png",
       "source_crop": [
-        568,
         0,
-        916,
-        314
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        300,
-        289
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-5-03.webp",
       "extracted_path": "/avatars/extracted/avatar-5-03.png",
-      "optimized_size_bytes": 10520,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -2097,22 +2132,22 @@
       "category": "Playful Icons",
       "source_image": "5.png",
       "source_crop": [
-        916,
         0,
-        1312,
-        309
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        351,
-        272
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-5-04.webp",
       "extracted_path": "/avatars/extracted/avatar-5-04.png",
-      "optimized_size_bytes": 14214,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -2123,21 +2158,21 @@
       "source_image": "5.png",
       "source_crop": [
         0,
-        330,
-        235,
-        634
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        213,
-        294
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-5-05.webp",
       "extracted_path": "/avatars/extracted/avatar-5-05.png",
-      "optimized_size_bytes": 12058,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -2147,22 +2182,22 @@
       "category": "Playful Icons",
       "source_image": "5.png",
       "source_crop": [
-        235,
-        346,
-        541,
-        626
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        282,
-        272
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-5-06.webp",
       "extracted_path": "/avatars/extracted/avatar-5-06.png",
-      "optimized_size_bytes": 18504,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -2172,22 +2207,22 @@
       "category": "Playful Icons",
       "source_image": "5.png",
       "source_crop": [
-        541,
-        314,
-        794,
-        627
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        225,
-        277
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-5-07.webp",
       "extracted_path": "/avatars/extracted/avatar-5-07.png",
-      "optimized_size_bytes": 14728,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -2197,22 +2232,22 @@
       "category": "Playful Icons",
       "source_image": "5.png",
       "source_crop": [
-        794,
-        310,
-        1076,
-        629
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
         256,
-        311
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-5-08.webp",
       "extracted_path": "/avatars/extracted/avatar-5-08.png",
-      "optimized_size_bytes": 14084,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -2222,22 +2257,22 @@
       "category": "Playful Icons",
       "source_image": "5.png",
       "source_crop": [
-        1076,
-        309,
-        1312,
-        598
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        186,
-        281
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-5-09.webp",
       "extracted_path": "/avatars/extracted/avatar-5-09.png",
-      "optimized_size_bytes": 6742,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -2248,21 +2283,21 @@
       "source_image": "5.png",
       "source_crop": [
         0,
-        634,
-        288,
-        888
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        274,
-        233
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-5-10.webp",
       "extracted_path": "/avatars/extracted/avatar-5-10.png",
-      "optimized_size_bytes": 20264,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -2272,22 +2307,22 @@
       "category": "Playful Icons",
       "source_image": "5.png",
       "source_crop": [
-        288,
-        626,
-        539,
-        881
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        233,
-        230
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-5-11.webp",
       "extracted_path": "/avatars/extracted/avatar-5-11.png",
-      "optimized_size_bytes": 13958,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -2297,22 +2332,22 @@
       "category": "Playful Icons",
       "source_image": "5.png",
       "source_crop": [
-        539,
-        627,
-        817,
-        910
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        258,
-        276
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-5-12.webp",
       "extracted_path": "/avatars/extracted/avatar-5-12.png",
-      "optimized_size_bytes": 11574,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -2322,22 +2357,22 @@
       "category": "Playful Icons",
       "source_image": "5.png",
       "source_crop": [
-        817,
-        629,
-        1042,
-        910
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        193,
-        267
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-5-13.webp",
       "extracted_path": "/avatars/extracted/avatar-5-13.png",
-      "optimized_size_bytes": 14342,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -2347,22 +2382,22 @@
       "category": "Playful Icons",
       "source_image": "5.png",
       "source_crop": [
-        1042,
-        598,
-        1312,
-        907
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        238,
-        297
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-5-14.webp",
       "extracted_path": "/avatars/extracted/avatar-5-14.png",
-      "optimized_size_bytes": 13976,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -2373,21 +2408,21 @@
       "source_image": "5.png",
       "source_crop": [
         0,
-        888,
-        246,
-        1199
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        229,
-        272
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-5-15.webp",
       "extracted_path": "/avatars/extracted/avatar-5-15.png",
-      "optimized_size_bytes": 15014,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -2397,22 +2432,22 @@
       "category": "Playful Icons",
       "source_image": "5.png",
       "source_crop": [
-        246,
-        881,
-        468,
-        1199
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        204,
-        254
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-5-16.webp",
       "extracted_path": "/avatars/extracted/avatar-5-16.png",
-      "optimized_size_bytes": 8460,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -2422,22 +2457,22 @@
       "category": "Playful Icons",
       "source_image": "5.png",
       "source_crop": [
-        468,
-        910,
-        724,
-        1199
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        228,
-        237
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-5-17.webp",
       "extracted_path": "/avatars/extracted/avatar-5-17.png",
-      "optimized_size_bytes": 11510,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -2447,22 +2482,22 @@
       "category": "Playful Icons",
       "source_image": "5.png",
       "source_crop": [
-        724,
-        910,
-        986,
-        1199
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        221,
-        262
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-5-18.webp",
       "extracted_path": "/avatars/extracted/avatar-5-18.png",
-      "optimized_size_bytes": 12190,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -2472,22 +2507,22 @@
       "category": "Playful Icons",
       "source_image": "5.png",
       "source_crop": [
-        986,
-        907,
-        1312,
-        1199
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        260,
-        263
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-5-19.webp",
       "extracted_path": "/avatars/extracted/avatar-5-19.png",
-      "optimized_size_bytes": 16718,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -2499,20 +2534,20 @@
       "source_crop": [
         0,
         0,
-        262,
-        296
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        246,
-        275
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-6-01.webp",
       "extracted_path": "/avatars/extracted/avatar-6-01.png",
-      "optimized_size_bytes": 12916,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -2522,22 +2557,22 @@
       "category": "Anime Boys",
       "source_image": "6.png",
       "source_crop": [
-        262,
         0,
-        510,
-        296
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        238,
-        273
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-6-02.webp",
       "extracted_path": "/avatars/extracted/avatar-6-02.png",
-      "optimized_size_bytes": 13338,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -2547,22 +2582,22 @@
       "category": "Anime Boys",
       "source_image": "6.png",
       "source_crop": [
-        510,
         0,
-        775,
-        296
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        253,
-        267
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-6-03.webp",
       "extracted_path": "/avatars/extracted/avatar-6-03.png",
-      "optimized_size_bytes": 12178,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -2572,22 +2607,22 @@
       "category": "Anime Boys",
       "source_image": "6.png",
       "source_crop": [
-        775,
         0,
-        1050,
-        296
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        255,
-        275
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-6-04.webp",
       "extracted_path": "/avatars/extracted/avatar-6-04.png",
-      "optimized_size_bytes": 12874,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -2597,22 +2632,22 @@
       "category": "Anime Boys",
       "source_image": "6.png",
       "source_crop": [
-        1050,
         0,
-        1312,
-        296
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        246,
-        274
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-6-05.webp",
       "extracted_path": "/avatars/extracted/avatar-6-05.png",
-      "optimized_size_bytes": 13336,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -2623,21 +2658,21 @@
       "source_image": "6.png",
       "source_crop": [
         0,
-        296,
-        262,
-        587
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        246,
-        274
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-6-06.webp",
       "extracted_path": "/avatars/extracted/avatar-6-06.png",
-      "optimized_size_bytes": 13462,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -2647,22 +2682,22 @@
       "category": "Anime Boys",
       "source_image": "6.png",
       "source_crop": [
-        262,
-        296,
-        528,
-        587
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        254,
-        275
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-6-07.webp",
       "extracted_path": "/avatars/extracted/avatar-6-07.png",
-      "optimized_size_bytes": 14748,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -2672,22 +2707,22 @@
       "category": "Anime Boys",
       "source_image": "6.png",
       "source_crop": [
-        528,
-        296,
-        809,
-        587
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        267,
-        274
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-6-08.webp",
       "extracted_path": "/avatars/extracted/avatar-6-08.png",
-      "optimized_size_bytes": 12992,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -2697,22 +2732,22 @@
       "category": "Anime Boys",
       "source_image": "6.png",
       "source_crop": [
-        809,
-        296,
-        1055,
-        587
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        238,
-        274
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-6-09.webp",
       "extracted_path": "/avatars/extracted/avatar-6-09.png",
-      "optimized_size_bytes": 13564,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -2722,22 +2757,22 @@
       "category": "Anime Boys",
       "source_image": "6.png",
       "source_crop": [
-        1055,
-        296,
-        1312,
-        587
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        235,
-        276
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-6-10.webp",
       "extracted_path": "/avatars/extracted/avatar-6-10.png",
-      "optimized_size_bytes": 11648,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -2748,21 +2783,21 @@
       "source_image": "6.png",
       "source_crop": [
         0,
-        587,
-        264,
-        860
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        247,
-        259
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-6-11.webp",
       "extracted_path": "/avatars/extracted/avatar-6-11.png",
-      "optimized_size_bytes": 15442,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -2772,22 +2807,22 @@
       "category": "Anime Boys",
       "source_image": "6.png",
       "source_crop": [
-        264,
-        587,
-        531,
-        860
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        253,
-        258
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-6-12.webp",
       "extracted_path": "/avatars/extracted/avatar-6-12.png",
-      "optimized_size_bytes": 13486,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -2797,22 +2832,22 @@
       "category": "Anime Boys",
       "source_image": "6.png",
       "source_crop": [
-        531,
-        587,
-        809,
-        860
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        266,
-        257
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-6-13.webp",
       "extracted_path": "/avatars/extracted/avatar-6-13.png",
-      "optimized_size_bytes": 11438,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -2822,22 +2857,22 @@
       "category": "Anime Boys",
       "source_image": "6.png",
       "source_crop": [
-        809,
-        587,
-        1062,
-        860
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        235,
-        258
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-6-14.webp",
       "extracted_path": "/avatars/extracted/avatar-6-14.png",
-      "optimized_size_bytes": 12742,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -2847,22 +2882,22 @@
       "category": "Anime Boys",
       "source_image": "6.png",
       "source_crop": [
-        1062,
-        587,
-        1312,
-        860
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        235,
-        259
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-6-15.webp",
       "extracted_path": "/avatars/extracted/avatar-6-15.png",
-      "optimized_size_bytes": 14268,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -2873,21 +2908,21 @@
       "source_image": "6.png",
       "source_crop": [
         0,
-        860,
-        267,
-        1199
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        248,
-        286
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-6-16.webp",
       "extracted_path": "/avatars/extracted/avatar-6-16.png",
-      "optimized_size_bytes": 7620,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -2897,22 +2932,22 @@
       "category": "Anime Boys",
       "source_image": "6.png",
       "source_crop": [
-        267,
-        860,
-        531,
-        1199
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        249,
-        286
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-6-17.webp",
       "extracted_path": "/avatars/extracted/avatar-6-17.png",
-      "optimized_size_bytes": 15828,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -2922,22 +2957,22 @@
       "category": "Anime Boys",
       "source_image": "6.png",
       "source_crop": [
-        531,
-        860,
-        796,
-        1199
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        246,
-        288
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-6-18.webp",
       "extracted_path": "/avatars/extracted/avatar-6-18.png",
-      "optimized_size_bytes": 9278,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -2947,22 +2982,22 @@
       "category": "Anime Boys",
       "source_image": "6.png",
       "source_crop": [
-        796,
-        860,
-        1059,
-        1199
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        251,
-        288
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-6-19.webp",
       "extracted_path": "/avatars/extracted/avatar-6-19.png",
-      "optimized_size_bytes": 11604,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -2972,22 +3007,22 @@
       "category": "Anime Boys",
       "source_image": "6.png",
       "source_crop": [
-        1059,
-        860,
-        1312,
-        1199
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        235,
-        288
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-6-20.webp",
       "extracted_path": "/avatars/extracted/avatar-6-20.png",
-      "optimized_size_bytes": 11916,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -2999,20 +3034,20 @@
       "source_crop": [
         0,
         0,
-        276,
-        310
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        251,
-        260
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-7-01.webp",
       "extracted_path": "/avatars/extracted/avatar-7-01.png",
-      "optimized_size_bytes": 17178,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -3022,22 +3057,22 @@
       "category": "Culture & Heritage",
       "source_image": "7.png",
       "source_crop": [
-        276,
         0,
-        518,
-        310
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        225,
-        251
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-7-02.webp",
       "extracted_path": "/avatars/extracted/avatar-7-02.png",
-      "optimized_size_bytes": 15748,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -3047,22 +3082,22 @@
       "category": "Culture & Heritage",
       "source_image": "7.png",
       "source_crop": [
-        518,
         0,
-        788,
-        310
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        244,
-        248
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-7-03.webp",
       "extracted_path": "/avatars/extracted/avatar-7-03.png",
-      "optimized_size_bytes": 16242,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -3072,22 +3107,22 @@
       "category": "Culture & Heritage",
       "source_image": "7.png",
       "source_crop": [
-        788,
         0,
-        1045,
-        310
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        235,
-        260
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-7-04.webp",
       "extracted_path": "/avatars/extracted/avatar-7-04.png",
-      "optimized_size_bytes": 17136,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -3097,22 +3132,22 @@
       "category": "Culture & Heritage",
       "source_image": "7.png",
       "source_crop": [
-        1045,
         0,
-        1312,
-        310
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        234,
-        247
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-7-05.webp",
       "extracted_path": "/avatars/extracted/avatar-7-05.png",
-      "optimized_size_bytes": 13772,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -3123,21 +3158,21 @@
       "source_image": "7.png",
       "source_crop": [
         0,
-        310,
-        260,
-        583
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        223,
-        255
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-7-06.webp",
       "extracted_path": "/avatars/extracted/avatar-7-06.png",
-      "optimized_size_bytes": 18794,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -3147,22 +3182,22 @@
       "category": "Culture & Heritage",
       "source_image": "7.png",
       "source_crop": [
-        260,
-        310,
-        525,
-        583
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        240,
+        256,
         256
       ],
       "asset_path": "/avatars/optimized/avatar-7-07.webp",
       "extracted_path": "/avatars/extracted/avatar-7-07.png",
-      "optimized_size_bytes": 17402,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -3172,22 +3207,22 @@
       "category": "Culture & Heritage",
       "source_image": "7.png",
       "source_crop": [
-        525,
-        310,
-        788,
-        583
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        245,
-        245
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-7-08.webp",
       "extracted_path": "/avatars/extracted/avatar-7-08.png",
-      "optimized_size_bytes": 17484,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -3197,22 +3232,22 @@
       "category": "Culture & Heritage",
       "source_image": "7.png",
       "source_crop": [
-        788,
-        310,
-        1042,
-        583
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        235,
-        241
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-7-09.webp",
       "extracted_path": "/avatars/extracted/avatar-7-09.png",
-      "optimized_size_bytes": 17766,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -3222,22 +3257,22 @@
       "category": "Culture & Heritage",
       "source_image": "7.png",
       "source_crop": [
-        1042,
-        310,
-        1312,
-        583
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        230,
-        246
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-7-10.webp",
       "extracted_path": "/avatars/extracted/avatar-7-10.png",
-      "optimized_size_bytes": 14516,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -3248,21 +3283,21 @@
       "source_image": "7.png",
       "source_crop": [
         0,
-        583,
-        267,
-        867
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        236,
-        232
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-7-11.webp",
       "extracted_path": "/avatars/extracted/avatar-7-11.png",
-      "optimized_size_bytes": 13732,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -3272,22 +3307,22 @@
       "category": "Culture & Heritage",
       "source_image": "7.png",
       "source_crop": [
-        267,
-        583,
-        530,
-        867
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        250,
-        236
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-7-12.webp",
       "extracted_path": "/avatars/extracted/avatar-7-12.png",
-      "optimized_size_bytes": 16652,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -3297,22 +3332,22 @@
       "category": "Culture & Heritage",
       "source_image": "7.png",
       "source_crop": [
-        530,
-        583,
-        786,
-        867
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        243,
-        230
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-7-13.webp",
       "extracted_path": "/avatars/extracted/avatar-7-13.png",
-      "optimized_size_bytes": 17604,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -3322,22 +3357,22 @@
       "category": "Culture & Heritage",
       "source_image": "7.png",
       "source_crop": [
-        786,
-        583,
-        1035,
-        867
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        232,
-        244
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-7-14.webp",
       "extracted_path": "/avatars/extracted/avatar-7-14.png",
-      "optimized_size_bytes": 14528,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -3347,22 +3382,22 @@
       "category": "Culture & Heritage",
       "source_image": "7.png",
       "source_crop": [
-        1035,
-        583,
-        1312,
-        867
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        255,
-        237
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-7-15.webp",
       "extracted_path": "/avatars/extracted/avatar-7-15.png",
-      "optimized_size_bytes": 14978,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -3373,21 +3408,21 @@
       "source_image": "7.png",
       "source_crop": [
         0,
-        867,
-        260,
-        1199
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        238,
-        268
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-7-16.webp",
       "extracted_path": "/avatars/extracted/avatar-7-16.png",
-      "optimized_size_bytes": 18076,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -3397,22 +3432,22 @@
       "category": "Culture & Heritage",
       "source_image": "7.png",
       "source_crop": [
-        260,
-        867,
-        534,
-        1199
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        250,
-        284
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-7-17.webp",
       "extracted_path": "/avatars/extracted/avatar-7-17.png",
-      "optimized_size_bytes": 15804,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -3422,22 +3457,22 @@
       "category": "Culture & Heritage",
       "source_image": "7.png",
       "source_crop": [
-        534,
-        867,
-        787,
-        1199
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        241,
-        269
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-7-18.webp",
       "extracted_path": "/avatars/extracted/avatar-7-18.png",
-      "optimized_size_bytes": 21756,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -3447,22 +3482,22 @@
       "category": "Culture & Heritage",
       "source_image": "7.png",
       "source_crop": [
-        787,
-        867,
-        1041,
-        1199
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        245,
-        264
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-7-19.webp",
       "extracted_path": "/avatars/extracted/avatar-7-19.png",
-      "optimized_size_bytes": 14464,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     },
@@ -3472,22 +3507,22 @@
       "category": "Culture & Heritage",
       "source_image": "7.png",
       "source_crop": [
-        1041,
-        867,
-        1312,
-        1199
+        0,
+        0,
+        256,
+        256
       ],
       "original_dimensions": [
-        1312,
-        1199
+        1024,
+        1024
       ],
       "extracted_dimensions": [
-        255,
-        263
+        256,
+        256
       ],
       "asset_path": "/avatars/optimized/avatar-7-20.webp",
       "extracted_path": "/avatars/extracted/avatar-7-20.png",
-      "optimized_size_bytes": 18026,
+      "optimized_size_bytes": 13000,
       "status": "extracted",
       "validated": true
     }

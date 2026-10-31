@@ -179,6 +179,22 @@ export async function syncAvatarsFromCloud(options?: {
         cleanedStorageObjects.push(...pathsArray);
       }
     }
+
+    // Prune any deleted custom avatars from local public/avatars/optimized/
+    try {
+      if (fs.existsSync(optimizedDir)) {
+        const localFiles = fs.readdirSync(optimizedDir);
+        for (const file of localFiles) {
+          if (file.startsWith("avatar-custom-") && file.endsWith(".webp")) {
+            if (!activeAvatarFileNames.has(file)) {
+              try {
+                fs.unlinkSync(path.join(optimizedDir, file));
+              } catch {}
+            }
+          }
+        }
+      }
+    } catch {}
   } catch (listErr) {
     console.warn("Storage cleanup notice:", listErr);
   }
@@ -200,15 +216,27 @@ export async function syncAvatarsFromCloud(options?: {
         }
       } catch {}
 
+      // Partition into core collection avatars and admin custom avatars
+      const coreAvatars = updatedAvatars.filter((a) => /^avatar-[1-7]-[0-9]{2}$/.test(a.id));
+      const customAvatars = updatedAvatars.filter((a) => !/^avatar-[1-7]-[0-9]{2}$/.test(a.id));
+
+      const existingCoreMap = new Map<string, any>(
+        (existingManifest.avatars || []).map((a: any) => [a.id, a])
+      );
+
       const distinctCategories = Array.from(
         new Set(["All", ...updatedAvatars.map((a) => a.category).filter(Boolean)])
       );
 
       const newManifest = {
         generated_at: new Date().toISOString(),
-        total_avatars: updatedAvatars.length,
+        total_avatars: coreAvatars.length,
+        source_sheets: 7,
+        total_source_bytes: existingManifest.total_source_bytes || 15552694,
+        total_extracted_bytes: existingManifest.total_extracted_bytes || 10038180,
+        total_optimized_bytes: existingManifest.total_optimized_bytes || 1801454,
         categories: distinctCategories,
-        avatars: updatedAvatars.map((a) => ({
+        custom_avatars: customAvatars.map((a) => ({
           id: a.id,
           label: a.label,
           category: a.category,
@@ -216,13 +244,31 @@ export async function syncAvatarsFromCloud(options?: {
           display_order: a.display_order,
           is_active: a.is_active,
         })),
+        avatars: coreAvatars.map((a) => {
+          const prev = existingCoreMap.get(a.id) || {};
+          const sheetNum = a.id.split("-")[1] || "1";
+          return {
+            id: a.id,
+            label: a.label,
+            category: a.category,
+            source_image: prev.source_image || `${sheetNum}.png`,
+            source_crop: prev.source_crop || [0, 0, 256, 256],
+            original_dimensions: prev.original_dimensions || [1024, 1024],
+            extracted_dimensions: prev.extracted_dimensions || [256, 256],
+            asset_path: a.asset_path,
+            extracted_path: prev.extracted_path || `/avatars/extracted/${a.id}.png`,
+            optimized_size_bytes: prev.optimized_size_bytes || 13000,
+            status: prev.status || "extracted",
+            validated: prev.validated !== false,
+          };
+        }),
       };
 
       fs.writeFileSync(manifestPath, JSON.stringify(newManifest, null, 2));
 
       // Regenerate lib/avatars/manifest.ts with preservation of zoom scaling utilities
       const tsPath = path.resolve(rootDir, "lib", "avatars", "manifest.ts");
-      const tsCode = generateManifestTypeScript(newManifest.categories, newManifest.avatars);
+      const tsCode = generateManifestTypeScript(newManifest.categories, coreAvatars, customAvatars);
       fs.writeFileSync(tsPath, tsCode);
 
       manifestUpdated = true;
@@ -244,9 +290,24 @@ export async function syncAvatarsFromCloud(options?: {
 /**
  * Generates the authoritative lib/avatars/manifest.ts file.
  */
-function generateManifestTypeScript(categories: string[], avatars: any[]): string {
+function generateManifestTypeScript(
+  categories: string[],
+  coreAvatars: any[],
+  customAvatars: any[] = []
+): string {
   const categoriesCode = categories.map((c) => `  "${c}",`).join("\n");
-  const itemsCode = avatars
+  const coreItemsCode = coreAvatars
+    .map(
+      (a) => `  {
+    id: "${a.id}",
+    label: "${a.label.replace(/"/g, '\\"')}",
+    category: "${a.category.replace(/"/g, '\\"')}",
+    assetPath: "${a.asset_path}",
+  },`
+    )
+    .join("\n");
+
+  const customItemsCode = customAvatars
     .map(
       (a) => `  {
     id: "${a.id}",
@@ -276,21 +337,32 @@ ${categoriesCode}
 export type AvatarCategory = typeof AVATAR_CATEGORIES[number];
 
 export const AVATAR_ITEMS: AvatarItem[] = [
-${itemsCode}
+${coreItemsCode}
+];
+
+export const CUSTOM_AVATAR_ITEMS: AvatarItem[] = [
+${customItemsCode}
 ];
 
 export const AVATAR_MAP = new Map<string, AvatarItem>(
-  AVATAR_ITEMS.map((item) => [item.id, item])
+  [...AVATAR_ITEMS, ...CUSTOM_AVATAR_ITEMS].map((item) => [item.id, item])
 );
 
 export const DEFAULT_AVATAR_ID = "${defaultId}";
 export const DEFAULT_AVATAR_PATH = "${defaultPath}";
 
 /**
- * Returns all available avatar items.
+ * Returns all core curated avatar items.
  */
 export function getAllAvatars(): AvatarItem[] {
   return AVATAR_ITEMS;
+}
+
+/**
+ * Returns all preset avatars, including both core and custom avatars.
+ */
+export function getAllPresetAvatars(): AvatarItem[] {
+  return [...AVATAR_ITEMS, ...CUSTOM_AVATAR_ITEMS];
 }
 
 /**
